@@ -67,37 +67,36 @@ pub fn rrqr<T: Precision>(
         pnorms[j] = norm;
     }
     
-    let sqrt_eps = Precision::sqrt(T::EPSILON);
-    let mut effective_rank = k;
+    let sqrteps = Precision::sqrt(T::EPSILON);
+    let mut rk = k;
     
     for i in 0..k {
         // Find column with maximum norm
-        let _remaining_cols = n - i;
-        let max_idx = argmax(pnorms.slice(s![i..])) + i;
+        let pvt = argmax(pnorms.slice(s![i..])) + i;
         
         // Swap columns if necessary
-        if i != max_idx {
-            jpvt.swap(i, max_idx);
-            xnorms.swap(i, max_idx);
-            pnorms.swap(i, max_idx);
+        if i != pvt {
+            jpvt.swap(i, pvt);
+            xnorms.swap(i, pvt);
+            pnorms.swap(i, pvt);
             // Swap columns manually
             for row in 0..matrix.nrows() {
                 let temp = matrix[[row, i]];
-                matrix[[row, i]] = matrix[[row, max_idx]];
-                matrix[[row, max_idx]] = temp;
+                matrix[[row, i]] = matrix[[row, pvt]];
+                matrix[[row, pvt]] = temp;
             }
         }
         
         // Apply Householder reflection
-        let col_i = matrix.slice_mut(s![i.., i]);
-        let (tau, _) = super::householder::reflector(col_i);
-        taus[i] = tau;
+        let mut Ainp = matrix.slice_mut(s![i.., i]);
+        let (tau_i, _) = super::householder::reflector(Ainp.view_mut());
+        taus[i] = tau_i;
         
-        // Apply reflection to remaining columns only if tau != 0
-        if tau != T::zero() && i + 1 < n {
+        // Apply reflection to remaining columns only if tau_i != 0
+        if tau_i != T::zero() && i + 1 < n {
             let v = matrix.slice(s![i.., i]).to_owned();
-            let block = matrix.slice_mut(s![i.., i+1..]);
-            super::householder::reflector_apply(v.view(), tau, block);
+            let mut block = matrix.slice_mut(s![i.., i+1..]);
+            super::householder::reflector_apply(v.view(), tau_i, block.view_mut());
         }
         
         // Update column norms
@@ -106,7 +105,7 @@ pub fn rrqr<T: Precision>(
             let temp = (T::one() + temp) * (T::one() - temp);
             let temp = temp * (pnorms[j] / xnorms[j]) * (pnorms[j] / xnorms[j]);
             
-            if temp < sqrt_eps {
+            if temp < sqrteps {
                 // Recompute norm to avoid numerical issues
                 let recomputed = crate::utils::norms::norm_2(matrix.slice(s![i+1.., j]));
                 pnorms[j] = recomputed;
@@ -132,7 +131,7 @@ pub fn rrqr<T: Precision>(
             for j in i..k {
                 taus[j] = T::zero();
             }
-            effective_rank = i;
+            rk = i;
             break;
         }
     }
@@ -143,7 +142,7 @@ pub fn rrqr<T: Precision>(
             taus,
             jpvt,
         },
-        effective_rank,
+        rk,
     )
 }
 

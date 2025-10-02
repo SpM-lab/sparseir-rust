@@ -16,28 +16,28 @@ pub fn reflector<T: Precision>(mut x: ArrayViewMut1<T>) -> (T, T) {
         return (T::zero(), T::zero());
     }
     
-    let x0 = x[0];
-    let norm_x = crate::utils::norms::norm_2(x.view());
+    let xi1 = x[0];
+    let normu = crate::utils::norms::norm_2(x.view());
     
-    if norm_x == T::zero() {
+    if normu == T::zero() {
         return (T::zero(), T::zero());
     }
     
-    // Compute ν = sign(x0) * ||x||
-    let nu = if x0 >= T::zero() { norm_x } else { -norm_x };
-    let x0_new = x0 + nu;
+    // Compute ν = sign(xi1) * ||x||
+    let nu = if xi1 >= T::zero() { normu } else { -normu };
+    let xi1_new = xi1 + nu;
     x[0] = -nu;
     
-    // Update remaining elements: x[i] /= x0_new for i > 0
-    if x0_new != T::zero() {
+    // Update remaining elements: x[i] /= xi1_new for i > 0
+    if xi1_new != T::zero() {
         for i in 1..n {
-            x[i] = x[i] / x0_new;
+            x[i] = x[i] / xi1_new;
         }
     }
     
     // Compute tau = xi1 / nu (like libsparseir)
     let tau = if nu != T::zero() {
-        x0_new / nu
+        xi1_new / nu
     } else {
         T::zero()
     };
@@ -63,20 +63,20 @@ pub fn reflector_apply<T: Precision>(
     
     // Apply H = I - τvv^T to each column of A (like libsparseir)
     for j in 0..n {
-        // Compute vAj = tau * (A(0, j) + xj.dot(Aj))
-        // where xj = v[1..] and Aj = A[1.., j]
-        let mut vaj = a[[0, j]];
+        // Compute vBj = tau * (B(0, j) + xj.dot(Bj))
+        // where xj = v[1..] and Bj = B[1.., j]
+        let mut vBj = a[[0, j]];
         for i in 1..m {
-            vaj = vaj + v[i] * a[[i, j]];
+            vBj = vBj + v[i] * a[[i, j]];
         }
-        vaj = tau * vaj;
+        vBj = tau * vBj;
         
-        // Update A(0, j)
-        a[[0, j]] = a[[0, j]] - vaj;
+        // Update B(0, j)
+        a[[0, j]] = a[[0, j]] - vBj;
         
-        // Apply axpy operation: Aj -= vAj * xj
+        // Apply axpy operation: Bj -= vBj * xj
         for i in 1..m {
-            a[[i, j]] = a[[i, j]] - vaj * v[i];
+            a[[i, j]] = a[[i, j]] - vBj * v[i];
         }
     }
 }
