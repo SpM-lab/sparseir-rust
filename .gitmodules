@@ -1,0 +1,12 @@
+[submodule "libsparseir"]
+	path = libsparseir
+	url = git@github.com:SpM-lab/libsparseir.git
+[submodule "libxprec"]
+	path = libxprec
+	url = git@github.com:tuwien-cms/libxprec.git
+[submodule "eigen"]
+	path = eigen
+	url = git@gitlab.com:libeigen/eigen.git
+[submodule "twofloat"]
+	path = twofloat
+	url = git@github.com:ajtribick/twofloat.git
