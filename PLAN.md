@@ -284,11 +284,24 @@ impl StatisticsType for Bosonic {
 ```rust
 // Abstract kernel trait
 pub trait AbstractKernel {
-    fn compute(&self, x: f64, y: f64) -> f64;
-    fn compute_ddouble(&self, x: TwoFloat, y: TwoFloat) -> TwoFloat;
+    fn compute(&self, x: TwoFloat, y: TwoFloat) -> TwoFloat;
     fn xrange(&self) -> (f64, f64);
     fn yrange(&self) -> (f64, f64);
     fn lambda(&self) -> f64;
+    
+    // Legacy weight function (for compatibility)
+    fn weight<S: StatisticsType>(&self, beta: f64, omega: f64) -> f64;
+    
+    // New safer API: inverse weight (1/w) to avoid division by zero
+    fn inv_weight<S: StatisticsType>(&self, beta: f64, omega: f64) -> f64;
+    
+    // New convenient API: compute kernel value divided by weight
+    fn compute_weighted<S: StatisticsType>(&self, x: TwoFloat, y: TwoFloat, beta: f64, omega: f64) -> TwoFloat;
+}
+
+// Utility function for f64 computation
+pub fn compute_f64<K: AbstractKernel>(kernel: &K, x: f64, y: f64) -> f64 {
+    kernel.compute(TwoFloat::from(x), TwoFloat::from(y)).into()
 }
 
 // Logistic kernel
@@ -297,15 +310,8 @@ pub struct LogisticKernel {
 }
 
 impl AbstractKernel for LogisticKernel {
-    fn compute(&self, x: f64, y: f64) -> f64 {
+    fn compute(&self, x: TwoFloat, y: TwoFloat) -> TwoFloat {
         // K(x, y) = exp(-Λy(x + 1)/2)/(1 + exp(-Λy))
-        let lambda = self.lambda;
-        let exp_term = (-lambda * y * (x + 1.0) / 2.0).exp();
-        exp_term / (1.0 + (-lambda * y).exp())
-    }
-    
-    fn compute_ddouble(&self, x: TwoFloat, y: TwoFloat) -> TwoFloat {
-        // High-precision implementation
         let lambda = TwoFloat::from(self.lambda);
         let exp_term = (-lambda * y * (x + 1.0) / 2.0).exp();
         exp_term / (1.0 + (-lambda * y).exp())
@@ -314,6 +320,32 @@ impl AbstractKernel for LogisticKernel {
     fn xrange(&self) -> (f64, f64) { (-1.0, 1.0) }
     fn yrange(&self) -> (f64, f64) { (-1.0, 1.0) }
     fn lambda(&self) -> f64 { self.lambda }
+    
+    fn weight<S: StatisticsType>(&self, beta: f64, omega: f64) -> f64 {
+        if std::any::TypeId::of::<S>() == std::any::TypeId::of::<Fermionic>() {
+            // Fermionic: w(beta, omega) = 1.0 (kernel value is divided by this)
+            1.0
+        } else {
+            // Bosonic: w(beta, omega) = 1.0 / tanh(0.5 * beta * omega) (kernel value is divided by this)
+            1.0 / (0.5 * beta * omega).tanh()
+        }
+    }
+    
+    fn inv_weight<S: StatisticsType>(&self, beta: f64, omega: f64) -> f64 {
+        if std::any::TypeId::of::<S>() == std::any::TypeId::of::<Fermionic>() {
+            // Fermionic: 1/w = 1.0 (safe, no division by zero)
+            1.0
+        } else {
+            // Bosonic: 1/w = tanh(0.5 * beta * omega) (safe, handles omega=0 case)
+            (0.5 * beta * omega).tanh()
+        }
+    }
+    
+    fn compute_weighted<S: StatisticsType>(&self, x: TwoFloat, y: TwoFloat, beta: f64, omega: f64) -> TwoFloat {
+        let k_value = self.compute(x, y);
+        let inv_w = TwoFloat::from(self.inv_weight::<S>(beta, omega));
+        k_value * inv_w
+    }
 }
 
 // Regularized bosonic kernel
@@ -322,14 +354,63 @@ pub struct RegularizedBoseKernel {
 }
 
 impl AbstractKernel for RegularizedBoseKernel {
-    fn compute(&self, x: f64, y: f64) -> f64 {
+    fn compute(&self, x: TwoFloat, y: TwoFloat) -> TwoFloat {
         // K(x, y) = y * exp(-Λy(x + 1)/2)/(exp(-Λy) - 1)
-        let lambda = self.lambda;
+        let lambda = TwoFloat::from(self.lambda);
         let exp_term = (-lambda * y * (x + 1.0) / 2.0).exp();
         y * exp_term / ((-lambda * y).exp() - 1.0)
     }
-    // ... other method implementations
+    
+    fn xrange(&self) -> (f64, f64) { (-1.0, 1.0) }
+    fn yrange(&self) -> (f64, f64) { (0.0, 1.0) }
+    fn lambda(&self) -> f64 { self.lambda }
+    
+    fn weight<S: StatisticsType>(&self, beta: f64, omega: f64) -> f64 {
+        if std::any::TypeId::of::<S>() == std::any::TypeId::of::<Fermionic>() {
+            panic!("RegularizedBoseKernel does not support fermionic functions")
+        } else {
+            // Bosonic: w(beta, omega) = 1.0 / omega (kernel value is divided by this)
+            1.0 / omega
+        }
+    }
+    
+    fn inv_weight<S: StatisticsType>(&self, beta: f64, omega: f64) -> f64 {
+        if std::any::TypeId::of::<S>() == std::any::TypeId::of::<Fermionic>() {
+            panic!("RegularizedBoseKernel does not support fermionic functions")
+        } else {
+            // Bosonic: 1/w = omega (safe, handles omega=0 case naturally)
+            omega
+        }
+    }
+    
+    fn compute_weighted<S: StatisticsType>(&self, x: TwoFloat, y: TwoFloat, beta: f64, omega: f64) -> TwoFloat {
+        let k_value = self.compute(x, y);
+        let inv_w = TwoFloat::from(self.inv_weight::<S>(beta, omega));
+        k_value * inv_w
+    }
 }
+```
+
+### 4. **Usage Examples**
+```rust
+let kernel = LogisticKernel::new(10.0);
+
+// Method 1: Traditional approach (for compatibility)
+let k_value = kernel.compute(x, y);
+let w_fermi = kernel.weight::<Fermionic>(beta, omega);  // w = 1.0
+let result_fermi = k_value / w_fermi;  // Actual basis function value
+
+// Method 2: New safer API (recommended)
+let inv_w_bose = kernel.inv_weight::<Bosonic>(beta, omega);  // 1/w = tanh(0.5 * beta * omega)
+let result_bose = k_value * inv_w_bose;  // Safe, no issues even at ω=0
+
+// Method 3: Most convenient API (recommended)
+let result_fermi_direct = kernel.compute_weighted::<Fermionic>(x, y, beta, omega);
+let result_bose_direct = kernel.compute_weighted::<Bosonic>(x, y, beta, omega);
+
+// Safety verification at ω=0
+let omega_zero = 0.0;
+let safe_result = kernel.compute_weighted::<Bosonic>(x, y, beta, omega_zero);  // Safe computation
 ```
 
 **SVE Implementation with Kernel Specialization**
