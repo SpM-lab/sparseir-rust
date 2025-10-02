@@ -132,7 +132,7 @@ sparseir-rust/
 │       ├── specfuncs.rs    # Special functions (Bessel, Gamma, Legendre)
 │       ├── gauss.rs        # Gaussian integration
 │       └── traits.rs       # Polynomial trait definitions
-├── sparseir-svd/           # SVD specialized functionality (independent)
+├── xprec-svd/              # High-precision SVD implementation (independent)
 │   ├── Cargo.toml
 │   └── src/
 │       ├── lib.rs
@@ -206,20 +206,20 @@ blas = "0.22"             # BLAS bindings (default)
 - Custom Legendre polynomial implementation
 - Gaussian integration
 
-**sparseir-svd** (SVD functionality)
+**xprec-svd** (High-precision SVD functionality)
 - High-precision TSVD implementation
 - Independent mathematical functionality
 
 **sparseir-rust** (Rust interface for SparseIR functionality)
 - `sparseir-poly` (internal)
-- `sparseir-svd` (internal)
+- `xprec-svd` (internal)
 - `ndarray`, `nalgebra` (linear algebra)
 - `twofloat` (extended precision)
 - `special`, `statrs` (special functions)
 
 **sparseir-capi** (C-API layer and integration)
 - `sparseir-rust` (internal)
-- `sparseir-svd` (internal)
+- `xprec-svd` (internal)
 - `sparseir-poly` (internal)
 - `libc` (FFI)
 - Main integration point for all SparseIR functionality
@@ -685,7 +685,7 @@ pub extern "C" fn spir_kernel_release(kernel: *mut SpirKernel) {
      - Special functions (Bessel, Gamma using `special` crate)
      - Custom Legendre polynomial implementation
      - Gaussian integration
-   - SVD functionality (`sparseir-svd`) - independent
+   - SVD functionality (`xprec-svd`) - independent
      - High-precision TSVD implementation
 
 3. **Error Handling**

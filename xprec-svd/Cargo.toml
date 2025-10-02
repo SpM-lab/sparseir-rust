@@ -1,0 +1,31 @@
+[package]
+name = "xprec-svd"
+version = "0.1.0"
+edition = "2021"
+description = "High-precision truncated SVD implementation"
+license = "MIT"
+repository = "https://github.com/sparseir-rust/xprec-svd"
+
+[dependencies]
+# Core linear algebra
+ndarray = "0.15"
+nalgebra = "0.32"
+
+# Extended precision (commented out for now)
+# twofloat = "0.2"
+num-traits = "0.2"
+
+# Error handling
+thiserror = "1.0"
+
+# Serialization (optional)
+serde = { version = "1.0", features = ["derive"], optional = true }
+
+[features]
+default = []
+f128 = []  # Enable f128 support when available
+serialize = ["serde"]
+
+[dev-dependencies]
+approx = "0.5"
+proptest = "1.0"
