@@ -18,8 +18,11 @@ use twofloat::TwoFloat;
 use crate::traits::{StatisticsType, Statistics, Fermionic, Bosonic};
 use crate::gauss::Rule;
 use crate::numeric::CustomNumeric;
+use ndarray::Array2;
 use std::fmt::Debug;
 use num_traits::{FromPrimitive, ToPrimitive};
+use std::ops::{Index, IndexMut, Sub};
+use rayon::prelude::*;
 
 /// Trait for SVE (Singular Value Expansion) hints
 /// 
@@ -100,7 +103,7 @@ pub trait KernelProperties {
 }
 
 /// Abstract kernel trait for SparseIR kernels
-pub trait AbstractKernel {
+pub trait AbstractKernel: Send + Sync {
     /// Compute the kernel value K(x, y) with high precision
     fn compute(&self, x: TwoFloat, y: TwoFloat) -> TwoFloat;
     
@@ -856,18 +859,149 @@ mod tests {
     }
 }
 
+/// Discretized kernel with associated Gauss quadrature rules
+/// 
+/// This structure stores a discrete kernel matrix along with the corresponding
+/// Gauss quadrature rules for x and y coordinates. This enables easy application
+/// of weights for SVE computation and maintains the relationship between matrix
+/// elements and their corresponding quadrature points.
+#[derive(Debug, Clone)]
+pub struct DiscretizedKernel<T> {
+    /// Discrete kernel matrix
+    pub matrix: Array2<T>,
+    /// Gauss quadrature rule for x coordinates
+    pub gauss_x: Rule<T>,
+    /// Gauss quadrature rule for y coordinates  
+    pub gauss_y: Rule<T>,
+}
+
+impl<T: CustomNumeric + Clone> DiscretizedKernel<T> {
+    /// Create a new DiscretizedKernel
+    pub fn new(matrix: Array2<T>, gauss_x: Rule<T>, gauss_y: Rule<T>) -> Self {
+        Self { matrix, gauss_x, gauss_y }
+    }
+    
+    /// Delegate to matrix methods
+    pub fn is_empty(&self) -> bool {
+        self.matrix.is_empty()
+    }
+    
+    pub fn nrows(&self) -> usize {
+        self.matrix.nrows()
+    }
+    
+    pub fn ncols(&self) -> usize {
+        self.matrix.ncols()
+    }
+    
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.matrix.iter()
+    }
+}
+
+impl<T: CustomNumeric + Clone> Index<[usize; 2]> for DiscretizedKernel<T> {
+    type Output = T;
+    
+    fn index(&self, index: [usize; 2]) -> &Self::Output {
+        &self.matrix[index]
+    }
+}
+
+impl<T: CustomNumeric + Clone> IndexMut<[usize; 2]> for DiscretizedKernel<T> {
+    fn index_mut(&mut self, index: [usize; 2]) -> &mut Self::Output {
+        &mut self.matrix[index]
+    }
+}
+
+impl<T: CustomNumeric + Clone> Sub for DiscretizedKernel<T> {
+    type Output = DiscretizedKernel<T>;
+    
+    fn sub(self, rhs: Self) -> Self::Output {
+        DiscretizedKernel::new(
+            self.matrix - rhs.matrix,
+            self.gauss_x,
+            self.gauss_y,
+        )
+    }
+}
+
+impl<T: CustomNumeric + Clone> Sub<&DiscretizedKernel<T>> for &DiscretizedKernel<T> {
+    type Output = DiscretizedKernel<T>;
+    
+    fn sub(self, rhs: &DiscretizedKernel<T>) -> Self::Output {
+        DiscretizedKernel::new(
+            &self.matrix - &rhs.matrix,
+            self.gauss_x.clone(),
+            self.gauss_y.clone(),
+        )
+    }
+}
+
+impl<T: CustomNumeric + Clone> DiscretizedKernel<T> {
+    /// Apply weights for SVE computation
+    /// 
+    /// This applies the square root of Gauss weights to the matrix,
+    /// which is required before performing SVD for SVE computation.
+    /// The original matrix remains unchanged.
+    pub fn apply_weights_for_sve(&self) -> Array2<T> {
+        let mut weighted_matrix = self.matrix.clone();
+        
+        // Apply square root of x-direction weights to rows
+        for i in 0..self.gauss_x.x.len() {
+            let weight_sqrt = self.gauss_x.w[i].sqrt();
+            weighted_matrix.row_mut(i).mapv_inplace(|x| x * weight_sqrt);
+        }
+        
+        // Apply square root of y-direction weights to columns
+        for j in 0..self.gauss_y.x.len() {
+            let weight_sqrt = self.gauss_y.w[j].sqrt();
+            weighted_matrix.column_mut(j).mapv_inplace(|x| x * weight_sqrt);
+        }
+        
+        weighted_matrix
+    }
+    
+    /// Remove weights from SVE result matrices
+    /// 
+    /// This removes the square root of Gauss weights from U and V matrices
+    /// obtained from SVD, converting them back to the original basis.
+    pub fn remove_weights_from_sve_result(&self, u_matrix: &mut Array2<T>, v_matrix: &mut Array2<T>) {
+        // Remove weights from U matrix (x-direction)
+        for i in 0..u_matrix.nrows() {
+            let weight_sqrt = self.gauss_x.w[i].sqrt();
+            u_matrix.row_mut(i).mapv_inplace(|x| x / weight_sqrt);
+        }
+        
+        // Remove weights from V matrix (y-direction) 
+        for j in 0..v_matrix.ncols() {
+            let weight_sqrt = self.gauss_y.w[j].sqrt();
+            v_matrix.column_mut(j).mapv_inplace(|x| x / weight_sqrt);
+        }
+    }
+    
+    /// Get the number of Gauss points in x direction
+    pub fn n_gauss_x(&self) -> usize {
+        self.gauss_x.x.len()
+    }
+    
+    /// Get the number of Gauss points in y direction
+    pub fn n_gauss_y(&self) -> usize {
+        self.gauss_y.x.len()
+    }
+}
+
 /// Compute matrix from Gauss quadrature rules
 /// 
 /// This function evaluates the kernel at all combinations of Gauss points
-/// and returns the resulting matrix for SVE computation.
+/// and returns a DiscretizedKernel containing the matrix and quadrature rules.
 pub fn matrix_from_gauss<T: CustomNumeric + ToPrimitive + num_traits::Zero + Clone>(
     kernel: &dyn AbstractKernel,
     gauss_x: &Rule<T>,
     gauss_y: &Rule<T>,
-) -> ndarray::Array2<T> {
+) -> DiscretizedKernel<T> {
     let n = gauss_x.x.len();
     let m = gauss_y.x.len();
-    let mut result = ndarray::Array2::zeros((n, m));
+    let mut result = Array2::zeros((n, m));
     
     // Evaluate kernel at all combinations of Gauss points
     for i in 0..n {
@@ -884,29 +1018,31 @@ pub fn matrix_from_gauss<T: CustomNumeric + ToPrimitive + num_traits::Zero + Clo
         }
     }
     
-    result
+    DiscretizedKernel::new(result, gauss_x.clone(), gauss_y.clone())
 }
 
 /// Compute matrix from Gauss quadrature rules with parallel processing
 /// 
 /// This is a parallel version of matrix_from_gauss for better performance.
+/// Uses rayon for parallel computation across matrix elements.
 pub fn matrix_from_gauss_parallel<T: CustomNumeric + ToPrimitive + num_traits::Zero + Clone + Send + Sync>(
     kernel: &dyn AbstractKernel,
     gauss_x: &Rule<T>,
     gauss_y: &Rule<T>,
-) -> ndarray::Array2<T> {
+) -> DiscretizedKernel<T> {
     let n = gauss_x.x.len();
     let m = gauss_y.x.len();
-    let mut result = ndarray::Array2::zeros((n, m));
+    let mut result = Array2::zeros((n, m));
     
-    // Use rayon for parallel processing
-    // Note: rayon needs to be added as a dependency for this to work
-    // For now, we'll use sequential processing
-    // use rayon::prelude::*;
+    // Parallel processing using rayon
+    // Create a vector of (i, j, value) tuples for parallel computation
+    let indices: Vec<(usize, usize)> = (0..n)
+        .flat_map(|i| (0..m).map(move |j| (i, j)))
+        .collect();
     
-    // Sequential processing (parallel version commented out until rayon is added)
-    for i in 0..n {
-        for j in 0..m {
+    let values: Vec<T> = indices
+        .par_iter()
+        .map(|&(i, j)| {
             let x = gauss_x.x[i];
             let y = gauss_y.x[j];
             
@@ -915,9 +1051,14 @@ pub fn matrix_from_gauss_parallel<T: CustomNumeric + ToPrimitive + num_traits::Z
             let y_twofloat = TwoFloat::from_f64(y.to_f64());
             
             let kernel_value = kernel.compute(x_twofloat, y_twofloat);
-            result[[i, j]] = T::from_f64(kernel_value.into());
-        }
+            T::from_f64(kernel_value.into())
+        })
+        .collect();
+    
+    // Fill the result matrix with computed values
+    for ((i, j), value) in indices.into_iter().zip(values.into_iter()) {
+        result[[i, j]] = value;
     }
     
-    result
+    DiscretizedKernel::new(result, gauss_x.clone(), gauss_y.clone())
 }

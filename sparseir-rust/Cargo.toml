@@ -26,6 +26,10 @@ thiserror = "1.0"
 # High-precision SVD (internal dependency)
 xprec-svd = { path = "../xprec-svd" }
 
+# Parallel processing
+rayon = "1.7"
+
 [dev-dependencies]
 approx = "0.5"
 proptest = "1.0"
+

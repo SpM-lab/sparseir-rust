@@ -20,7 +20,7 @@ pub use gauss::{Rule, legendre, legendre_custom, legendre_twofloat};
 pub use numeric::{CustomNumeric, TwoFloatArrayOps};
 pub use freq::{MatsubaraFreq, FermionicFreq, BosonicFreq, sign, fermionic_sign, zero, is_zero, is_less, create_statistics};
 pub use polyfourier::{PiecewiseLegendreFT, PiecewiseLegendreFTVector, PowerModel, FermionicPiecewiseLegendreFT, BosonicPiecewiseLegendreFT, FermionicPiecewiseLegendreFTVector, BosonicPiecewiseLegendreFTVector};
-pub use kernel::{matrix_from_gauss, matrix_from_gauss_parallel};
+pub use kernel::{matrix_from_gauss, matrix_from_gauss_parallel, DiscretizedKernel};
 
 // Re-export external dependencies for convenience
 pub use ndarray::{Array1, Array2};
