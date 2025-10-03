@@ -17,73 +17,172 @@ pub struct SVDResult<T: Precision> {
     pub rank: usize,
 }
 
-/// Compute 2×2 SVD
-/// 
-/// Computes the SVD of a 2×2 matrix:
-/// [a b] = [c -s] [σ1  0] [c2  s2]
-/// [c d]   [s  c] [0  σ2] [-s2 c2]
-/// 
-/// Returns (c, s, σ1, σ2, c2, s2) where:
-/// - (c, s) are the left rotation parameters
-/// - (σ1, σ2) are the singular values
-/// - (c2, s2) are the right rotation parameters
-pub fn svd_2x2<T: Precision>(
-    a: T,
-    b: T,
-    c: T,
-    d: T,
-) -> (T, T, T, T, T, T) {
-    // Compute the 2×2 SVD using the standard algorithm
-    let a_sq = a * a;
-    let b_sq = b * b;
-    let c_sq = c * c;
-    let d_sq = d * d;
-    
-    let trace = a_sq + b_sq + c_sq + d_sq;
-    let det = Precision::abs(a * d - b * c);
-    
-    // Compute singular values
-    let four: T = <T as From<f64>>::from(4.0);
-    let two: T = <T as From<f64>>::from(2.0);
-    let s1_sq = (trace + Precision::sqrt(trace * trace - four * det * det)) / two;
-    let s2_sq = (trace - Precision::sqrt(trace * trace - four * det * det)) / two;
-    
-    let s1 = Precision::sqrt(s1_sq);
-    let s2 = Precision::sqrt(s2_sq);
-    
-    // For diagonal matrices, the rotation angles are simple
-    if Precision::abs(b) < T::EPSILON && Precision::abs(c) < T::EPSILON {
-        // Diagonal matrix: [a 0; 0 d]
-        let (c1, s1_rot) = if a >= T::zero() { (T::one(), T::zero()) } else { (-T::one(), T::zero()) };
-        let (c2, s2_rot) = if d >= T::zero() { (T::one(), T::zero()) } else { (-T::one(), T::zero()) };
-        return (c1, s1_rot, s1, s2, c2, s2_rot);
+/// Jacobi rotation structure
+#[derive(Debug, Clone, Copy)]
+struct JacobiRotation<T: Precision> {
+    c: T,  // cosine
+    s: T,  // sine
+}
+
+impl<T: Precision> JacobiRotation<T> {
+    fn new(c: T, s: T) -> Self {
+        Self { c, s }
     }
     
-    // For general 2x2 matrices, compute proper rotation angles
-    // This is a simplified version - in practice, you'd use a more robust algorithm
-    let (c1, s1_rot) = if s1 != T::zero() {
-        let norm = Precision::sqrt(a * a + c * c);
-        if norm > T::EPSILON {
-            (a / norm, c / norm)
-        } else {
-            (T::one(), T::zero())
+    fn identity() -> Self {
+        Self { c: T::one(), s: T::zero() }
+    }
+    
+    fn transpose(&self) -> Self {
+        Self { c: self.c, s: -self.s }
+    }
+    
+    fn compose(&self, other: &Self) -> Self {
+        Self {
+            c: self.c * other.c - self.s * other.s,
+            s: self.s * other.c + self.c * other.s,
         }
+    }
+}
+
+/// Compute 2×2 Jacobi SVD using Eigen3's approach
+/// 
+/// This implements the same algorithm as Eigen3's real_2x2_jacobi_svd
+/// Returns (left_rotation, right_rotation, singular_values)
+fn real_2x2_jacobi_svd<T: Precision + std::fmt::Debug>(
+    a: T, b: T, c: T, d: T
+) -> (JacobiRotation<T>, JacobiRotation<T>, (T, T)) {
+    // Create 2x2 matrix
+    let mut m = [[a, b], [c, d]];
+    
+    eprintln!("[DEBUG] real_2x2_jacobi_svd called with a={:?}, b={:?}, c={:?}, d={:?}", a, b, c, d);
+    eprintln!("[DEBUG] Initial m = [[{:?}, {:?}], [{:?}, {:?}]]", m[0][0], m[0][1], m[1][0], m[1][1]);
+    
+    // First rotation to eliminate off-diagonal elements
+    let t = m[0][0] + m[1][1];
+    let d_val = m[1][0] - m[0][1];
+    
+    eprintln!("[DEBUG] t = {:?}, d_val = {:?}", t, d_val);
+    
+    let rot1 = if Precision::abs(d_val) < T::EPSILON {
+        eprintln!("[DEBUG] d_val is too small, using identity rotation");
+        JacobiRotation::identity()
     } else {
-        (T::one(), T::zero())
+        let u = t / d_val;
+        let tmp = Precision::sqrt(T::one() + u * u);
+        let r = JacobiRotation::new(u / tmp, T::one() / tmp);
+        eprintln!("[DEBUG] rot1: c={:?}, s={:?}", r.c, r.s);
+        r
     };
     
-    let (c2, s2_rot) = if s2 != T::zero() {
-        let norm = Precision::sqrt(b * b + d * d);
-        if norm > T::EPSILON {
-            (b / norm, d / norm)
-        } else {
-            (T::one(), T::zero())
-        }
+    // Apply first rotation (left)
+    apply_rotation_left(&mut m, 0, 1, &rot1);
+    eprintln!("[DEBUG] After left rotation m = [[{:?}, {:?}], [{:?}, {:?}]]", m[0][0], m[0][1], m[1][0], m[1][1]);
+    
+    // Compute second rotation (right) from the left-rotated matrix
+    let rot2 = make_jacobi(&m, 0, 1);
+    eprintln!("[DEBUG] rot2 (from make_jacobi): c={:?}, s={:?}", rot2.c, rot2.s);
+    
+    
+    // Note: We don't apply rot2 to m here (unlike what we did before)
+    // The right rotation is applied by the caller to the full matrix
+    // We only return the rotation parameters
+    
+    // Compose rotations for j_left
+    let left_rot = rot1.compose(&rot2.transpose());
+    eprintln!("[DEBUG] left_rot (rot1 * rot2.transpose()): c={:?}, s={:?}", left_rot.c, left_rot.s);
+    
+    // Extract singular values from the diagonalized matrix
+    let s1 = Precision::abs(m[0][0]);
+    let s2 = Precision::abs(m[1][1]);
+    
+    eprintln!("[DEBUG] Singular values: s1={:?}, s2={:?}", s1, s2);
+    eprintln!("[DEBUG] Returning: left_rot=({:?}, {:?}), rot2=({:?}, {:?})", left_rot.c, left_rot.s, rot2.c, rot2.s);
+    
+    // Ensure singular values are in descending order
+    if s1 < s2 {
+        (left_rot, rot2, (s2, s1))
     } else {
-        (T::one(), T::zero())
+        (left_rot, rot2, (s1, s2))
+    }
+}
+
+/// Make Jacobi rotation to eliminate off-diagonal element
+/// This implements Eigen3's makeJacobi(x, y, z) function
+/// For a self-adjoint 2x2 matrix B = [[x, y], [conj(y), z]]
+/// Returns rotation J such that J^* B J is diagonal
+fn make_jacobi<T: Precision + std::fmt::Debug>(m: &[[T; 2]; 2], p: usize, q: usize) -> JacobiRotation<T> {
+    let x = m[p][p];
+    let y = m[p][q];
+    let z = m[q][q];
+    
+    eprintln!("[DEBUG] make_jacobi called with p={}, q={}", p, q);
+    eprintln!("[DEBUG] x=m[{}][{}]={:?}, y=m[{}][{}]={:?}, z=m[{}][{}]={:?}", p, p, x, p, q, y, q, q, z);
+    
+    // Check if matrix is already diagonalized
+    // For a self-adjoint matrix [[x, y], [conj(y), z]], if x = z and y = 0, it's already diagonal
+    let two = <T as From<f64>>::from(2.0);
+    let deno = two * Precision::abs(y);
+    
+    eprintln!("[DEBUG] deno = 2 * |y| = {:?}", deno);
+    
+    if deno < T::EPSILON {
+        // If y is too small, return identity rotation
+        eprintln!("[DEBUG] deno < EPSILON, returning identity rotation");
+        return JacobiRotation::identity();
+    }
+    
+    // tau = (x - z) / (2 * |y|)
+    let tau = (x - z) / deno;
+    let w = Precision::sqrt(tau * tau + T::one());
+    
+    eprintln!("[DEBUG] tau = (x - z) / deno = {:?}", tau);
+    eprintln!("[DEBUG] w = sqrt(tau^2 + 1) = {:?}", w);
+    
+    // Compute t
+    let t = if tau > T::zero() {
+        T::one() / (tau + w)
+    } else {
+        T::one() / (tau - w)
     };
     
-    (c1, s1_rot, s1, s2, c2, s2_rot)
+    eprintln!("[DEBUG] t = {:?}", t);
+    
+    // Compute rotation parameters (matching Eigen3's implementation)
+    let sign_t = if t > T::zero() { T::one() } else { -T::one() };
+    let n = T::one() / Precision::sqrt(t * t + T::one());
+    
+    // For real numbers: conj(y) / abs(y) = y / abs(y) = sign(y)
+    let sign_y = if y >= T::zero() { T::one() } else { -T::one() };
+    
+    eprintln!("[DEBUG] sign_t = {:?}, n = {:?}, sign_y = {:?}", sign_t, n, sign_y);
+    
+    let c_val = n;
+    let s_val = -sign_t * sign_y * Precision::abs(t) * n;
+    
+    eprintln!("[DEBUG] c_val = {:?}, s_val = {:?}", c_val, s_val);
+    
+    JacobiRotation::new(c_val, s_val)
+}
+
+/// Apply left rotation to 2x2 matrix
+fn apply_rotation_left<T: Precision>(m: &mut [[T; 2]; 2], p: usize, q: usize, rot: &JacobiRotation<T>) {
+    let temp1 = rot.c * m[p][0] - rot.s * m[q][0];
+    let temp2 = rot.c * m[p][1] - rot.s * m[q][1];
+    m[q][0] = rot.s * m[p][0] + rot.c * m[q][0];
+    m[q][1] = rot.s * m[p][1] + rot.c * m[q][1];
+    m[p][0] = temp1;
+    m[p][1] = temp2;
+}
+
+/// Apply right rotation to 2x2 matrix
+fn apply_rotation_right<T: Precision>(m: &mut [[T; 2]; 2], p: usize, q: usize, rot: &JacobiRotation<T>) {
+    let temp1 = rot.c * m[0][p] - rot.s * m[0][q];
+    let temp2 = rot.c * m[1][p] - rot.s * m[1][q];
+    m[0][q] = rot.s * m[0][p] + rot.c * m[0][q];
+    m[1][q] = rot.s * m[1][p] + rot.c * m[1][q];
+    m[0][p] = temp1;
+    m[1][p] = temp2;
 }
 
 /// Apply Givens rotation to a matrix
@@ -98,28 +197,46 @@ pub fn apply_givens_left<T: Precision>(
     c: T,
     s: T,
 ) {
-    let m = matrix.nrows();
+    let n = matrix.ncols();
     
-    for k in 0..m {
-        let temp = c * matrix[[k, i]] + s * matrix[[k, j]];
-        matrix[[k, j]] = -s * matrix[[k, i]] + c * matrix[[k, j]];
-        matrix[[k, i]] = temp;
+    // Left rotation: update rows i and j
+    for k in 0..n {
+        let xi = matrix[[i, k]];
+        let yi = matrix[[j, k]];
+        let new_xi = c * xi + s * yi;
+        let new_yi = -s * xi + c * yi;
+        matrix[[i, k]] = new_xi;
+        matrix[[j, k]] = new_yi;
     }
 }
 
-pub fn apply_givens_right<T: Precision>(
+pub fn apply_givens_right<T: Precision + std::fmt::Debug>(
     matrix: &mut Array2<T>,
     i: usize,
     j: usize,
     c: T,
     s: T,
 ) {
-    let n = matrix.ncols();
+    let m = matrix.nrows();
     
-    for k in 0..n {
-        let temp = c * matrix[[i, k]] + s * matrix[[j, k]];
-        matrix[[j, k]] = -s * matrix[[i, k]] + c * matrix[[j, k]];
-        matrix[[i, k]] = temp;
+    eprintln!("[Rust] apply_givens_right: c={:?}, s={:?}, i={}, j={}", c, s, i, j);
+    
+    // Right rotation: update columns i and j
+    // Note: Eigen3's applyOnTheRight applies the transpose of the rotation
+    // So we apply (c, -s) instead of (c, s)
+    for k in 0..m {
+        let xi = matrix[[k, i]];
+        let yi = matrix[[k, j]];
+        eprintln!("[Rust]   k={}, xi={:?}, yi={:?}", k, xi, yi);
+        
+        // Apply transpose: (c, -s)
+        // Must use temporary variables to avoid in-place issues
+        let new_xi = c * xi - s * yi;
+        let new_yi = s * xi + c * yi;
+        matrix[[k, i]] = new_xi;
+        matrix[[k, j]] = new_yi;
+        
+        eprintln!("[Rust]   -> x={:?}, y={:?}", matrix[[k, i]], matrix[[k, j]]);
     }
 }
 
@@ -127,7 +244,7 @@ pub fn apply_givens_right<T: Precision>(
 /// 
 /// Computes the SVD using two-sided Jacobi iterations.
 /// This is more accurate than bidiagonalization methods but slower.
-pub fn jacobi_svd<T: Precision>(
+pub fn jacobi_svd<T: Precision + std::fmt::Debug>(
     matrix: &Array2<T>,
 ) -> SVDResult<T> {
     let m = matrix.nrows();
@@ -139,35 +256,73 @@ pub fn jacobi_svd<T: Precision>(
     let mut v = Array2::eye(n);
     let mut a = matrix.clone();
     
-    // Convergence threshold
-    let eps = Precision::sqrt(T::EPSILON);
+    // Use Eigen3's convergence criteria
+    let consider_as_zero = <T as From<f64>>::from(std::f64::MIN_POSITIVE);
+    let precision = <T as From<f64>>::from(2.0) * T::EPSILON;
     let max_iter = 30; // Maximum number of sweeps
     
-    for _iter in 0..max_iter {
+    // Track maximum diagonal entry for threshold calculation
+    // Initialize with maximum absolute value in the matrix to handle non-diagonal matrices
+    let mut max_diag_entry = T::zero();
+    for i in 0..m {
+        for j in 0..n {
+            max_diag_entry = Precision::max(max_diag_entry, Precision::abs(a[[i, j]]));
+        }
+    }
+    
+    let mut _iterations = 0;
+    for iter in 0..max_iter {
         let mut converged = true;
         
+        eprintln!("\n[Rust] === Iteration {} ===", iter);
+        
         // One-sided Jacobi: eliminate off-diagonal elements
-        for i in 0..k {
-            for j in (i + 1)..k {
-                if Precision::abs(a[[i, j]]) < eps {
+        // Use Eigen3's loop order: p from 1 to k, q from 0 to p-1
+        for p in 1..k {
+            for q in 0..p {
+                // Use Eigen3's threshold calculation
+                let threshold = Precision::max(consider_as_zero, precision * max_diag_entry);
+                
+                eprintln!("[Rust] Checking block ({}, {})", p, q);
+                eprintln!("[Rust]   a[{},{}] = {:?}, a[{},{}] = {:?}", p, q, a[[p, q]], q, p, a[[q, p]]);
+                eprintln!("[Rust]   threshold = {:?}", threshold);
+                
+                if Precision::abs(a[[p, q]]) <= threshold && Precision::abs(a[[q, p]]) <= threshold {
+                    eprintln!("[Rust]   => Skipping");
                     continue;
                 }
                 
+                eprintln!("[Rust]   => Processing!");
                 converged = false;
+                _iterations += 1;
                 
-                // Compute 2×2 SVD of the 2×2 submatrix
-                let (c, s, _s1, _s2, c2, s2_rot) = svd_2x2(
-                    a[[i, i]], a[[i, j]],
-                    a[[j, i]], a[[j, j]]
+                // Compute 2×2 Jacobi SVD of the 2×2 submatrix
+                let (left_rot, right_rot, (_s1, _s2)) = real_2x2_jacobi_svd(
+                    a[[p, p]], a[[p, q]],
+                    a[[q, p]], a[[q, q]]
                 );
                 
+                let c = left_rot.c;
+                let s = left_rot.s;
+                let c2 = right_rot.c;
+                let s2_rot = right_rot.s;
+                
+                eprintln!("[Rust]   left_rot: c = {:?}, s = {:?}", c, s);
+                eprintln!("[Rust]   right_rot: c = {:?}, s = {:?}", c2, s2_rot);
+                
                 // Apply left rotation to A and U
-                apply_givens_left(&mut a, i, j, c, s);
-                apply_givens_left(&mut u, i, j, c, s);
+                apply_givens_left(&mut a, p, q, c, s);
+                apply_givens_left(&mut u, p, q, c, s);
+                
+                eprintln!("[Rust]   After left rotation, full matrix a:");
+                eprintln!("[Rust]     [[{:?}, {:?}],", a[[0, 0]], a[[0, 1]]);
+                eprintln!("[Rust]      [{:?}, {:?}]]", a[[1, 0]], a[[1, 1]]);
                 
                 // Apply right rotation to A and V
-                apply_givens_right(&mut a, i, j, c2, s2_rot);
-                apply_givens_right(&mut v, i, j, c2, s2_rot);
+                apply_givens_right(&mut a, p, q, c2, s2_rot);
+                apply_givens_right(&mut v, p, q, c2, s2_rot);
+                
+                eprintln!("[Rust]   After right rotation, a[{},{}] = {:?}, a[{},{}] = {:?}", p, p, a[[p, p]], q, q, a[[q, q]]);
             }
         }
         
@@ -176,13 +331,21 @@ pub fn jacobi_svd<T: Precision>(
         }
     }
     
-    // Extract singular values
+    // Step 3: Extract singular values and ensure they are positive (like Eigen3)
     let mut s = Array1::zeros(k);
     for i in 0..k {
-        s[i] = Precision::abs(a[[i, i]]);
+        let diag_val = a[[i, i]];
+        s[i] = Precision::abs(diag_val);
+        
+        // If diagonal entry is negative, flip the corresponding U column
+        if diag_val < T::zero() {
+            for row in 0..m {
+                u[[row, i]] = -u[[row, i]];
+            }
+        }
     }
     
-    // Sort singular values in descending order
+    // Step 4: Sort singular values in descending order (like Eigen3)
     let mut indices: Vec<usize> = (0..k).collect();
     indices.sort_by(|&a, &b| s[b].partial_cmp(&s[a]).unwrap());
     
@@ -212,7 +375,11 @@ mod tests {
     
     #[test]
     fn test_svd_2x2() {
-        let (c, s, s1, s2, c2, s2_rot) = svd_2x2(3.0, 4.0, 0.0, 5.0);
+        let (left_rot, right_rot, (s1, s2)) = real_2x2_jacobi_svd(3.0, 4.0, 0.0, 5.0);
+        let c = left_rot.c;
+        let s = left_rot.s;
+        let c2 = right_rot.c;
+        let s2_rot = right_rot.s;
         
         // Check that singular values are positive
         assert!(s1 > 0.0);
@@ -244,7 +411,6 @@ mod tests {
     }
     
     #[test]
-    #[ignore]
     fn test_jacobi_svd_rank_one() {
         let a = array![
             [1.0, 1.0, 1.0],
