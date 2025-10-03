@@ -9,10 +9,10 @@ pub mod svd;
 pub mod tsvd;
 pub mod utils;
 
-pub use precision::Precision;
+pub use precision::{Precision, TwoFloatPrecision};
 pub use qr::{QRPivoted, rrqr, truncate_qr_result};
 pub use svd::{SVDResult, jacobi_svd};
-pub use tsvd::{tsvd, tsvd_f64, TSVDConfig, TSVDError};
+pub use tsvd::{tsvd, tsvd_f64, tsvd_twofloat, tsvd_twofloat_from_f64, TSVDConfig, TSVDError};
 pub use utils::{norm_2, norm_frobenius, norm_inf, norm_max, permutation_matrix};
 
 // Re-export common types

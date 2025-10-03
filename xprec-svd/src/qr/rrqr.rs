@@ -69,7 +69,7 @@ pub fn rrqr_with_options<T: Precision>(
         pnorms[j] = norm;
     }
     
-    let sqrteps = Precision::sqrt(T::EPSILON);
+    let sqrteps = Precision::sqrt(<T as Precision>::epsilon());
     let mut rk = k;
     
     for i in 0..k {
@@ -124,7 +124,7 @@ pub fn rrqr_with_options<T: Precision>(
         let max_diag_abs = Precision::abs(matrix[[0, 0]]);
         
         // Check if the diagonal element is too small relative to the first diagonal element
-        if diag_abs < rtol * max_diag_abs || diag_abs < T::EPSILON {
+        if diag_abs < rtol * max_diag_abs || diag_abs < <T as Precision>::epsilon() {
             // Zero out remaining columns
             for row in i..m {
                 for col in i..n {

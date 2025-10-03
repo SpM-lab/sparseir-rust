@@ -48,8 +48,13 @@ The TSVD algorithm follows this structure:
 // f64 precision
 let result = tsvd_f64(matrix, rtol)?;
 
-// TwoFloat precision
-let result = tsvd_twofloat(matrix, rtol)?;
+// TwoFloat precision (direct input)
+let matrix_tf = convert_to_twofloat_matrix(matrix);
+let rtol_tf = TwoFloatPrecision::from_f64(rtol);
+let result = tsvd_twofloat(&matrix_tf, rtol_tf)?;
+
+// TwoFloat precision (from f64)
+let result = tsvd_twofloat_from_f64(matrix, rtol)?;
 
 // Generic precision
 let result = tsvd(matrix, TSVDConfig::new(rtol))?;

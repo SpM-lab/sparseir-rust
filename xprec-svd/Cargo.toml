@@ -11,9 +11,12 @@ repository = "https://github.com/sparseir-rust/xprec-svd"
 ndarray = "0.15"
 nalgebra = "0.32"
 
-# Extended precision (commented out for now)
-# twofloat = "0.2"
+# Extended precision
+twofloat = "0.2"
 num-traits = "0.2"
+
+# Approximate equality
+approx = "0.5"
 
 # Error handling
 thiserror = "1.0"

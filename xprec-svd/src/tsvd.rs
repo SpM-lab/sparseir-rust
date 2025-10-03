@@ -21,7 +21,7 @@ impl<T: Precision> TSVDConfig<T> {
         Self {
             rtol,
             max_iterations: 30,
-            convergence_threshold: Precision::sqrt(T::EPSILON),
+            convergence_threshold: Precision::sqrt(<T as Precision>::epsilon()),
         }
     }
 }
@@ -125,7 +125,31 @@ pub fn tsvd_f64(
     tsvd(matrix, TSVDConfig::new(rtol))
 }
 
-// TwoFloat support can be added later when ExtendedFloat wrapper is implemented
+/// Convenience function for TwoFloat precision
+pub fn tsvd_twofloat(
+    matrix: &Array2<crate::precision::TwoFloatPrecision>,
+    rtol: crate::precision::TwoFloatPrecision,
+) -> Result<crate::svd::jacobi::SVDResult<crate::precision::TwoFloatPrecision>, TSVDError> {
+    let config = TSVDConfig::new(rtol);
+    tsvd(matrix, config)
+}
+
+/// Convenience function to convert f64 matrix to TwoFloat and compute SVD
+pub fn tsvd_twofloat_from_f64(
+    matrix: &Array2<f64>,
+    rtol: f64,
+) -> Result<crate::svd::jacobi::SVDResult<crate::precision::TwoFloatPrecision>, TSVDError> {
+    // Convert f64 matrix to TwoFloatPrecision
+    let (m, n) = matrix.dim();
+    let mut matrix_tf = Array2::zeros((m, n));
+    for i in 0..m {
+        for j in 0..n {
+            matrix_tf[[i, j]] = crate::precision::TwoFloatPrecision::from_f64(matrix[[i, j]]);
+        }
+    }
+    
+    tsvd_twofloat(&matrix_tf, crate::precision::TwoFloatPrecision::from_f64(rtol))
+}
 
 #[cfg(test)]
 mod tests {

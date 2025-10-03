@@ -61,7 +61,7 @@ fn real_2x2_jacobi_svd<T: Precision>(
     let d_val = m[1][0] - m[0][1];
     
     
-    let rot1 = if Precision::abs(d_val) < T::EPSILON {
+    let rot1 = if Precision::abs(d_val) < <T as Precision>::epsilon() {
         JacobiRotation::identity()
     } else {
         let u = t / d_val;
@@ -113,7 +113,7 @@ fn make_jacobi<T: Precision>(m: &[[T; 2]; 2], p: usize, q: usize) -> JacobiRotat
     let deno = two * Precision::abs(y);
     
     
-    if deno < T::EPSILON {
+    if deno < <T as Precision>::epsilon() {
         // If y is too small, return identity rotation
         return JacobiRotation::identity();
     }
@@ -269,7 +269,7 @@ pub fn jacobi_svd<T: Precision>(
     
     // Use Eigen3's convergence criteria
     let consider_as_zero = <T as From<f64>>::from(std::f64::MIN_POSITIVE);
-    let precision = <T as From<f64>>::from(2.0) * T::EPSILON;
+    let precision = <T as From<f64>>::from(2.0) * <T as Precision>::epsilon();
     let max_iter = 30; // Maximum number of sweeps
     
     // Track maximum diagonal entry for threshold calculation
