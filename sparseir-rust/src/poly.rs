@@ -380,15 +380,14 @@ pub struct PiecewiseLegendrePolyVector {
 }
 
 impl PiecewiseLegendrePolyVector {
-    /// Default constructor
-    pub fn new() -> Self {
-        Self {
-            polyvec: Vec::new(),
-        }
-    }
-    
     /// Constructor with a vector of PiecewiseLegendrePoly
-    pub fn from_polynomials(polyvec: Vec<PiecewiseLegendrePoly>) -> Self {
+    /// 
+    /// # Panics
+    /// Panics if the input vector is empty, as empty PiecewiseLegendrePolyVector is not meaningful
+    pub fn new(polyvec: Vec<PiecewiseLegendrePoly>) -> Self {
+        if polyvec.is_empty() {
+            panic!("Cannot create empty PiecewiseLegendrePolyVector");
+        }
         Self { polyvec }
     }
     
@@ -507,17 +506,25 @@ impl PiecewiseLegendrePolyVector {
     
     // Accessor methods to match C++ interface
     pub fn xmin(&self) -> f64 {
-        if self.polyvec.is_empty() { 0.0 } else { self.polyvec[0].xmin }
+        if self.polyvec.is_empty() {
+            panic!("Cannot get xmin from empty PiecewiseLegendrePolyVector");
+        }
+        self.polyvec[0].xmin
     }
     
     pub fn xmax(&self) -> f64 {
-        if self.polyvec.is_empty() { 0.0 } else { self.polyvec[0].xmax }
+        if self.polyvec.is_empty() {
+            panic!("Cannot get xmax from empty PiecewiseLegendrePolyVector");
+        }
+        self.polyvec[0].xmax
     }
     
-    pub fn get_knots(&self) -> Vec<f64> {
+    pub fn get_knots(&self, tolerance: Option<f64>) -> Vec<f64> {
         if self.polyvec.is_empty() {
-            return Vec::new();
+            panic!("Cannot get knots from empty PiecewiseLegendrePolyVector");
         }
+        const DEFAULT_TOLERANCE: f64 = 1e-10;
+        let tolerance = tolerance.unwrap_or(DEFAULT_TOLERANCE);
         
         // Collect all knots from all polynomials
         let mut all_knots = Vec::new();
@@ -530,39 +537,43 @@ impl PiecewiseLegendrePolyVector {
         // Sort and remove duplicates
         {
             all_knots.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            all_knots.dedup_by(|a, b| (*a - *b).abs() < 1e-10); // Use tolerance for f64
+            all_knots.dedup_by(|a, b| (*a - *b).abs() < tolerance);
         }
         all_knots
     }
     
     pub fn get_delta_x(&self) -> Vec<f64> {
         if self.polyvec.is_empty() {
-            Vec::new()
-        } else {
-            self.polyvec[0].delta_x.clone()
+            panic!("Cannot get delta_x from empty PiecewiseLegendrePolyVector");
         }
+        self.polyvec[0].delta_x.clone()
     }
     
     pub fn get_polyorder(&self) -> usize {
-        if self.polyvec.is_empty() { 0 } else { self.polyvec[0].polyorder }
+        if self.polyvec.is_empty() {
+            panic!("Cannot get polyorder from empty PiecewiseLegendrePolyVector");
+        }
+        self.polyvec[0].polyorder
     }
     
     pub fn get_norms(&self) -> Vec<f64> {
         if self.polyvec.is_empty() {
-            Vec::new()
-        } else {
-            self.polyvec[0].norms.clone()
+            panic!("Cannot get norms from empty PiecewiseLegendrePolyVector");
         }
+        self.polyvec[0].norms.clone()
     }
     
     pub fn get_symm(&self) -> Vec<i32> {
+        if self.polyvec.is_empty() {
+            panic!("Cannot get symm from empty PiecewiseLegendrePolyVector");
+        }
         self.polyvec.iter().map(|poly| poly.symm).collect()
     }
     
     /// Get data as 3D tensor: [segment][degree][polynomial]
     pub fn get_data(&self) -> ndarray::Array3<f64> {
         if self.polyvec.is_empty() {
-            return ndarray::Array3::zeros((0, 0, 0));
+            panic!("Cannot get data from empty PiecewiseLegendrePolyVector");
         }
         
         let nsegments = self.polyvec[0].data.ncols();
@@ -583,7 +594,12 @@ impl PiecewiseLegendrePolyVector {
     }
     
     /// Find roots of all polynomials
-    pub fn roots(&self) -> Vec<f64> {
+    pub fn roots(&self, tolerance: Option<f64>) -> Vec<f64> {
+        if self.polyvec.is_empty() {
+            panic!("Cannot get roots from empty PiecewiseLegendrePolyVector");
+        }
+        const DEFAULT_TOLERANCE: f64 = 1e-10;
+        let tolerance = tolerance.unwrap_or(DEFAULT_TOLERANCE);
         let mut all_roots = Vec::new();
         
         for poly in &self.polyvec {
@@ -596,22 +612,20 @@ impl PiecewiseLegendrePolyVector {
         // Sort in descending order and remove duplicates (like C++ implementation)
         {
             all_roots.sort_by(|a, b| b.partial_cmp(a).unwrap());
-            all_roots.dedup_by(|a, b| (*a - *b).abs() < 1e-10); // Use tolerance for f64
+            all_roots.dedup_by(|a, b| (*a - *b).abs() < tolerance);
         }
         all_roots
     }
     
     /// Get the number of roots
-    pub fn nroots(&self) -> usize {
-        self.roots().len()
+    pub fn nroots(&self, tolerance: Option<f64>) -> usize {
+        if self.polyvec.is_empty() {
+            panic!("Cannot get nroots from empty PiecewiseLegendrePolyVector");
+        }
+        self.roots(tolerance).len()
     }
 }
 
-impl Default for PiecewiseLegendrePolyVector {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 impl std::ops::Index<usize> for PiecewiseLegendrePolyVector {
     type Output = PiecewiseLegendrePoly;
@@ -938,7 +952,7 @@ mod tests {
         let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 0);
         let poly2 = PiecewiseLegendrePoly::new(data2, knots, 1, None, 0);
         
-        let vector = PiecewiseLegendrePolyVector::from_polynomials(vec![poly1, poly2]);
+        let vector = PiecewiseLegendrePolyVector::new(vec![poly1, poly2]);
         
         assert_eq!(vector.size(), 2);
         assert_eq!(vector.get_polyorder(), 2);
@@ -953,7 +967,7 @@ mod tests {
         let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 0);
         let poly2 = PiecewiseLegendrePoly::new(data2, knots, 1, None, 0);
         
-        let vector = PiecewiseLegendrePolyVector::from_polynomials(vec![poly1, poly2]);
+        let vector = PiecewiseLegendrePolyVector::new(vec![poly1, poly2]);
         
         let results = vector.evaluate_at(0.5);
         assert_eq!(results.len(), 2);
@@ -1009,7 +1023,7 @@ mod tests {
         let poly2 = PiecewiseLegendrePoly::new(data2, knots.clone(), 1, None, 0);
         let poly3 = PiecewiseLegendrePoly::new(data3, knots, 2, None, 0);
         
-        let vector = PiecewiseLegendrePolyVector::from_polynomials(vec![poly1, poly2, poly3]);
+        let vector = PiecewiseLegendrePolyVector::new(vec![poly1, poly2, poly3]);
         
         // Test single slice
         let single_slice = vector.slice_single(1);
@@ -1035,12 +1049,12 @@ mod tests {
         let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 0);
         let poly2 = PiecewiseLegendrePoly::new(data2, knots.clone(), 1, None, 0);
         
-        let vector = PiecewiseLegendrePolyVector::from_polynomials(vec![poly1, poly2]);
+        let vector = PiecewiseLegendrePolyVector::new(vec![poly1, poly2]);
         
         // Test accessor methods
         assert_eq!(vector.xmin(), 0.0);
         assert_eq!(vector.xmax(), 2.0);
-        assert_eq!(vector.get_knots(), knots);
+        assert_eq!(vector.get_knots(None), knots);
         assert_eq!(vector.get_polyorder(), 2);
         assert_eq!(vector.get_symm(), vec![0, 0]);
         
@@ -1059,13 +1073,13 @@ mod tests {
         let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 0);
         let poly2 = PiecewiseLegendrePoly::new(data2, knots, 1, None, 0);
         
-        let vector = PiecewiseLegendrePolyVector::from_polynomials(vec![poly1, poly2]);
+        let vector = PiecewiseLegendrePolyVector::new(vec![poly1, poly2]);
         
-        let roots = vector.roots();
+        let roots = vector.roots(None);
         println!("Vector roots: {:?}", roots);
         
         // Should find some roots (exact number depends on normalization)
-        assert!(vector.nroots() >= 0);
+        assert!(vector.nroots(None) >= 0);
     }
 }
 
