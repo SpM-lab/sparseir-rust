@@ -206,6 +206,225 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
         phase_wi
     }
     
+    /// Find sign changes in the Fourier transform
+    /// 
+    /// # Arguments
+    /// * `positive_only` - If true, only return positive frequency sign changes
+    /// 
+    /// # Returns
+    /// Vector of Matsubara frequencies where sign changes occur
+    pub fn sign_changes(&self, positive_only: bool) -> Vec<MatsubaraFreq<S>> {
+        let grid = Self::default_grid();
+        let f = Self::func_for_part(self);
+        let x0 = Self::find_all_roots(&f, &grid);
+        
+        // Transform grid indices to Matsubara frequencies
+        let mut matsubara_indices: Vec<i64> = x0.into_iter()
+            .map(|x| 2 * x + self.zeta())
+            .collect();
+        
+        if !positive_only {
+            Self::symmetrize_matsubara_inplace(&mut matsubara_indices);
+        }
+        
+        matsubara_indices.into_iter()
+            .filter_map(|n| MatsubaraFreq::<S>::new(n).ok())
+            .collect()
+    }
+    
+    /// Find extrema in the Fourier transform
+    /// 
+    /// # Arguments
+    /// * `positive_only` - If true, only return positive frequency extrema
+    /// 
+    /// # Returns
+    /// Vector of Matsubara frequencies where extrema occur
+    pub fn find_extrema(&self, positive_only: bool) -> Vec<MatsubaraFreq<S>> {
+        let grid = Self::default_grid();
+        let f = Self::func_for_part(self);
+        let x0 = Self::discrete_extrema(&f, &grid);
+        
+        // Transform grid indices to Matsubara frequencies
+        let mut matsubara_indices: Vec<i64> = x0.into_iter()
+            .map(|x| 2 * x + self.zeta())
+            .collect();
+        
+        if !positive_only {
+            Self::symmetrize_matsubara_inplace(&mut matsubara_indices);
+        }
+        
+        matsubara_indices.into_iter()
+            .filter_map(|n| MatsubaraFreq::<S>::new(n).ok())
+            .collect()
+    }
+    
+    /// Create function for extracting real or imaginary part based on parity
+    fn func_for_part(&self) -> impl Fn(i64) -> f64 + '_ {
+        let parity = self.poly.symm;
+        let poly_ft = self.clone();
+        
+        move |n| {
+            let omega = match MatsubaraFreq::<S>::new(n) {
+                Ok(omega) => omega,
+                Err(_) => return 0.0,
+            };
+            let value = poly_ft.evaluate(&omega);
+            
+            match parity {
+                1 => {
+                    match S::STATISTICS {
+                        Statistics::Fermionic => value.im,
+                        Statistics::Bosonic => value.re,
+                    }
+                },
+                -1 => {
+                    match S::STATISTICS {
+                        Statistics::Fermionic => value.re,
+                        Statistics::Bosonic => value.im,
+                    }
+                },
+                _ => panic!("Cannot detect parity for symm = {}", parity),
+            }
+        }
+    }
+    
+    /// Default grid for sign change detection (same as C++ DEFAULT_GRID)
+    fn default_grid() -> Vec<i64> {
+        // This should match the C++ DEFAULT_GRID
+        // For now, use a reasonable range
+        (-1000..=1000).collect()
+    }
+    
+    /// Find all roots using the same algorithm as the poly module
+    fn find_all_roots<F>(f: &F, xgrid: &[i64]) -> Vec<i64> 
+    where 
+        F: Fn(i64) -> f64,
+    {
+        if xgrid.is_empty() {
+            return Vec::new();
+        }
+        
+        // Evaluate function at all grid points
+        let fx: Vec<f64> = xgrid.iter().map(|&x| f(x)).collect();
+        
+        // Find exact zeros (direct hits)
+        let mut x_hit = Vec::new();
+        for i in 0..fx.len() {
+            if fx[i] == 0.0 {
+                x_hit.push(xgrid[i]);
+            }
+        }
+        
+        // Find sign changes
+        let mut sign_change = Vec::new();
+        for i in 0..fx.len() - 1 {
+            let has_sign_change = fx[i].signum() != fx[i + 1].signum();
+            let not_hit = fx[i] != 0.0 && fx[i + 1] != 0.0;
+            sign_change.push(has_sign_change && not_hit);
+        }
+        
+        // If no sign changes, return only direct hits
+        if sign_change.iter().all(|&sc| !sc) {
+            x_hit.sort();
+            return x_hit;
+        }
+        
+        // Find intervals with sign changes
+        let mut a_intervals = Vec::new();
+        let mut b_intervals = Vec::new();
+        let mut fa_values = Vec::new();
+        
+        for i in 0..sign_change.len() {
+            if sign_change[i] {
+                a_intervals.push(xgrid[i]);
+                b_intervals.push(xgrid[i + 1]);
+                fa_values.push(fx[i]);
+            }
+        }
+        
+        // Use bisection for each interval with sign change
+        for i in 0..a_intervals.len() {
+            let root = Self::bisect(&f, a_intervals[i], b_intervals[i], fa_values[i]);
+            x_hit.push(root);
+        }
+        
+        // Sort and return
+        x_hit.sort();
+        x_hit
+    }
+    
+    /// Bisection method for integer grid
+    fn bisect<F>(f: &F, a: i64, b: i64, fa: f64) -> i64 
+    where 
+        F: Fn(i64) -> f64,
+    {
+        let mut a = a;
+        let mut b = b;
+        let mut fa = fa;
+        
+        loop {
+            if (b - a).abs() <= 1 {
+                return a;
+            }
+            
+            let mid = (a + b) / 2;
+            let fmid = f(mid);
+            
+            if fa.signum() != fmid.signum() {
+                b = mid;
+            } else {
+                a = mid;
+                fa = fmid;
+            }
+        }
+    }
+    
+    /// Find discrete extrema
+    fn discrete_extrema<F>(f: &F, xgrid: &[i64]) -> Vec<i64> 
+    where 
+        F: Fn(i64) -> f64,
+    {
+        if xgrid.len() < 3 {
+            return Vec::new();
+        }
+        
+        let fx: Vec<f64> = xgrid.iter().map(|&x| f(x)).collect();
+        let mut extrema = Vec::new();
+        
+        // Check for extrema (local maxima or minima)
+        for i in 1..fx.len() - 1 {
+            let prev = fx[i - 1];
+            let curr = fx[i];
+            let next = fx[i + 1];
+            
+            // Local maximum
+            if curr > prev && curr > next {
+                extrema.push(xgrid[i]);
+            }
+            // Local minimum
+            else if curr < prev && curr < next {
+                extrema.push(xgrid[i]);
+            }
+        }
+        
+        extrema
+    }
+    
+    /// Symmetrize Matsubara indices (remove zero if present and add negatives)
+    fn symmetrize_matsubara_inplace(xs: &mut Vec<i64>) {
+        // Remove zero if present
+        xs.retain(|&x| x != 0);
+        
+        // Sort in ascending order
+        xs.sort();
+        
+        // Create negative counterparts
+        let negatives: Vec<i64> = xs.iter().rev().map(|&x| -x).collect();
+        
+        // Combine negatives with originals
+        xs.splice(0..0, negatives);
+    }
+    
     /// Get T_nl coefficient (special function)
     /// 
     /// This implements the T_nl function which is related to spherical Bessel functions:

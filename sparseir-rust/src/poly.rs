@@ -298,65 +298,114 @@ impl PiecewiseLegendrePoly {
         integral * c1
     }
     
-    /// Find roots of the polynomial
+    /// Find roots of the polynomial using C++ compatible algorithm
     pub fn roots(&self) -> Vec<f64> {
-        let mut all_roots = Vec::new();
+        // Refine the grid by factor of 2 (like C++ implementation)
+        let refined_grid = self.refine_grid(&self.knots, 2);
         
-        for i in 0..self.knots.len() - 1 {
-            let segment_roots = self.find_roots_in_segment(i);
-            all_roots.extend(segment_roots);
-        }
-        
-        all_roots.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        all_roots
+        // Find all roots using the refined grid
+        self.find_all_roots(&refined_grid)
     }
     
-    /// Find roots in a specific segment using bisection
-    fn find_roots_in_segment(&self, segment: usize) -> Vec<f64> {
-        let mut roots = Vec::new();
-        let a = self.knots[segment];
-        let b = self.knots[segment + 1];
+    /// Refine grid by factor alpha (C++ compatible)
+    fn refine_grid(&self, grid: &[f64], alpha: usize) -> Vec<f64> {
+        let mut refined = Vec::new();
         
-        // Simple root finding using bisection with coarse grid
-        let npoints = 100;
-        let dx = (b - a) / (npoints as f64);
+        for i in 0..grid.len() - 1 {
+            let start = grid[i];
+            let step = (grid[i + 1] - grid[i]) / (alpha as f64);
+            for j in 0..alpha {
+                refined.push(start + (j as f64) * step);
+            }
+        }
+        refined.push(grid[grid.len() - 1]);
+        refined
+    }
+    
+    /// Find all roots using refined grid (C++ compatible)
+    fn find_all_roots(&self, xgrid: &[f64]) -> Vec<f64> {
+        if xgrid.is_empty() {
+            return Vec::new();
+        }
         
-        for i in 0..npoints {
-            let x1 = a + (i as f64) * dx;
-            let x2 = a + ((i + 1) as f64) * dx;
-            
-            let y1 = self.evaluate(x1);
-            let y2 = self.evaluate(x2);
-            
-            if y1 * y2 < 0.0 {
-                // Sign change detected, use bisection to find root
-                let root = self.bisect(x1, x2, y1, 1e-12);
-                roots.push(root);
+        // Evaluate function at all grid points
+        let fx: Vec<f64> = xgrid.iter().map(|&x| self.evaluate(x)).collect();
+        
+        // Find exact zeros (direct hits)
+        let mut x_hit = Vec::new();
+        for i in 0..fx.len() {
+            if fx[i] == 0.0 {
+                x_hit.push(xgrid[i]);
             }
         }
         
-        roots
+        // Find sign changes
+        let mut sign_change = Vec::new();
+        for i in 0..fx.len() - 1 {
+            let has_sign_change = fx[i].signum() != fx[i + 1].signum();
+            let not_hit = fx[i] != 0.0 && fx[i + 1] != 0.0;
+            sign_change.push(has_sign_change && not_hit);
+        }
+        
+        // If no sign changes, return only direct hits
+        if sign_change.iter().all(|&sc| !sc) {
+            x_hit.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            return x_hit;
+        }
+        
+        // Find intervals with sign changes
+        let mut a_intervals = Vec::new();
+        let mut b_intervals = Vec::new();
+        let mut fa_values = Vec::new();
+        
+        for i in 0..sign_change.len() {
+            if sign_change[i] {
+                a_intervals.push(xgrid[i]);
+                b_intervals.push(xgrid[i + 1]);
+                fa_values.push(fx[i]);
+            }
+        }
+        
+        // Calculate epsilon for convergence
+        let max_elm = xgrid.iter().map(|&x| x.abs()).fold(0.0, f64::max);
+        let epsilon_x = f64::EPSILON * max_elm;
+        
+        // Use bisection for each interval with sign change
+        for i in 0..a_intervals.len() {
+            let root = self.bisect(a_intervals[i], b_intervals[i], fa_values[i], epsilon_x);
+            x_hit.push(root);
+        }
+        
+        // Sort and return
+        x_hit.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        x_hit
     }
     
-    /// Bisection method to find root
+    /// Bisection method to find root (C++ compatible)
     fn bisect(&self, a: f64, b: f64, fa: f64, eps: f64) -> f64 {
         let mut a = a;
         let mut b = b;
         let mut fa = fa;
         
-        while (b - a).abs() > eps {
-            let c = (a + b) / 2.0;
-            let fc = self.evaluate(c);
+        loop {
+            let mid = (a + b) / 2.0;
+            if self.close_enough(a, mid, eps) {
+                return mid;
+            }
             
-            if fa * fc < 0.0 {
-                b = c;
+            let fmid = self.evaluate(mid);
+            if fa.signum() != fmid.signum() {
+                b = mid;
             } else {
-                a = c;
-                fa = fc;
+                a = mid;
+                fa = fmid;
             }
         }
-        
-        (a + b) / 2.0
+    }
+    
+    /// Check if two values are close enough (C++ compatible)
+    fn close_enough(&self, a: f64, b: f64, eps: f64) -> bool {
+        (a - b).abs() <= eps
     }
     
     // Accessor methods to match C++ interface
