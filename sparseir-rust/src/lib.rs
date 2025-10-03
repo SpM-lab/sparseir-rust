@@ -7,11 +7,13 @@
 pub mod traits;
 pub mod kernel;
 pub mod poly;
+pub mod gauss;
 
 // Re-export commonly used types and traits
 pub use traits::{Statistics, StatisticsType, Fermionic, Bosonic, StatisticsMarker};
 pub use kernel::{AbstractKernel, LogisticKernel, RegularizedBoseKernel, ReducedKernel, compute_f64, KernelProperties, SVEHints, LogisticSVEHints, RegularizedBoseSVEHints, ReducedSVEHints};
 pub use poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
+pub use gauss::{Rule, legendre};
 
 // Re-export external dependencies for convenience
 pub use ndarray::{Array1, Array2};
