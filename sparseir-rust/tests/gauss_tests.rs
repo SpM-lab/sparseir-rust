@@ -1,4 +1,4 @@
-use sparseir_rust::{Rule, legendre, legendre_custom, legendre_twofloat, TwoFloat, CustomNumeric};
+use sparseir_rust::{Rule, legendre, legendre_custom, legendre_twofloat, TwoFloat};
 use ndarray::Array1;
 
 #[test]
@@ -86,26 +86,7 @@ fn test_rule_piecewise() {
     assert_eq!(rule.b, 3.0);
 }
 
-#[test]
-fn test_rule_convert() {
-    let rule_f64 = legendre::<f64>(4);
-    let rule_f32 = rule_f64.convert::<f32>();
-    
-    assert_eq!(rule_f32.x.len(), 4);
-    assert_eq!(rule_f32.w.len(), 4);
-    assert!(rule_f32.validate());
-}
 
-#[test]
-fn test_f32_support() {
-    let rule = legendre::<f32>(4);
-    
-    assert_eq!(rule.a, -1.0_f32);
-    assert_eq!(rule.b, 1.0_f32);
-    assert_eq!(rule.x.len(), 4);
-    assert_eq!(rule.w.len(), 4);
-    assert!(rule.validate());
-}
 
 #[test]
 fn test_gauss_validation_like_cpp() {

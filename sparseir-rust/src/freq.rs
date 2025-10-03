@@ -42,8 +42,8 @@ impl<S: StatisticsType> MatsubaraFreq<S> {
     /// ```
     /// use sparseir_rust::freq::{FermionicFreq, BosonicFreq};
     /// 
-    /// let fermionic = FermionicFreq::new(1)?;  // OK: odd n for fermionic
-    /// let bosonic = BosonicFreq::new(0)?;      // OK: even n for bosonic
+    /// let fermionic = FermionicFreq::new(1).unwrap();  // OK: odd n for fermionic
+    /// let bosonic = BosonicFreq::new(0).unwrap();      // OK: even n for bosonic
     /// ```
     pub fn new(n: i64) -> Result<Self, String> {
         // Check if the frequency is allowed for this statistics type

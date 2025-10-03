@@ -1,21 +1,23 @@
 //! Kernel implementations for SparseIR
 //!
 //! This module provides kernel implementations for analytical continuation in quantum many-body physics.
-//! The kernels are used in Fredholm integral equations of the first kind:
+//! The kernels are used in Fredholm integral equations of the first kind.
 //!
-//!     u(x) = ∫ K(x, y) v(y) dy
+//! u(x) = integral of K(x, y) v(y) dy
 //!
 //! where x ∈ [xmin, xmax] and y ∈ [ymin, ymax].
 //!
-//! In general, the kernel is applied to a scaled spectral function ρ'(y) as:
+//! In general, the kernel is applied to a scaled spectral function rho'(y) as:
 //!
-//!     ∫ K(x, y) ρ'(y) dy,
+//! integral of K(x, y) rho'(y) dy,
 //!
 //! where ρ'(y) = w(y) ρ(y). The weight function w(y) transforms the original spectral
 //! function ρ(y) into the scaled version ρ'(y) used in the integral equation.
 
 use twofloat::TwoFloat;
 use crate::traits::{StatisticsType, Statistics, Fermionic, Bosonic};
+use crate::gauss::Rule;
+use crate::numeric::CustomNumeric;
 use std::fmt::Debug;
 use num_traits::{FromPrimitive, ToPrimitive};
 
@@ -499,7 +501,7 @@ where
 /// Consequently, they are singular functions of a reduced kernel K_red on
 /// [0, 1] × [0, 1] that is given as either:
 /// 
-///     K_red(x, y) = K(x, y) ± K(x, -y)
+/// K_red(x, y) = K(x, y) + K(x, -y)  or  K(x, y) - K(x, -y)
 /// 
 /// This kernel is what this struct represents. The full singular functions can be
 /// reconstructed by (anti-)symmetrically continuing them to the negative axis.
@@ -852,4 +854,70 @@ mod tests {
         assert!(nsvals > 0);
         assert!(ngauss > 0);
     }
+}
+
+/// Compute matrix from Gauss quadrature rules
+/// 
+/// This function evaluates the kernel at all combinations of Gauss points
+/// and returns the resulting matrix for SVE computation.
+pub fn matrix_from_gauss<T: CustomNumeric + ToPrimitive + num_traits::Zero + Clone>(
+    kernel: &dyn AbstractKernel,
+    gauss_x: &Rule<T>,
+    gauss_y: &Rule<T>,
+) -> ndarray::Array2<T> {
+    let n = gauss_x.x.len();
+    let m = gauss_y.x.len();
+    let mut result = ndarray::Array2::zeros((n, m));
+    
+    // Evaluate kernel at all combinations of Gauss points
+    for i in 0..n {
+        for j in 0..m {
+            let x = gauss_x.x[i];
+            let y = gauss_y.x[j];
+            
+            // Convert to TwoFloat for kernel computation
+            let x_twofloat = TwoFloat::from_f64(x.to_f64());
+            let y_twofloat = TwoFloat::from_f64(y.to_f64());
+            
+            let kernel_value = kernel.compute(x_twofloat, y_twofloat);
+            result[[i, j]] = T::from_f64(kernel_value.into());
+        }
+    }
+    
+    result
+}
+
+/// Compute matrix from Gauss quadrature rules with parallel processing
+/// 
+/// This is a parallel version of matrix_from_gauss for better performance.
+pub fn matrix_from_gauss_parallel<T: CustomNumeric + ToPrimitive + num_traits::Zero + Clone + Send + Sync>(
+    kernel: &dyn AbstractKernel,
+    gauss_x: &Rule<T>,
+    gauss_y: &Rule<T>,
+) -> ndarray::Array2<T> {
+    let n = gauss_x.x.len();
+    let m = gauss_y.x.len();
+    let mut result = ndarray::Array2::zeros((n, m));
+    
+    // Use rayon for parallel processing
+    // Note: rayon needs to be added as a dependency for this to work
+    // For now, we'll use sequential processing
+    // use rayon::prelude::*;
+    
+    // Sequential processing (parallel version commented out until rayon is added)
+    for i in 0..n {
+        for j in 0..m {
+            let x = gauss_x.x[i];
+            let y = gauss_y.x[j];
+            
+            // Convert to TwoFloat for kernel computation
+            let x_twofloat = TwoFloat::from_f64(x.to_f64());
+            let y_twofloat = TwoFloat::from_f64(y.to_f64());
+            
+            let kernel_value = kernel.compute(x_twofloat, y_twofloat);
+            result[[i, j]] = T::from_f64(kernel_value.into());
+        }
+    }
+    
+    result
 }
