@@ -59,7 +59,7 @@ pub enum TSVDError {
 /// 
 /// # Returns
 /// * `SVDResult` - Truncated SVD result
-pub fn tsvd<T: Precision + 'static>(
+pub fn tsvd<T: Precision + 'static + std::fmt::Debug>(
     matrix: &Array2<T>,
     config: TSVDConfig<T>,
 ) -> Result<crate::svd::jacobi::SVDResult<T>, TSVDError> {

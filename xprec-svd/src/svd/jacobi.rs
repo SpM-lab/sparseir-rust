@@ -1,6 +1,6 @@
 //! Jacobi SVD implementation
 
-use ndarray::{Array1, Array2};
+use ndarray::{s, Array1, Array2};
 use crate::precision::Precision;
 // Jacobi SVD implementation
 
@@ -251,10 +251,43 @@ pub fn jacobi_svd<T: Precision + std::fmt::Debug>(
     let n = matrix.ncols();
     let k = m.min(n);
     
-    // Initialize U and V
-    let mut u = Array2::eye(m);
-    let mut v = Array2::eye(n);
-    let mut a = matrix.clone();
+    // QR preconditioner for rectangular matrices (like Eigen3)
+    let (mut a, mut u) = if m > n {
+        // More rows than columns: A = QR, then SVD(R)
+        let mut a_work = matrix.clone();
+        // Use rrqr_with_options with pivoting disabled for standard Householder QR
+        let qr_result = crate::qr::rrqr_with_options(&mut a_work, T::zero(), false);
+        let (q_full, r_full) = crate::qr::truncate_qr_result(&qr_result.0, n);
+        
+        // Extract R matrix (n x n upper triangular)
+        let r = r_full.slice(s![0..n, 0..n]).to_owned();
+        
+        // U = Q (m x n)
+        let u_init = q_full.slice(s![.., 0..n]).to_owned();
+        
+        (r, u_init)
+    } else if n > m {
+        // More columns than rows: A^T = QR, then SVD(R^T)
+        // TODO: Implement this case if needed
+        (matrix.clone(), {
+            let mut mat = Array2::zeros((m, k));
+            for i in 0..k {
+                mat[[i, i]] = T::one();
+            }
+            mat
+        })
+    } else {
+        // Square matrix: no QR preconditioner needed
+        (matrix.clone(), {
+            let mut mat = Array2::zeros((m, k));
+            for i in 0..k {
+                mat[[i, i]] = T::one();
+            }
+            mat
+        })
+    };
+    
+    let mut v = Array2::eye(n); // V is always n x n initially, then we take first k columns
     
     // Use Eigen3's convergence criteria
     let consider_as_zero = <T as From<f64>>::from(std::f64::MIN_POSITIVE);
@@ -264,21 +297,25 @@ pub fn jacobi_svd<T: Precision + std::fmt::Debug>(
     // Track maximum diagonal entry for threshold calculation
     // Initialize with maximum absolute value in the matrix to handle non-diagonal matrices
     let mut max_diag_entry = T::zero();
-    for i in 0..m {
-        for j in 0..n {
+    let a_rows = a.nrows();
+    let a_cols = a.ncols();
+    for i in 0..a_rows {
+        for j in 0..a_cols {
             max_diag_entry = Precision::max(max_diag_entry, Precision::abs(a[[i, j]]));
         }
     }
     
     let mut _iterations = 0;
+    let diagsize = a_rows.min(a_cols); // For the working matrix after QR
+    
     for iter in 0..max_iter {
         let mut converged = true;
         
         eprintln!("\n[Rust] === Iteration {} ===", iter);
         
         // One-sided Jacobi: eliminate off-diagonal elements
-        // Use Eigen3's loop order: p from 1 to k, q from 0 to p-1
-        for p in 1..k {
+        // Use Eigen3's loop order: p from 1 to diagsize, q from 0 to p-1
+        for p in 1..diagsize {
             for q in 0..p {
                 // Use Eigen3's threshold calculation
                 let threshold = Precision::max(consider_as_zero, precision * max_diag_entry);
@@ -310,9 +347,13 @@ pub fn jacobi_svd<T: Precision + std::fmt::Debug>(
                 eprintln!("[Rust]   left_rot: c = {:?}, s = {:?}", c, s);
                 eprintln!("[Rust]   right_rot: c = {:?}, s = {:?}", c2, s2_rot);
                 
-                // Apply left rotation to A and U
+                // Apply left rotation to A
                 apply_givens_left(&mut a, p, q, c, s);
-                apply_givens_left(&mut u, p, q, c, s);
+                
+                // Apply left rotation transpose to U (i.e., right rotation with transposed parameters)
+                // Eigen3: m_matrixU.applyOnTheRight(p, q, j_left.transpose())
+                // Transpose means we swap c and -s: (c, s) -> (c, -s)
+                apply_givens_right(&mut u, p, q, c, -s);
                 
                 eprintln!("[Rust]   After left rotation, full matrix a:");
                 eprintln!("[Rust]     [[{:?}, {:?}],", a[[0, 0]], a[[0, 1]]);
@@ -332,26 +373,26 @@ pub fn jacobi_svd<T: Precision + std::fmt::Debug>(
     }
     
     // Step 3: Extract singular values and ensure they are positive (like Eigen3)
-    let mut s = Array1::zeros(k);
-    for i in 0..k {
+    let mut s = Array1::zeros(diagsize);
+    for i in 0..diagsize {
         let diag_val = a[[i, i]];
         s[i] = Precision::abs(diag_val);
         
         // If diagonal entry is negative, flip the corresponding U column
         if diag_val < T::zero() {
-            for row in 0..m {
+            for row in 0..u.nrows() {
                 u[[row, i]] = -u[[row, i]];
             }
         }
     }
     
     // Step 4: Sort singular values in descending order (like Eigen3)
-    let mut indices: Vec<usize> = (0..k).collect();
+    let mut indices: Vec<usize> = (0..diagsize).collect();
     indices.sort_by(|&a, &b| s[b].partial_cmp(&s[a]).unwrap());
     
-    let mut s_sorted = Array1::zeros(k);
-    let mut u_sorted = Array2::zeros((m, k));
-    let mut v_sorted = Array2::zeros((n, k));
+    let mut s_sorted = Array1::zeros(diagsize);
+    let mut u_sorted = Array2::zeros((m, diagsize));
+    let mut v_sorted = Array2::zeros((n, diagsize));
     
     for (new_idx, &old_idx) in indices.iter().enumerate() {
         s_sorted[new_idx] = s[old_idx];
@@ -363,7 +404,7 @@ pub fn jacobi_svd<T: Precision + std::fmt::Debug>(
         u: u_sorted,
         s: s_sorted,
         v: v_sorted,
-        rank: k,
+        rank: diagsize,
     }
 }
 

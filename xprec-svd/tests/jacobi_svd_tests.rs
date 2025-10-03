@@ -55,6 +55,16 @@ fn test_jacobi_svd_2x2_rank_one() {
     
     // Second singular value should be zero
     assert_abs_diff_eq!(result.s[1], 0.0, epsilon = 1e-10);
+    
+    // Check reconstruction: A = U * S * V^T
+    let s_diag = Array2::from_diag(&result.s);
+    let reconstructed = result.u.dot(&s_diag).dot(&result.v.t());
+    
+    for i in 0..2 {
+        for j in 0..2 {
+            assert_abs_diff_eq!(reconstructed[[i, j]], a[[i, j]], epsilon = 1e-10);
+        }
+    }
 }
 
 #[test]
@@ -72,6 +82,16 @@ fn test_jacobi_svd_diagonal() {
     assert_abs_diff_eq!(result.s[0], 3.0, epsilon = 1e-10);
     assert_abs_diff_eq!(result.s[1], 2.0, epsilon = 1e-10);
     assert_abs_diff_eq!(result.s[2], 1.0, epsilon = 1e-10);
+    
+    // Check reconstruction: A = U * S * V^T
+    let s_diag = Array2::from_diag(&result.s);
+    let reconstructed = result.u.dot(&s_diag).dot(&result.v.t());
+    
+    for i in 0..3 {
+        for j in 0..3 {
+            assert_abs_diff_eq!(reconstructed[[i, j]], a[[i, j]], epsilon = 1e-10);
+        }
+    }
 }
 
 #[test]
@@ -145,5 +165,138 @@ fn test_jacobi_svd_singular_values_positive() {
     assert!(result.s[0] >= result.s[1]);
     for i in 0..2 {
         assert!(result.s[i] >= 0.0);
+    }
+    
+    // Check reconstruction: A = U * S * V^T
+    let s_diag = Array2::from_diag(&result.s);
+    let reconstructed = result.u.dot(&s_diag).dot(&result.v.t());
+    
+    for i in 0..3 {
+        for j in 0..2 {
+            assert_abs_diff_eq!(reconstructed[[i, j]], a[[i, j]], epsilon = 1e-10);
+        }
+    }
+}
+
+#[test]
+fn test_jacobi_svd_reconstruction() {
+    // Comprehensive reconstruction test with various matrices
+    
+    // Test 1: General 3x3 matrix
+    let a1 = array![
+        [1.0, 2.0, 3.0],
+        [4.0, 5.0, 6.0],
+        [7.0, 8.0, 9.0]
+    ];
+    let result1 = jacobi_svd(&a1);
+    let s_diag1 = Array2::from_diag(&result1.s);
+    let reconstructed1 = result1.u.dot(&s_diag1).dot(&result1.v.t());
+    
+    for i in 0..3 {
+        for j in 0..3 {
+            assert_abs_diff_eq!(reconstructed1[[i, j]], a1[[i, j]], epsilon = 1e-10);
+        }
+    }
+    
+    // Test 2: Symmetric matrix
+    let a2 = array![
+        [4.0, 2.0, 1.0],
+        [2.0, 3.0, 1.0],
+        [1.0, 1.0, 2.0]
+    ];
+    let result2 = jacobi_svd(&a2);
+    let s_diag2 = Array2::from_diag(&result2.s);
+    let reconstructed2 = result2.u.dot(&s_diag2).dot(&result2.v.t());
+    
+    for i in 0..3 {
+        for j in 0..3 {
+            assert_abs_diff_eq!(reconstructed2[[i, j]], a2[[i, j]], epsilon = 1e-10);
+        }
+    }
+    
+    // Test 3: Off-diagonal 2x2 matrix
+    let a3 = array![
+        [0.0, 1.0],
+        [1.0, 0.0]
+    ];
+    let result3 = jacobi_svd(&a3);
+    let s_diag3 = Array2::from_diag(&result3.s);
+    let reconstructed3 = result3.u.dot(&s_diag3).dot(&result3.v.t());
+    
+    for i in 0..2 {
+        for j in 0..2 {
+            assert_abs_diff_eq!(reconstructed3[[i, j]], a3[[i, j]], epsilon = 1e-10);
+        }
+    }
+}
+
+#[test]
+fn test_jacobi_svd_rectangular_3x2() {
+    // Test with 3x2 rectangular matrix
+    let a = array![
+        [1.0, 2.0],
+        [3.0, 4.0],
+        [5.0, 6.0]
+    ];
+    
+    let result = jacobi_svd(&a);
+    
+    // Check that singular values are in descending order
+    assert!(result.s[0] >= result.s[1]);
+    
+    // Check that singular values are positive
+    for i in 0..2 {
+        assert!(result.s[i] >= 0.0);
+    }
+    
+    // Check reconstruction: A = U * S * V^T
+    let s_diag = Array2::from_diag(&result.s);
+    let reconstructed = result.u.dot(&s_diag).dot(&result.v.t());
+    
+    for i in 0..3 {
+        for j in 0..2 {
+            assert_abs_diff_eq!(reconstructed[[i, j]], a[[i, j]], epsilon = 1e-10);
+        }
+    }
+    
+    // Check orthogonality: U^T * U = I
+    let utu = result.u.t().dot(&result.u);
+    for i in 0..2 {
+        for j in 0..2 {
+            let expected = if i == j { 1.0 } else { 0.0 };
+            assert_abs_diff_eq!(utu[[i, j]], expected, epsilon = 1e-10);
+        }
+    }
+    
+    // Check orthogonality: V^T * V = I
+    let vtv = result.v.t().dot(&result.v);
+    for i in 0..2 {
+        for j in 0..2 {
+            let expected = if i == j { 1.0 } else { 0.0 };
+            assert_abs_diff_eq!(vtv[[i, j]], expected, epsilon = 1e-10);
+        }
+    }
+}
+
+#[test]
+fn test_jacobi_svd_rectangular_4x2() {
+    // Test with 4x2 rectangular matrix
+    let a = array![
+        [1.0, 2.0],
+        [3.0, 4.0],
+        [5.0, 6.0],
+        [7.0, 8.0]
+    ];
+    
+    let result = jacobi_svd(&a);
+    
+    // Check reconstruction
+    let s_diag = Array2::from_diag(&result.s);
+    let reconstructed = result.u.dot(&s_diag).dot(&result.v.t());
+    
+    for i in 0..4 {
+        for j in 0..2 {
+            assert_abs_diff_eq!(reconstructed[[i, j]], a[[i, j]], epsilon = 1e-10);
+        }
     }
 }

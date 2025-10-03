@@ -39,13 +39,15 @@ fn argmax<T: Precision>(vec: ArrayView1<T>) -> usize {
 /// # Arguments
 /// * `matrix` - Input matrix (modified in-place)
 /// * `rtol` - Relative tolerance for rank determination
+/// * `use_pivoting` - If true, use column pivoting; if false, use standard QR (default: true)
 /// 
 /// # Returns
 /// * `QRPivoted` - QR factorization result with pivot information
 /// * `usize` - Effective numerical rank
-pub fn rrqr<T: Precision>(
+pub fn rrqr_with_options<T: Precision>(
     matrix: &mut Array2<T>,
     rtol: T,
+    use_pivoting: bool,
 ) -> (QRPivoted<T>, usize) {
     let m = matrix.nrows();
     let n = matrix.ncols();
@@ -71,19 +73,21 @@ pub fn rrqr<T: Precision>(
     let mut rk = k;
     
     for i in 0..k {
-        // Find column with maximum norm
-        let pvt = argmax(pnorms.slice(s![i..])) + i;
-        
-        // Swap columns if necessary
-        if i != pvt {
-            jpvt.swap(i, pvt);
-            xnorms.swap(i, pvt);
-            pnorms.swap(i, pvt);
-            // Swap columns manually
-            for row in 0..matrix.nrows() {
-                let temp = matrix[[row, i]];
-                matrix[[row, i]] = matrix[[row, pvt]];
-                matrix[[row, pvt]] = temp;
+        // Find column with maximum norm and swap if pivoting is enabled
+        if use_pivoting {
+            let pvt = argmax(pnorms.slice(s![i..])) + i;
+            
+            // Swap columns if necessary
+            if i != pvt {
+                jpvt.swap(i, pvt);
+                xnorms.swap(i, pvt);
+                pnorms.swap(i, pvt);
+                // Swap columns manually
+                for row in 0..matrix.nrows() {
+                    let temp = matrix[[row, i]];
+                    matrix[[row, i]] = matrix[[row, pvt]];
+                    matrix[[row, pvt]] = temp;
+                }
             }
         }
         
@@ -144,6 +148,24 @@ pub fn rrqr<T: Precision>(
         },
         rk,
     )
+}
+
+/// Rank-Revealing QR with Column Pivoting (default: with pivoting)
+/// 
+/// This is a convenience wrapper that calls `rrqr_with_options` with pivoting enabled.
+/// 
+/// # Arguments
+/// * `matrix` - Input matrix (modified in-place)
+/// * `rtol` - Relative tolerance for rank determination
+/// 
+/// # Returns
+/// * `QRPivoted` - QR factorization result with pivot information
+/// * `usize` - Effective numerical rank
+pub fn rrqr<T: Precision>(
+    matrix: &mut Array2<T>,
+    rtol: T,
+) -> (QRPivoted<T>, usize) {
+    rrqr_with_options(matrix, rtol, true)
 }
 
 #[cfg(test)]
