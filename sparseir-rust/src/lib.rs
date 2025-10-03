@@ -9,6 +9,7 @@ pub mod kernel;
 pub mod poly;
 pub mod gauss;
 pub mod twofloattrait;
+pub mod freq;
 
 // Re-export commonly used types and traits
 pub use traits::{Statistics, StatisticsType, Fermionic, Bosonic, StatisticsMarker};
@@ -16,6 +17,7 @@ pub use kernel::{AbstractKernel, LogisticKernel, RegularizedBoseKernel, ReducedK
 pub use poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
 pub use gauss::{Rule, legendre, legendre_custom, legendre_twofloat};
 pub use twofloattrait::{CustomNumeric, TwoFloatArrayOps};
+pub use freq::{MatsubaraFreq, FermionicFreq, BosonicFreq, sign, fermionic_sign, zero, is_zero, is_less, create_statistics};
 
 // Re-export external dependencies for convenience
 pub use ndarray::{Array1, Array2};

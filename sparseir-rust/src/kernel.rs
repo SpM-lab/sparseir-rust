@@ -75,14 +75,13 @@ pub trait KernelProperties {
     /// @return The weight value w(beta, omega)
     fn weight<S: StatisticsType + 'static>(&self, beta: f64, omega: f64) -> f64;
     
-    /// Inverse weight function (1/w) to avoid division by zero.
+    /// Inverse weight function to avoid division by zero.
     /// 
-    /// This is a safer API that returns 1/w(beta, omega) directly, avoiding
-    /// potential division by zero issues when w(beta, omega) approaches zero.
+    /// This is a safer API that returns the inverse weight.
     /// 
     /// @param beta Inverse temperature  
     /// @param omega Frequency
-    /// @return The inverse weight value 1/w(beta, omega)
+    /// @return The inverse weight value
     fn inv_weight<S: StatisticsType + 'static>(&self, beta: f64, omega: f64) -> f64;
     
     /// Create SVE hints for this kernel type.
