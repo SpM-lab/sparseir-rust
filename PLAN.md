@@ -672,7 +672,7 @@ pub extern "C" fn spir_kernel_release(kernel: *mut SpirKernel) {
    - Basic type definitions
 
 2. **Mathematical Foundation Implementation**
-   - Piecewise polynomial representations (`sparseir-poly`)
+   - Polynomial representations (`poly` module within `sparseir-rust`)
      - Special functions (Bessel, Gamma using `special` crate)
      - Custom Legendre polynomial implementation
      - Gaussian integration
