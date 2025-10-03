@@ -8,7 +8,7 @@ pub enum Statistics {
 }
 
 /// Statistics type trait for compile-time type-level distinction
-pub trait StatisticsType {
+pub trait StatisticsType: Copy {
     const STATISTICS: Statistics;
 }
 

@@ -10,6 +10,7 @@ pub mod poly;
 pub mod gauss;
 pub mod twofloattrait;
 pub mod freq;
+pub mod polyfourier;
 
 // Re-export commonly used types and traits
 pub use traits::{Statistics, StatisticsType, Fermionic, Bosonic, StatisticsMarker};
@@ -18,6 +19,7 @@ pub use poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
 pub use gauss::{Rule, legendre, legendre_custom, legendre_twofloat};
 pub use twofloattrait::{CustomNumeric, TwoFloatArrayOps};
 pub use freq::{MatsubaraFreq, FermionicFreq, BosonicFreq, sign, fermionic_sign, zero, is_zero, is_less, create_statistics};
+pub use polyfourier::{PiecewiseLegendreFT, PiecewiseLegendreFTVector, PowerModel, FermionicPiecewiseLegendreFT, BosonicPiecewiseLegendreFT, FermionicPiecewiseLegendreFTVector, BosonicPiecewiseLegendreFTVector};
 
 // Re-export external dependencies for convenience
 pub use ndarray::{Array1, Array2};
