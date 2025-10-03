@@ -10,7 +10,7 @@ pub mod poly;
 
 // Re-export commonly used types and traits
 pub use traits::{Statistics, StatisticsType, Fermionic, Bosonic, StatisticsMarker};
-pub use kernel::{AbstractKernel, LogisticKernel, RegularizedBoseKernel, ReducedKernel, compute_f64, KernelProperties};
+pub use kernel::{AbstractKernel, LogisticKernel, RegularizedBoseKernel, ReducedKernel, compute_f64, KernelProperties, SVEHints, LogisticSVEHints, RegularizedBoseSVEHints, ReducedSVEHints};
 pub use poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
 
 // Re-export external dependencies for convenience

@@ -16,6 +16,29 @@
 
 use twofloat::TwoFloat;
 use crate::traits::{StatisticsType, Statistics, Fermionic, Bosonic};
+use std::fmt::Debug;
+use num_traits::{FromPrimitive, ToPrimitive};
+
+/// Trait for SVE (Singular Value Expansion) hints
+/// 
+/// Provides discretization hints for singular value expansion of a given kernel.
+/// This includes segment information and numerical parameters for efficient computation.
+pub trait SVEHints<T>: Debug + Send + Sync
+where
+    T: Copy + Debug + Send + Sync,
+{
+    /// Get the x-axis segments for discretization
+    fn segments_x(&self) -> Vec<T>;
+    
+    /// Get the y-axis segments for discretization
+    fn segments_y(&self) -> Vec<T>;
+    
+    /// Get the number of singular values hint
+    fn nsvals(&self) -> usize;
+    
+    /// Get the number of Gauss points for quadrature
+    fn ngauss(&self) -> usize;
+}
 
 /// Trait for kernel type properties (static characteristics)
 pub trait KernelProperties {
@@ -61,6 +84,18 @@ pub trait KernelProperties {
     /// @param omega Frequency
     /// @return The inverse weight value 1/w(beta, omega)
     fn inv_weight<S: StatisticsType + 'static>(&self, beta: f64, omega: f64) -> f64;
+    
+    /// Create SVE hints for this kernel type.
+    /// 
+    /// Provides discretization hints for singular value expansion computation.
+    /// The hints include segment information and numerical parameters optimized
+    /// for the specific kernel type.
+    /// 
+    /// @param epsilon Target accuracy for the SVE computation
+    /// @return SVE hints specific to this kernel type
+    fn sve_hints<T>(&self, epsilon: f64) -> Box<dyn SVEHints<T>>
+    where
+        T: Copy + Debug + Send + Sync + FromPrimitive + ToPrimitive + 'static;
 }
 
 /// Abstract kernel trait for SparseIR kernels
@@ -147,6 +182,13 @@ impl KernelProperties for LogisticKernel {
             }
         }
     }
+    
+    fn sve_hints<T>(&self, epsilon: f64) -> Box<dyn SVEHints<T>>
+    where
+        T: Copy + Debug + Send + Sync + FromPrimitive + ToPrimitive + 'static,
+    {
+        Box::new(LogisticSVEHints::new(self.clone(), epsilon))
+    }
 }
 
 impl AbstractKernel for LogisticKernel {
@@ -223,6 +265,13 @@ impl KernelProperties for RegularizedBoseKernel {
             }
         }
     }
+    
+    fn sve_hints<T>(&self, epsilon: f64) -> Box<dyn SVEHints<T>>
+    where
+        T: Copy + Debug + Send + Sync + FromPrimitive + ToPrimitive + 'static,
+    {
+        Box::new(RegularizedBoseSVEHints::new(self.clone(), epsilon))
+    }
 }
 
 impl AbstractKernel for RegularizedBoseKernel {
@@ -237,6 +286,208 @@ impl AbstractKernel for RegularizedBoseKernel {
     
     fn conv_radius(&self) -> f64 {
         40.0 * self.lambda // For RegularizedBoseKernel, conv_radius = 40 * Λ
+    }
+}
+
+/// SVE hints for LogisticKernel
+#[derive(Debug, Clone)]
+pub struct LogisticSVEHints<T> {
+    kernel: LogisticKernel,
+    epsilon: f64,
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T> LogisticSVEHints<T>
+where
+    T: Copy + Debug + Send + Sync + FromPrimitive + ToPrimitive,
+{
+    pub fn new(kernel: LogisticKernel, epsilon: f64) -> Self {
+        Self {
+            kernel,
+            epsilon,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T> SVEHints<T> for LogisticSVEHints<T>
+where
+    T: Copy + Debug + Send + Sync + FromPrimitive + ToPrimitive,
+{
+    fn segments_x(&self) -> Vec<T> {
+        // Simplified implementation - in practice, this would use the full algorithm
+        // from the C++ implementation with cosh calculations
+        let nzeros = std::cmp::max(
+            (15.0 * self.kernel.lambda().log10()).round() as usize, 1
+        );
+        
+        let mut segments = Vec::with_capacity(2 * nzeros + 1);
+        
+        // Create symmetric segments around 0
+        for i in 0..=nzeros {
+            let pos = T::from_f64(0.1 * i as f64).unwrap();
+            let neg = T::from_f64(-0.1 * i as f64).unwrap();
+            if i == 0 {
+                segments.push(T::from_f64(0.0).unwrap());
+            } else {
+                segments.push(neg);
+                segments.push(pos);
+            }
+        }
+        
+        segments.sort_by(|a, b| a.to_f64().unwrap().partial_cmp(&b.to_f64().unwrap()).unwrap());
+        segments
+    }
+    
+    fn segments_y(&self) -> Vec<T> {
+        // Simplified implementation
+        let nzeros = std::cmp::max(
+            (20.0 * self.kernel.lambda().log10()).round() as usize, 2
+        );
+        
+        let mut segments = Vec::with_capacity(2 * nzeros + 3);
+        segments.push(T::from_f64(-1.0).unwrap());
+        
+        for i in 1..=nzeros {
+            let pos = T::from_f64(0.05 * i as f64).unwrap();
+            let neg = T::from_f64(-0.05 * i as f64).unwrap();
+            segments.push(neg);
+            segments.push(pos);
+        }
+        
+        segments.push(T::from_f64(1.0).unwrap());
+        segments.sort_by(|a, b| a.to_f64().unwrap().partial_cmp(&b.to_f64().unwrap()).unwrap());
+        segments
+    }
+    
+    fn nsvals(&self) -> usize {
+        let log10_lambda = self.kernel.lambda().log10().max(1.0);
+        ((25.0 + log10_lambda) * log10_lambda).round() as usize
+    }
+    
+    fn ngauss(&self) -> usize {
+        if self.epsilon >= 1e-8 { 10 } else { 16 }
+    }
+}
+
+/// SVE hints for RegularizedBoseKernel
+#[derive(Debug, Clone)]
+pub struct RegularizedBoseSVEHints<T> {
+    kernel: RegularizedBoseKernel,
+    epsilon: f64,
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T> RegularizedBoseSVEHints<T>
+where
+    T: Copy + Debug + Send + Sync + FromPrimitive + ToPrimitive,
+{
+    pub fn new(kernel: RegularizedBoseKernel, epsilon: f64) -> Self {
+        Self {
+            kernel,
+            epsilon,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T> SVEHints<T> for RegularizedBoseSVEHints<T>
+where
+    T: Copy + Debug + Send + Sync + FromPrimitive + ToPrimitive,
+{
+    fn segments_x(&self) -> Vec<T> {
+        // Simplified implementation for RegularizedBoseKernel
+        let nzeros = std::cmp::max(
+            (15.0 * self.kernel.lambda().log10()).round() as usize, 15
+        );
+        
+        let mut segments = Vec::with_capacity(2 * nzeros + 1);
+        
+        for i in 0..=nzeros {
+            let pos = T::from_f64(0.08 * i as f64).unwrap();
+            let neg = T::from_f64(-0.08 * i as f64).unwrap();
+            if i == 0 {
+                segments.push(T::from_f64(0.0).unwrap());
+            } else {
+                segments.push(neg);
+                segments.push(pos);
+            }
+        }
+        
+        segments.sort_by(|a, b| a.to_f64().unwrap().partial_cmp(&b.to_f64().unwrap()).unwrap());
+        segments
+    }
+    
+    fn segments_y(&self) -> Vec<T> {
+        // Simplified implementation
+        let nzeros = std::cmp::max(
+            (20.0 * self.kernel.lambda().log10()).round() as usize, 20
+        );
+        
+        let mut segments = Vec::with_capacity(2 * nzeros + 3);
+        segments.push(T::from_f64(-1.0).unwrap());
+        
+        for i in 1..=nzeros {
+            let pos = T::from_f64(0.06 * i as f64).unwrap();
+            let neg = T::from_f64(-0.06 * i as f64).unwrap();
+            segments.push(neg);
+            segments.push(pos);
+        }
+        
+        segments.push(T::from_f64(1.0).unwrap());
+        segments.sort_by(|a, b| a.to_f64().unwrap().partial_cmp(&b.to_f64().unwrap()).unwrap());
+        segments
+    }
+    
+    fn nsvals(&self) -> usize {
+        let log10_lambda = self.kernel.lambda().log10().max(1.0);
+        (28.0 * log10_lambda).round() as usize
+    }
+    
+    fn ngauss(&self) -> usize {
+        if self.epsilon >= 1e-8 { 10 } else { 16 }
+    }
+}
+
+/// SVE hints for ReducedKernel
+#[derive(Debug)]
+pub struct ReducedSVEHints<T> {
+    inner: Box<dyn SVEHints<T>>,
+}
+
+impl<T> ReducedSVEHints<T>
+where
+    T: Copy + Debug + Send + Sync,
+{
+    pub fn new(inner: Box<dyn SVEHints<T>>) -> Self {
+        Self { inner }
+    }
+}
+
+impl<T> SVEHints<T> for ReducedSVEHints<T>
+where
+    T: Copy + Debug + Send + Sync + ToPrimitive,
+{
+    fn segments_x(&self) -> Vec<T> {
+        // For reduced kernels, we only need the positive half
+        let mut segments = self.inner.segments_x();
+        segments.retain(|&x| x.to_f64().unwrap() >= 0.0);
+        segments
+    }
+    
+    fn segments_y(&self) -> Vec<T> {
+        // For reduced kernels, we only need the positive half
+        let mut segments = self.inner.segments_y();
+        segments.retain(|&y| y.to_f64().unwrap() >= 0.0);
+        segments
+    }
+    
+    fn nsvals(&self) -> usize {
+        (self.inner.nsvals() + 1) / 2
+    }
+    
+    fn ngauss(&self) -> usize {
+        self.inner.ngauss()
     }
 }
 
@@ -320,6 +571,14 @@ impl<InnerKernel: KernelProperties + AbstractKernel> KernelProperties for Reduce
     
     fn inv_weight<S: StatisticsType + 'static>(&self, beta: f64, omega: f64) -> f64 {
         self.inner_kernel.inv_weight::<S>(beta, omega)
+    }
+    
+    fn sve_hints<T>(&self, epsilon: f64) -> Box<dyn SVEHints<T>>
+    where
+        T: Copy + Debug + Send + Sync + FromPrimitive + ToPrimitive + 'static,
+    {
+        let inner_hints = self.inner_kernel.sve_hints::<T>(epsilon);
+        Box::new(ReducedSVEHints::new(inner_hints))
     }
 }
 
@@ -540,5 +799,58 @@ mod tests {
         let w_bose = reduced_kernel.weight::<Bosonic>(beta, omega);
         let expected_w_bose = 1.0 / (0.5 * beta * omega).tanh();
         assert!((w_bose - expected_w_bose).abs() < 1e-14);
+    }
+    
+    #[test]
+    fn test_sve_hints_basic() {
+        let kernel = LogisticKernel::new(10.0);
+        let epsilon = 1e-8;
+        
+        let hints = kernel.sve_hints::<f64>(epsilon);
+        
+        // Test that we get reasonable hints
+        let segments_x = hints.segments_x();
+        let segments_y = hints.segments_y();
+        let nsvals = hints.nsvals();
+        let ngauss = hints.ngauss();
+        
+        // Basic sanity checks
+        assert!(!segments_x.is_empty());
+        assert!(!segments_y.is_empty());
+        assert!(nsvals > 0);
+        assert!(ngauss > 0);
+        
+        // Segments should be sorted
+        let mut sorted_x = segments_x.clone();
+        sorted_x.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert_eq!(segments_x, sorted_x);
+        
+        let mut sorted_y = segments_y.clone();
+        sorted_y.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        assert_eq!(segments_y, sorted_y);
+    }
+    
+    #[test]
+    fn test_reduced_sve_hints() {
+        let inner_kernel = LogisticKernel::new(10.0);
+        let reduced_kernel = ReducedKernel::new(inner_kernel, 1);
+        let epsilon = 1e-8;
+        
+        let hints = reduced_kernel.sve_hints::<f64>(epsilon);
+        
+        let segments_x = hints.segments_x();
+        let segments_y = hints.segments_y();
+        let nsvals = hints.nsvals();
+        let ngauss = hints.ngauss();
+        
+        // For reduced kernels, segments should be non-negative
+        assert!(segments_x.iter().all(|&x| x >= 0.0));
+        assert!(segments_y.iter().all(|&y| y >= 0.0));
+        
+        // Basic sanity checks
+        assert!(!segments_x.is_empty());
+        assert!(!segments_y.is_empty());
+        assert!(nsvals > 0);
+        assert!(ngauss > 0);
     }
 }
