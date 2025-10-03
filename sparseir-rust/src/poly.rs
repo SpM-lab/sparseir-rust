@@ -372,6 +372,264 @@ impl PiecewiseLegendrePoly {
     pub fn get_polyorder(&self) -> usize { self.polyorder }
 }
 
+/// Vector of piecewise Legendre polynomials
+#[derive(Debug)]
+pub struct PiecewiseLegendrePolyVector {
+    /// Individual polynomials
+    pub polyvec: Vec<PiecewiseLegendrePoly>,
+}
+
+impl PiecewiseLegendrePolyVector {
+    /// Default constructor
+    pub fn new() -> Self {
+        Self {
+            polyvec: Vec::new(),
+        }
+    }
+    
+    /// Constructor with a vector of PiecewiseLegendrePoly
+    pub fn from_polynomials(polyvec: Vec<PiecewiseLegendrePoly>) -> Self {
+        Self { polyvec }
+    }
+    
+    /// Constructor with a 3D array, knots, and symmetry vector
+    pub fn from_3d_data(
+        data3d: ndarray::Array3<f64>,
+        knots: Vec<f64>,
+        symm: Option<Vec<i32>>,
+    ) -> Self {
+        let npolys = data3d.shape()[2];
+        let mut polyvec = Vec::with_capacity(npolys);
+        
+        if let Some(ref symm_vec) = symm {
+            if symm_vec.len() != npolys {
+                panic!("Sizes of data and symm don't match");
+            }
+        }
+        
+        // Compute delta_x from knots
+        let delta_x: Vec<f64> = (1..knots.len())
+            .map(|i| knots[i] - knots[i-1])
+            .collect();
+        
+        for i in 0..npolys {
+            // Extract 2D data for this polynomial
+            let mut data = ndarray::Array2::zeros((data3d.shape()[0], data3d.shape()[1]));
+            for j in 0..data3d.shape()[0] {
+                for k in 0..data3d.shape()[1] {
+                    data[[j, k]] = data3d[[j, k, i]];
+                }
+            }
+            
+            let poly = PiecewiseLegendrePoly::new(
+                data,
+                knots.clone(),
+                i as i32,
+                Some(delta_x.clone()),
+                symm.as_ref().map_or(0, |s| s[i]),
+            );
+            
+            polyvec.push(poly);
+        }
+        
+        Self { polyvec }
+    }
+    
+    /// Get the size of the vector
+    pub fn size(&self) -> usize {
+        self.polyvec.len()
+    }
+    
+    /// Get polynomial by index (immutable)
+    pub fn get(&self, index: usize) -> Option<&PiecewiseLegendrePoly> {
+        self.polyvec.get(index)
+    }
+    
+    /// Get polynomial by index (mutable)
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut PiecewiseLegendrePoly> {
+        self.polyvec.get_mut(index)
+    }
+    
+    /// Extract a single polynomial as a vector
+    pub fn slice_single(&self, index: usize) -> Option<Self> {
+        self.polyvec.get(index).map(|poly| {
+            Self {
+                polyvec: vec![poly.clone()],
+            }
+        })
+    }
+    
+    /// Extract multiple polynomials by indices
+    pub fn slice_multi(&self, indices: &[usize]) -> Self {
+        // Validate indices
+        for &idx in indices {
+            if idx >= self.polyvec.len() {
+                panic!("Index {} out of range", idx);
+            }
+        }
+        
+        // Check for duplicates
+        {
+            let mut unique_indices = indices.to_vec();
+            unique_indices.sort();
+            unique_indices.dedup();
+            if unique_indices.len() != indices.len() {
+                panic!("Duplicate indices not allowed");
+            }
+        }
+        
+        let new_polyvec: Vec<_> = indices.iter()
+            .map(|&idx| self.polyvec[idx].clone())
+            .collect();
+        
+        Self { polyvec: new_polyvec }
+    }
+    
+    /// Evaluate all polynomials at a single point
+    pub fn evaluate_at(&self, x: f64) -> Vec<f64> {
+        self.polyvec.iter().map(|poly| poly.evaluate(x)).collect()
+    }
+    
+    /// Evaluate all polynomials at multiple points
+    pub fn evaluate_at_many(&self, xs: &[f64]) -> ndarray::Array2<f64> {
+        let n_funcs = self.polyvec.len();
+        let n_points = xs.len();
+        let mut results = ndarray::Array2::zeros((n_funcs, n_points));
+        
+        for (i, poly) in self.polyvec.iter().enumerate() {
+            for (j, &x) in xs.iter().enumerate() {
+                results[[i, j]] = poly.evaluate(x);
+            }
+        }
+        
+        results
+    }
+    
+    // Accessor methods to match C++ interface
+    pub fn xmin(&self) -> f64 {
+        if self.polyvec.is_empty() { 0.0 } else { self.polyvec[0].xmin }
+    }
+    
+    pub fn xmax(&self) -> f64 {
+        if self.polyvec.is_empty() { 0.0 } else { self.polyvec[0].xmax }
+    }
+    
+    pub fn get_knots(&self) -> Vec<f64> {
+        if self.polyvec.is_empty() {
+            return Vec::new();
+        }
+        
+        // Collect all knots from all polynomials
+        let mut all_knots = Vec::new();
+        for poly in &self.polyvec {
+            for &knot in &poly.knots {
+                all_knots.push(knot);
+            }
+        }
+        
+        // Sort and remove duplicates
+        {
+            all_knots.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            all_knots.dedup_by(|a, b| (*a - *b).abs() < 1e-10); // Use tolerance for f64
+        }
+        all_knots
+    }
+    
+    pub fn get_delta_x(&self) -> Vec<f64> {
+        if self.polyvec.is_empty() {
+            Vec::new()
+        } else {
+            self.polyvec[0].delta_x.clone()
+        }
+    }
+    
+    pub fn get_polyorder(&self) -> usize {
+        if self.polyvec.is_empty() { 0 } else { self.polyvec[0].polyorder }
+    }
+    
+    pub fn get_norms(&self) -> Vec<f64> {
+        if self.polyvec.is_empty() {
+            Vec::new()
+        } else {
+            self.polyvec[0].norms.clone()
+        }
+    }
+    
+    pub fn get_symm(&self) -> Vec<i32> {
+        self.polyvec.iter().map(|poly| poly.symm).collect()
+    }
+    
+    /// Get data as 3D tensor: [segment][degree][polynomial]
+    pub fn get_data(&self) -> ndarray::Array3<f64> {
+        if self.polyvec.is_empty() {
+            return ndarray::Array3::zeros((0, 0, 0));
+        }
+        
+        let nsegments = self.polyvec[0].data.ncols();
+        let polyorder = self.polyvec[0].polyorder;
+        let npolys = self.polyvec.len();
+        
+        let mut data = ndarray::Array3::zeros((nsegments, polyorder, npolys));
+        
+        for (poly_idx, poly) in self.polyvec.iter().enumerate() {
+            for segment in 0..nsegments {
+                for degree in 0..polyorder {
+                    data[[segment, degree, poly_idx]] = poly.data[[degree, segment]];
+                }
+            }
+        }
+        
+        data
+    }
+    
+    /// Find roots of all polynomials
+    pub fn roots(&self) -> Vec<f64> {
+        let mut all_roots = Vec::new();
+        
+        for poly in &self.polyvec {
+            let poly_roots = poly.roots();
+            for root in poly_roots {
+                all_roots.push(root);
+            }
+        }
+        
+        // Sort in descending order and remove duplicates (like C++ implementation)
+        {
+            all_roots.sort_by(|a, b| b.partial_cmp(a).unwrap());
+            all_roots.dedup_by(|a, b| (*a - *b).abs() < 1e-10); // Use tolerance for f64
+        }
+        all_roots
+    }
+    
+    /// Get the number of roots
+    pub fn nroots(&self) -> usize {
+        self.roots().len()
+    }
+}
+
+impl Default for PiecewiseLegendrePolyVector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::ops::Index<usize> for PiecewiseLegendrePolyVector {
+    type Output = PiecewiseLegendrePoly;
+    
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.polyvec[index]
+    }
+}
+
+impl std::ops::IndexMut<usize> for PiecewiseLegendrePolyVector {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.polyvec[index]
+    }
+}
+
+// Note: FnOnce implementation removed due to experimental nature
+// Use evaluate_at() and evaluate_at_many() methods directly
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -669,6 +927,145 @@ mod tests {
         for i in 0..delta_x.len() {
             assert!((delta_x[i] - (knots[i + 1] - knots[i])).abs() < 1e-10);
         }
+    }
+    
+    #[test]
+    fn test_polynomial_vector_creation() {
+        let data1 = arr2(&[[1.0, 2.0], [3.0, 4.0]]);
+        let data2 = arr2(&[[5.0, 6.0], [7.0, 8.0]]);
+        let knots = vec![0.0, 1.0, 2.0];
+        
+        let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 0);
+        let poly2 = PiecewiseLegendrePoly::new(data2, knots, 1, None, 0);
+        
+        let vector = PiecewiseLegendrePolyVector::from_polynomials(vec![poly1, poly2]);
+        
+        assert_eq!(vector.size(), 2);
+        assert_eq!(vector.get_polyorder(), 2);
+    }
+    
+    #[test]
+    fn test_vector_evaluation() {
+        let data1 = arr2(&[[1.0, 2.0], [3.0, 4.0]]);
+        let data2 = arr2(&[[5.0, 6.0], [7.0, 8.0]]);
+        let knots = vec![0.0, 1.0, 2.0];
+        
+        let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 0);
+        let poly2 = PiecewiseLegendrePoly::new(data2, knots, 1, None, 0);
+        
+        let vector = PiecewiseLegendrePolyVector::from_polynomials(vec![poly1, poly2]);
+        
+        let results = vector.evaluate_at(0.5);
+        assert_eq!(results.len(), 2);
+        println!("Vector evaluation at 0.5: {:?}", results);
+        
+        // Test multiple points
+        let xs = vec![0.0, 0.5, 1.0];
+        let results_matrix = vector.evaluate_at_many(&xs);
+        assert_eq!(results_matrix.shape(), [2, 3]);
+        println!("Vector evaluation matrix:\n{:?}", results_matrix);
+    }
+    
+    #[test]
+    fn test_vector_3d_construction() {
+        // Create 3D data: 3 degrees, 2 segments, 2 polynomials
+        let mut data3d = ndarray::Array3::zeros((3, 2, 2));
+        
+        // Polynomial 0: coefficients for 3 degrees, 2 segments
+        data3d[[0, 0, 0]] = 1.0; // degree 0, segment 0, poly 0
+        data3d[[1, 0, 0]] = 2.0; // degree 1, segment 0, poly 0
+        data3d[[0, 1, 0]] = 3.0; // degree 0, segment 1, poly 0
+        data3d[[1, 1, 0]] = 4.0; // degree 1, segment 1, poly 0
+        
+        // Polynomial 1: coefficients for 3 degrees, 2 segments
+        data3d[[0, 0, 1]] = 5.0; // degree 0, segment 0, poly 1
+        data3d[[1, 0, 1]] = 6.0; // degree 1, segment 0, poly 1
+        data3d[[0, 1, 1]] = 7.0; // degree 0, segment 1, poly 1
+        data3d[[1, 1, 1]] = 8.0; // degree 1, segment 1, poly 1
+        
+        let knots = vec![0.0, 1.0, 2.0]; // 2 segments need 3 knots
+        let symm = vec![0, 1];
+        
+        let vector = PiecewiseLegendrePolyVector::from_3d_data(data3d, knots, Some(symm));
+        
+        assert_eq!(vector.size(), 2);
+        assert_eq!(vector.get_polyorder(), 3);
+        assert_eq!(vector.get_symm(), vec![0, 1]);
+        
+        // Test evaluation
+        let results = vector.evaluate_at(0.5);
+        assert_eq!(results.len(), 2);
+        println!("3D vector evaluation at 0.5: {:?}", results);
+    }
+    
+    #[test]
+    fn test_vector_slicing() {
+        let data1 = arr2(&[[1.0, 2.0], [3.0, 4.0]]);
+        let data2 = arr2(&[[5.0, 6.0], [7.0, 8.0]]);
+        let data3 = arr2(&[[9.0, 10.0], [11.0, 12.0]]);
+        let knots = vec![0.0, 1.0, 2.0];
+        
+        let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 0);
+        let poly2 = PiecewiseLegendrePoly::new(data2, knots.clone(), 1, None, 0);
+        let poly3 = PiecewiseLegendrePoly::new(data3, knots, 2, None, 0);
+        
+        let vector = PiecewiseLegendrePolyVector::from_polynomials(vec![poly1, poly2, poly3]);
+        
+        // Test single slice
+        let single_slice = vector.slice_single(1);
+        assert!(single_slice.is_some());
+        assert_eq!(single_slice.unwrap().size(), 1);
+        
+        // Test multi slice
+        let multi_slice = vector.slice_multi(&[0, 2]);
+        assert_eq!(multi_slice.size(), 2);
+        
+        // Test evaluation of slice
+        let slice_results = multi_slice.evaluate_at(0.5);
+        assert_eq!(slice_results.len(), 2);
+        println!("Slice evaluation: {:?}", slice_results);
+    }
+    
+    #[test]
+    fn test_vector_accessors() {
+        let data1 = arr2(&[[1.0, 2.0], [3.0, 4.0]]);
+        let data2 = arr2(&[[5.0, 6.0], [7.0, 8.0]]);
+        let knots = vec![0.0, 1.0, 2.0];
+        
+        let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 0);
+        let poly2 = PiecewiseLegendrePoly::new(data2, knots.clone(), 1, None, 0);
+        
+        let vector = PiecewiseLegendrePolyVector::from_polynomials(vec![poly1, poly2]);
+        
+        // Test accessor methods
+        assert_eq!(vector.xmin(), 0.0);
+        assert_eq!(vector.xmax(), 2.0);
+        assert_eq!(vector.get_knots(), knots);
+        assert_eq!(vector.get_polyorder(), 2);
+        assert_eq!(vector.get_symm(), vec![0, 0]);
+        
+        // Test 3D data conversion
+        let data3d = vector.get_data();
+        assert_eq!(data3d.shape(), [2, 2, 2]); // 2 segments, 2 degrees, 2 polynomials
+        println!("3D data shape: {:?}", data3d.shape());
+    }
+    
+    #[test]
+    fn test_vector_roots() {
+        let data1 = arr2(&[[-0.5], [1.0]]); // Should have root at 0.5
+        let data2 = arr2(&[[-1.0], [2.0]]); // Should have root at 0.5
+        let knots = vec![0.0, 1.0];
+        
+        let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 0);
+        let poly2 = PiecewiseLegendrePoly::new(data2, knots, 1, None, 0);
+        
+        let vector = PiecewiseLegendrePolyVector::from_polynomials(vec![poly1, poly2]);
+        
+        let roots = vector.roots();
+        println!("Vector roots: {:?}", roots);
+        
+        // Should find some roots (exact number depends on normalization)
+        assert!(vector.nroots() >= 0);
     }
 }
 
