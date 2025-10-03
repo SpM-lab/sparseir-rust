@@ -49,39 +49,32 @@ impl<T: Precision> JacobiRotation<T> {
 /// 
 /// This implements the same algorithm as Eigen3's real_2x2_jacobi_svd
 /// Returns (left_rotation, right_rotation, singular_values)
-fn real_2x2_jacobi_svd<T: Precision + std::fmt::Debug>(
+fn real_2x2_jacobi_svd<T: Precision>(
     a: T, b: T, c: T, d: T
 ) -> (JacobiRotation<T>, JacobiRotation<T>, (T, T)) {
     // Create 2x2 matrix
     let mut m = [[a, b], [c, d]];
     
-    eprintln!("[DEBUG] real_2x2_jacobi_svd called with a={:?}, b={:?}, c={:?}, d={:?}", a, b, c, d);
-    eprintln!("[DEBUG] Initial m = [[{:?}, {:?}], [{:?}, {:?}]]", m[0][0], m[0][1], m[1][0], m[1][1]);
     
     // First rotation to eliminate off-diagonal elements
     let t = m[0][0] + m[1][1];
     let d_val = m[1][0] - m[0][1];
     
-    eprintln!("[DEBUG] t = {:?}, d_val = {:?}", t, d_val);
     
     let rot1 = if Precision::abs(d_val) < T::EPSILON {
-        eprintln!("[DEBUG] d_val is too small, using identity rotation");
         JacobiRotation::identity()
     } else {
         let u = t / d_val;
         let tmp = Precision::sqrt(T::one() + u * u);
         let r = JacobiRotation::new(u / tmp, T::one() / tmp);
-        eprintln!("[DEBUG] rot1: c={:?}, s={:?}", r.c, r.s);
         r
     };
     
     // Apply first rotation (left)
     apply_rotation_left(&mut m, 0, 1, &rot1);
-    eprintln!("[DEBUG] After left rotation m = [[{:?}, {:?}], [{:?}, {:?}]]", m[0][0], m[0][1], m[1][0], m[1][1]);
     
     // Compute second rotation (right) from the left-rotated matrix
     let rot2 = make_jacobi(&m, 0, 1);
-    eprintln!("[DEBUG] rot2 (from make_jacobi): c={:?}, s={:?}", rot2.c, rot2.s);
     
     
     // Note: We don't apply rot2 to m here (unlike what we did before)
@@ -90,14 +83,11 @@ fn real_2x2_jacobi_svd<T: Precision + std::fmt::Debug>(
     
     // Compose rotations for j_left
     let left_rot = rot1.compose(&rot2.transpose());
-    eprintln!("[DEBUG] left_rot (rot1 * rot2.transpose()): c={:?}, s={:?}", left_rot.c, left_rot.s);
     
     // Extract singular values from the diagonalized matrix
     let s1 = Precision::abs(m[0][0]);
     let s2 = Precision::abs(m[1][1]);
     
-    eprintln!("[DEBUG] Singular values: s1={:?}, s2={:?}", s1, s2);
-    eprintln!("[DEBUG] Returning: left_rot=({:?}, {:?}), rot2=({:?}, {:?})", left_rot.c, left_rot.s, rot2.c, rot2.s);
     
     // Ensure singular values are in descending order
     if s1 < s2 {
@@ -111,24 +101,20 @@ fn real_2x2_jacobi_svd<T: Precision + std::fmt::Debug>(
 /// This implements Eigen3's makeJacobi(x, y, z) function
 /// For a self-adjoint 2x2 matrix B = [[x, y], [conj(y), z]]
 /// Returns rotation J such that J^* B J is diagonal
-fn make_jacobi<T: Precision + std::fmt::Debug>(m: &[[T; 2]; 2], p: usize, q: usize) -> JacobiRotation<T> {
+fn make_jacobi<T: Precision>(m: &[[T; 2]; 2], p: usize, q: usize) -> JacobiRotation<T> {
     let x = m[p][p];
     let y = m[p][q];
     let z = m[q][q];
     
-    eprintln!("[DEBUG] make_jacobi called with p={}, q={}", p, q);
-    eprintln!("[DEBUG] x=m[{}][{}]={:?}, y=m[{}][{}]={:?}, z=m[{}][{}]={:?}", p, p, x, p, q, y, q, q, z);
     
     // Check if matrix is already diagonalized
     // For a self-adjoint matrix [[x, y], [conj(y), z]], if x = z and y = 0, it's already diagonal
     let two = <T as From<f64>>::from(2.0);
     let deno = two * Precision::abs(y);
     
-    eprintln!("[DEBUG] deno = 2 * |y| = {:?}", deno);
     
     if deno < T::EPSILON {
         // If y is too small, return identity rotation
-        eprintln!("[DEBUG] deno < EPSILON, returning identity rotation");
         return JacobiRotation::identity();
     }
     
@@ -136,8 +122,6 @@ fn make_jacobi<T: Precision + std::fmt::Debug>(m: &[[T; 2]; 2], p: usize, q: usi
     let tau = (x - z) / deno;
     let w = Precision::sqrt(tau * tau + T::one());
     
-    eprintln!("[DEBUG] tau = (x - z) / deno = {:?}", tau);
-    eprintln!("[DEBUG] w = sqrt(tau^2 + 1) = {:?}", w);
     
     // Compute t
     let t = if tau > T::zero() {
@@ -146,7 +130,6 @@ fn make_jacobi<T: Precision + std::fmt::Debug>(m: &[[T; 2]; 2], p: usize, q: usi
         T::one() / (tau - w)
     };
     
-    eprintln!("[DEBUG] t = {:?}", t);
     
     // Compute rotation parameters (matching Eigen3's implementation)
     let sign_t = if t > T::zero() { T::one() } else { -T::one() };
@@ -155,12 +138,10 @@ fn make_jacobi<T: Precision + std::fmt::Debug>(m: &[[T; 2]; 2], p: usize, q: usi
     // For real numbers: conj(y) / abs(y) = y / abs(y) = sign(y)
     let sign_y = if y >= T::zero() { T::one() } else { -T::one() };
     
-    eprintln!("[DEBUG] sign_t = {:?}, n = {:?}, sign_y = {:?}", sign_t, n, sign_y);
     
     let c_val = n;
     let s_val = -sign_t * sign_y * Precision::abs(t) * n;
     
-    eprintln!("[DEBUG] c_val = {:?}, s_val = {:?}", c_val, s_val);
     
     JacobiRotation::new(c_val, s_val)
 }
@@ -210,7 +191,7 @@ pub fn apply_givens_left<T: Precision>(
     }
 }
 
-pub fn apply_givens_right<T: Precision + std::fmt::Debug>(
+pub fn apply_givens_right<T: Precision>(
     matrix: &mut Array2<T>,
     i: usize,
     j: usize,
@@ -219,7 +200,6 @@ pub fn apply_givens_right<T: Precision + std::fmt::Debug>(
 ) {
     let m = matrix.nrows();
     
-    eprintln!("[Rust] apply_givens_right: c={:?}, s={:?}, i={}, j={}", c, s, i, j);
     
     // Right rotation: update columns i and j
     // Note: Eigen3's applyOnTheRight applies the transpose of the rotation
@@ -227,7 +207,6 @@ pub fn apply_givens_right<T: Precision + std::fmt::Debug>(
     for k in 0..m {
         let xi = matrix[[k, i]];
         let yi = matrix[[k, j]];
-        eprintln!("[Rust]   k={}, xi={:?}, yi={:?}", k, xi, yi);
         
         // Apply transpose: (c, -s)
         // Must use temporary variables to avoid in-place issues
@@ -236,7 +215,6 @@ pub fn apply_givens_right<T: Precision + std::fmt::Debug>(
         matrix[[k, i]] = new_xi;
         matrix[[k, j]] = new_yi;
         
-        eprintln!("[Rust]   -> x={:?}, y={:?}", matrix[[k, i]], matrix[[k, j]]);
     }
 }
 
@@ -244,7 +222,7 @@ pub fn apply_givens_right<T: Precision + std::fmt::Debug>(
 /// 
 /// Computes the SVD using two-sided Jacobi iterations.
 /// This is more accurate than bidiagonalization methods but slower.
-pub fn jacobi_svd<T: Precision + std::fmt::Debug>(
+pub fn jacobi_svd<T: Precision>(
     matrix: &Array2<T>,
 ) -> SVDResult<T> {
     let m = matrix.nrows();
@@ -311,7 +289,6 @@ pub fn jacobi_svd<T: Precision + std::fmt::Debug>(
     for iter in 0..max_iter {
         let mut converged = true;
         
-        eprintln!("\n[Rust] === Iteration {} ===", iter);
         
         // One-sided Jacobi: eliminate off-diagonal elements
         // Use Eigen3's loop order: p from 1 to diagsize, q from 0 to p-1
@@ -320,16 +297,11 @@ pub fn jacobi_svd<T: Precision + std::fmt::Debug>(
                 // Use Eigen3's threshold calculation
                 let threshold = Precision::max(consider_as_zero, precision * max_diag_entry);
                 
-                eprintln!("[Rust] Checking block ({}, {})", p, q);
-                eprintln!("[Rust]   a[{},{}] = {:?}, a[{},{}] = {:?}", p, q, a[[p, q]], q, p, a[[q, p]]);
-                eprintln!("[Rust]   threshold = {:?}", threshold);
                 
                 if Precision::abs(a[[p, q]]) <= threshold && Precision::abs(a[[q, p]]) <= threshold {
-                    eprintln!("[Rust]   => Skipping");
                     continue;
                 }
                 
-                eprintln!("[Rust]   => Processing!");
                 converged = false;
                 _iterations += 1;
                 
@@ -344,8 +316,6 @@ pub fn jacobi_svd<T: Precision + std::fmt::Debug>(
                 let c2 = right_rot.c;
                 let s2_rot = right_rot.s;
                 
-                eprintln!("[Rust]   left_rot: c = {:?}, s = {:?}", c, s);
-                eprintln!("[Rust]   right_rot: c = {:?}, s = {:?}", c2, s2_rot);
                 
                 // Apply left rotation to A
                 apply_givens_left(&mut a, p, q, c, s);
@@ -355,15 +325,11 @@ pub fn jacobi_svd<T: Precision + std::fmt::Debug>(
                 // Transpose means we swap c and -s: (c, s) -> (c, -s)
                 apply_givens_right(&mut u, p, q, c, -s);
                 
-                eprintln!("[Rust]   After left rotation, full matrix a:");
-                eprintln!("[Rust]     [[{:?}, {:?}],", a[[0, 0]], a[[0, 1]]);
-                eprintln!("[Rust]      [{:?}, {:?}]]", a[[1, 0]], a[[1, 1]]);
                 
                 // Apply right rotation to A and V
                 apply_givens_right(&mut a, p, q, c2, s2_rot);
                 apply_givens_right(&mut v, p, q, c2, s2_rot);
                 
-                eprintln!("[Rust]   After right rotation, a[{},{}] = {:?}, a[{},{}] = {:?}", p, p, a[[p, p]], q, q, a[[q, q]]);
             }
         }
         
