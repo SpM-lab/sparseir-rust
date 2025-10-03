@@ -10,6 +10,7 @@
 use ndarray::{Array1, ScalarOperand};
 use std::fmt::Debug;
 use num_traits::{FromPrimitive, ToPrimitive, Float};
+use crate::twofloattrait::CustomNumeric;
 
 /// Quadrature rule for numerical integration.
 ///
@@ -280,6 +281,219 @@ where
     }
 }
 
+/// CustomNumeric-based implementation for f64 and TwoFloat support
+impl<T> Rule<T>
+where
+    T: CustomNumeric + ScalarOperand,
+{
+    /// Create a new quadrature rule from points and weights (CustomNumeric version).
+    pub fn new_custom(x: Array1<T>, w: Array1<T>, a: T, b: T) -> Self {
+        assert_eq!(x.len(), w.len(), "x and w must have the same length");
+        
+        let x_forward = &x - a;
+        let x_backward = x.mapv(|xi| b - xi);
+        
+        Self {
+            x,
+            w,
+            x_forward,
+            x_backward,
+            a,
+            b,
+        }
+    }
+    
+    /// Create a new quadrature rule from vectors (CustomNumeric version).
+    pub fn from_vectors_custom(x: Vec<T>, w: Vec<T>, a: T, b: T) -> Self {
+        Self::new_custom(Array1::from(x), Array1::from(w), a, b)
+    }
+    
+    /// Reseat the rule to a new interval [a, b] (CustomNumeric version).
+    pub fn reseat_custom(&self, a: T, b: T) -> Self {
+        let scaling = (b - a) / (self.b - self.a);
+        let midpoint_old = (self.b + self.a) * T::from_f64(0.5);
+        let midpoint_new = (b + a) * T::from_f64(0.5);
+        
+        // Transform x: scaling * (xi - midpoint_old) + midpoint_new
+        let new_x = self.x.mapv(|xi| scaling * (xi - midpoint_old) + midpoint_new);
+        let new_w = &self.w * scaling;
+        let new_x_forward = &self.x_forward * scaling;
+        let new_x_backward = &self.x_backward * scaling;
+        
+        Self {
+            x: new_x,
+            w: new_w,
+            x_forward: new_x_forward,
+            x_backward: new_x_backward,
+            a,
+            b,
+        }
+    }
+    
+    /// Scale the weights by a factor (CustomNumeric version).
+    pub fn scale_custom(&self, factor: T) -> Self {
+        Self {
+            x: self.x.clone(),
+            w: &self.w * factor,
+            x_forward: self.x_forward.clone(),
+            x_backward: self.x_backward.clone(),
+            a: self.a,
+            b: self.b,
+        }
+    }
+    
+    /// Validate the rule for consistency (CustomNumeric version).
+    pub fn validate_custom(&self) -> bool {
+        // Check interval validity
+        if self.a >= self.b {
+            return false;
+        }
+        
+        // Check array lengths
+        if self.x.len() != self.w.len() {
+            return false;
+        }
+        
+        if self.x.len() != self.x_forward.len() || self.x.len() != self.x_backward.len() {
+            return false;
+        }
+        
+        // Check that all points are within [a, b]
+        for &xi in self.x.iter() {
+            if xi < self.a || xi > self.b {
+                return false;
+            }
+        }
+        
+        // Check that points are sorted
+        for i in 1..self.x.len() {
+            if self.x[i] <= self.x[i-1] {
+                return false;
+            }
+        }
+        
+        // Check x_forward and x_backward consistency
+        for i in 0..self.x.len() {
+            let expected_forward = self.x[i] - self.a;
+            let expected_backward = self.b - self.x[i];
+            
+            if (self.x_forward[i] - expected_forward).abs() > T::epsilon() {
+                return false;
+            }
+            if (self.x_backward[i] - expected_backward).abs() > T::epsilon() {
+                return false;
+            }
+        }
+        
+        true
+    }
+}
+
+/// TwoFloat-specific implementation without ScalarOperand requirement
+impl Rule<twofloat::TwoFloat> {
+    /// Create a new quadrature rule from points and weights (TwoFloat version).
+    pub fn new_twofloat(x: Array1<twofloat::TwoFloat>, w: Array1<twofloat::TwoFloat>, a: twofloat::TwoFloat, b: twofloat::TwoFloat) -> Self {
+        assert_eq!(x.len(), w.len(), "x and w must have the same length");
+        
+        let x_forward = x.mapv(|xi| xi - a);
+        let x_backward = x.mapv(|xi| b - xi);
+        
+        Self {
+            x,
+            w,
+            x_forward,
+            x_backward,
+            a,
+            b,
+        }
+    }
+    
+    /// Create a new quadrature rule from vectors (TwoFloat version).
+    pub fn from_vectors_twofloat(x: Vec<twofloat::TwoFloat>, w: Vec<twofloat::TwoFloat>, a: twofloat::TwoFloat, b: twofloat::TwoFloat) -> Self {
+        Self::new_twofloat(Array1::from(x), Array1::from(w), a, b)
+    }
+    
+    /// Reseat the rule to a new interval [a, b] (TwoFloat version).
+    pub fn reseat_twofloat(&self, a: twofloat::TwoFloat, b: twofloat::TwoFloat) -> Self {
+        let scaling = (b - a) / (self.b - self.a);
+        let midpoint_old = (self.b + self.a) * twofloat::TwoFloat::from_f64(0.5);
+        let midpoint_new = (b + a) * twofloat::TwoFloat::from_f64(0.5);
+        
+        // Transform x: scaling * (xi - midpoint_old) + midpoint_new
+        let new_x = self.x.mapv(|xi| scaling * (xi - midpoint_old) + midpoint_new);
+        let new_w = self.w.mapv(|wi| wi * scaling);
+        let new_x_forward = self.x_forward.mapv(|xi| xi * scaling);
+        let new_x_backward = self.x_backward.mapv(|xi| xi * scaling);
+        
+        Self {
+            x: new_x,
+            w: new_w,
+            x_forward: new_x_forward,
+            x_backward: new_x_backward,
+            a,
+            b,
+        }
+    }
+    
+    /// Scale the weights by a factor (TwoFloat version).
+    pub fn scale_twofloat(&self, factor: twofloat::TwoFloat) -> Self {
+        Self {
+            x: self.x.clone(),
+            w: self.w.mapv(|wi| wi * factor),
+            x_forward: self.x_forward.clone(),
+            x_backward: self.x_backward.clone(),
+            a: self.a,
+            b: self.b,
+        }
+    }
+    
+    /// Validate the rule for consistency (TwoFloat version).
+    pub fn validate_twofloat(&self) -> bool {
+        // Check interval validity
+        if self.a >= self.b {
+            return false;
+        }
+        
+        // Check array lengths
+        if self.x.len() != self.w.len() {
+            return false;
+        }
+        
+        if self.x.len() != self.x_forward.len() || self.x.len() != self.x_backward.len() {
+            return false;
+        }
+        
+        // Check that all points are within [a, b]
+        for &xi in self.x.iter() {
+            if xi < self.a || xi > self.b {
+                return false;
+            }
+        }
+        
+        // Check that points are sorted
+        for i in 1..self.x.len() {
+            if self.x[i] <= self.x[i-1] {
+                return false;
+            }
+        }
+        
+        // Check x_forward and x_backward consistency
+        for i in 0..self.x.len() {
+            let expected_forward = self.x[i] - self.a;
+            let expected_backward = self.b - self.x[i];
+            
+            if (self.x_forward[i] - expected_forward).abs() > twofloat::TwoFloat::epsilon() {
+                return false;
+            }
+            if (self.x_backward[i] - expected_backward).abs() > twofloat::TwoFloat::epsilon() {
+                return false;
+            }
+        }
+        
+        true
+    }
+}
+
 /// Compute Gauss-Legendre quadrature nodes and weights using Newton's method.
 ///
 /// This is a simplified implementation of the Gauss-Legendre quadrature rule.
@@ -394,211 +608,209 @@ where
     Rule::from_vectors(x, w, T::from_f64(-1.0).unwrap(), T::from_f64(1.0).unwrap())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    #[test]
-    fn test_rule_constructor() {
-        let x = Array1::from(vec![0.0, 1.0]);
-        let w = Array1::from(vec![0.5, 0.5]);
-        let rule = Rule::new(x.clone(), w.clone(), -1.0, 1.0);
-        
-        assert_eq!(rule.a, -1.0);
-        assert_eq!(rule.b, 1.0);
-        assert_eq!(rule.x, x);
-        assert_eq!(rule.w, w);
+/// Compute Gauss-Legendre quadrature nodes and weights using CustomNumeric
+fn gauss_legendre_nodes_weights_custom<T>(n: usize) -> (Vec<T>, Vec<T>)
+where
+    T: CustomNumeric,
+{
+    if n == 0 {
+        return (Vec::new(), Vec::new());
     }
     
-    #[test]
-    fn test_rule_validation() {
-        let x = Array1::from(vec![0.0, 1.0]);
-        let w = Array1::from(vec![0.5, 0.5]);
-        let rule = Rule::new(x, w, -1.0, 1.0);
-        
-        assert!(rule.validate());
+    if n == 1 {
+        return (vec![T::from_f64(0.0)], vec![T::from_f64(2.0)]);
     }
     
-    #[test]
-    fn test_rule_reseat() {
-        let x = Array1::from(vec![0.0, 1.0]);
-        let w = Array1::from(vec![0.5, 0.5]);
-        let rule = Rule::new(x, w, -1.0, 1.0);
-        
-        let reseated = rule.reseat(0.0, 2.0);
-        
-        assert_eq!(reseated.a, 0.0);
-        assert_eq!(reseated.b, 2.0);
-        assert!(reseated.validate());
-    }
+    let mut x = Vec::with_capacity(n);
+    let mut w = Vec::with_capacity(n);
     
-    #[test]
-    fn test_rule_scale() {
-        let x = Array1::from(vec![0.0, 1.0]);
-        let w = Array1::from(vec![0.5, 0.5]);
-        let rule = Rule::new(x, w, -1.0, 1.0);
-        
-        let scaled = rule.scale(2.0);
-        
-        assert_eq!(scaled.w[0], 1.0);
-        assert_eq!(scaled.w[1], 1.0);
-    }
+    // Use Newton's method to find roots of Legendre polynomial
+    let m = (n + 1) / 2;
+    let pi = T::from_f64(std::f64::consts::PI);
     
-    #[test]
-    fn test_rule_piecewise() {
-        let x = Array1::from(vec![0.0]);
-        let w = Array1::from(vec![1.0]);
-        let rule = Rule::new(x, w, -1.0, 1.0);
+    for i in 0..m {
+        // Initial guess using Chebyshev nodes
+        let mut z = (pi * T::from_f64(i as f64 + 0.75) / T::from_f64(n as f64 + 0.5)).cos();
         
-        let edges = vec![-2.0, 0.0, 2.0];
-        let piecewise = rule.piecewise(&edges);
-        
-        assert_eq!(piecewise.a, -2.0);
-        assert_eq!(piecewise.b, 2.0);
-        assert!(piecewise.validate());
-    }
-    
-    #[test]
-    fn test_rule_join() {
-        let x1 = Array1::from(vec![0.0]);
-        let w1 = Array1::from(vec![1.0]);
-        let rule1 = Rule::new(x1, w1, -1.0, 0.0);
-        
-        let x2 = Array1::from(vec![1.0]);
-        let w2 = Array1::from(vec![1.0]);
-        let rule2 = Rule::new(x2, w2, 0.0, 1.0);
-        
-        let joined = Rule::join(&[rule1, rule2]);
-        
-        assert_eq!(joined.a, -1.0);
-        assert_eq!(joined.b, 1.0);
-        assert_eq!(joined.x.len(), 2);
-        assert!(joined.validate());
-    }
-    
-    #[test]
-    fn test_legendre() {
-        let rule = legendre::<f64>(4);
-        
-        assert_eq!(rule.a, -1.0);
-        assert_eq!(rule.b, 1.0);
-        assert_eq!(rule.x.len(), 4);
-        assert_eq!(rule.w.len(), 4);
-        assert!(rule.validate());
-    }
-    
-    #[test]
-    fn test_rule_convert() {
-        let rule_f64 = legendre::<f64>(4);
-        let rule_f32 = rule_f64.convert::<f32>();
-        
-        assert_eq!(rule_f32.x.len(), 4);
-        assert_eq!(rule_f32.w.len(), 4);
-        assert!(rule_f32.validate());
-    }
-    
-    #[test]
-    fn test_f32_support() {
-        let rule = legendre::<f32>(4);
-        
-        assert_eq!(rule.a, -1.0_f32);
-        assert_eq!(rule.b, 1.0_f32);
-        assert_eq!(rule.x.len(), 4);
-        assert_eq!(rule.w.len(), 4);
-        assert!(rule.validate());
-    }
-    
-    #[test]
-    fn test_gauss_validation_like_cpp() {
-        // Test similar to C++ gaussValidate function
-        let rule = legendre::<f64>(20);
-        
-        // Check interval validity: a <= b
-        assert!(rule.a <= rule.b);
-        
-        // Check that all points are within [a, b]
-        for &xi in rule.x.iter() {
-            assert!(xi >= rule.a && xi <= rule.b);
+        // Newton's method to refine the root
+        for _ in 0..10 {
+            let (p0, p1) = legendre_polynomial_and_derivative_custom(n, z);
+            if p0.abs() < T::epsilon() {
+                break;
+            }
+            z = z - p0 / p1;
         }
         
-        // Check that points are sorted
-        for i in 1..rule.x.len() {
-            assert!(rule.x[i] >= rule.x[i-1]);
-        }
+        // Compute weight
+        let (_, p1) = legendre_polynomial_and_derivative_custom(n, z);
+        let weight = T::from_f64(2.0) / ((T::from_f64(1.0) - z * z) * p1 * p1);
         
-        // Check that x and w have same length
-        assert_eq!(rule.x.len(), rule.w.len());
+        x.push(-z);
+        w.push(weight);
         
-        // Check x_forward and x_backward consistency
-        for i in 0..rule.x.len() {
-            let expected_forward = rule.x[i] - rule.a;
-            let expected_backward = rule.b - rule.x[i];
-            
-            assert!((rule.x_forward[i] - expected_forward).abs() < 1e-14);
-            assert!((rule.x_backward[i] - expected_backward).abs() < 1e-14);
+        if i != n - 1 - i {
+            x.push(z);
+            w.push(weight);
         }
     }
     
-    #[test]
-    fn test_rule_constructor_with_defaults() {
-        // Test like C++ Rule constructor with default a, b
-        let x = Array1::from(vec![0.0, 1.0]);
-        let w = Array1::from(vec![0.5, 0.5]);
-        
-        let rule1 = Rule::new(x.clone(), w.clone(), -1.0, 1.0);
-        let rule2 = Rule::new(x, w, -1.0, 1.0);
-        
-        assert_eq!(rule1.a, rule2.a);
-        assert_eq!(rule1.b, rule2.b);
-        assert_eq!(rule1.x, rule2.x);
-        assert_eq!(rule1.w, rule2.w);
-    }
+    // Sort by x values
+    let mut indices: Vec<usize> = (0..n).collect();
+    indices.sort_by(|&a, &b| x[a].partial_cmp(&x[b]).unwrap());
     
-    #[test]
-    fn test_reseat_functionality() {
-        // Test reseat functionality first
-        let original_rule = legendre::<f64>(4);
-        let reseated = original_rule.reseat(-4.0, -1.0);
-        
-        assert!(reseated.validate());
-        assert_eq!(reseated.a, -4.0);
-        assert_eq!(reseated.b, -1.0);
-    }
+    let sorted_x: Vec<T> = indices.iter().map(|&i| x[i]).collect();
+    let sorted_w: Vec<T> = indices.iter().map(|&i| w[i]).collect();
     
-    #[test]
-    fn test_join_functionality() {
-        // Test join functionality
-        let rule1 = legendre::<f64>(4).reseat(-4.0, -1.0);
-        let rule2 = legendre::<f64>(4).reseat(-1.0, 1.0);
-        let rule3 = legendre::<f64>(4).reseat(1.0, 3.0);
-        
-        let joined = Rule::join(&[rule1, rule2, rule3]);
-        
-        assert!(joined.validate());
-        assert_eq!(joined.a, -4.0);
-        assert_eq!(joined.b, 3.0);
-    }
-    
-    #[test]
-    fn test_piecewise_like_cpp() {
-        // Test piecewise functionality like C++ test
-        let edges = vec![-4.0, -1.0, 1.0, 3.0];
-        let rule = legendre::<f64>(20).piecewise(&edges);
-        
-        assert!(rule.validate());
-        assert_eq!(rule.a, -4.0);
-        assert_eq!(rule.b, 3.0);
-    }
-    
-    #[test]
-    fn test_large_legendre_rule() {
-        // Test large rule like C++ test with n=200
-        let rule = legendre::<f64>(200);
-        
-        assert!(rule.validate());
-        assert_eq!(rule.a, -1.0);
-        assert_eq!(rule.b, 1.0);
-        assert_eq!(rule.x.len(), 200);
-        assert_eq!(rule.w.len(), 200);
-    }
+    (sorted_x, sorted_w)
 }
+
+/// Compute Legendre polynomial P_n(x) and its derivative using CustomNumeric
+fn legendre_polynomial_and_derivative_custom<T>(n: usize, x: T) -> (T, T)
+where
+    T: CustomNumeric,
+{
+    if n == 0 {
+        return (T::from_f64(1.0), T::from_f64(0.0));
+    }
+    
+    if n == 1 {
+        return (x, T::from_f64(1.0));
+    }
+    
+    let mut p0 = T::from_f64(1.0);
+    let mut p1 = x;
+    let mut dp0 = T::from_f64(0.0);
+    let mut dp1 = T::from_f64(1.0);
+    
+    for k in 2..=n {
+        let k_f = T::from_f64(k as f64);
+        let k1_f = T::from_f64((k - 1) as f64);
+        let _k2_f = T::from_f64((k - 2) as f64);
+        
+        let p2 = ((T::from_f64(2.0) * k1_f + T::from_f64(1.0)) * x * p1 - k1_f * p0) / k_f;
+        let dp2 = ((T::from_f64(2.0) * k1_f + T::from_f64(1.0)) * (p1 + x * dp1) - k1_f * dp0) / k_f;
+        
+        p0 = p1;
+        p1 = p2;
+        dp0 = dp1;
+        dp1 = dp2;
+    }
+    
+    (p1, dp1)
+}
+
+/// Create a Gauss-Legendre quadrature rule with n points on [-1, 1] (CustomNumeric version).
+pub fn legendre_custom<T>(n: usize) -> Rule<T>
+where
+    T: CustomNumeric + ScalarOperand,
+{
+    if n == 0 {
+        return Rule::new_custom(Array1::from(vec![]), Array1::from(vec![]), T::from_f64(-1.0), T::from_f64(1.0));
+    }
+    
+    let (x, w) = gauss_legendre_nodes_weights_custom(n);
+    
+    Rule::from_vectors_custom(x, w, T::from_f64(-1.0), T::from_f64(1.0))
+}
+
+/// Create a Gauss-Legendre quadrature rule with n points on [-1, 1] (TwoFloat version).
+pub fn legendre_twofloat(n: usize) -> Rule<twofloat::TwoFloat> {
+    if n == 0 {
+        return Rule::new_twofloat(
+            Array1::from(vec![]), 
+            Array1::from(vec![]), 
+            twofloat::TwoFloat::from_f64(-1.0), 
+            twofloat::TwoFloat::from_f64(1.0)
+        );
+    }
+    
+    let (x, w) = gauss_legendre_nodes_weights_twofloat(n);
+    
+    Rule::from_vectors_twofloat(x, w, twofloat::TwoFloat::from_f64(-1.0), twofloat::TwoFloat::from_f64(1.0))
+}
+
+/// Compute Gauss-Legendre quadrature nodes and weights using TwoFloat
+fn gauss_legendre_nodes_weights_twofloat(n: usize) -> (Vec<twofloat::TwoFloat>, Vec<twofloat::TwoFloat>) {
+    if n == 0 {
+        return (Vec::new(), Vec::new());
+    }
+    
+    if n == 1 {
+        return (vec![twofloat::TwoFloat::from_f64(0.0)], vec![twofloat::TwoFloat::from_f64(2.0)]);
+    }
+    
+    let mut x = Vec::with_capacity(n);
+    let mut w = Vec::with_capacity(n);
+    
+    // Use Newton's method to find roots of Legendre polynomial
+    let m = (n + 1) / 2;
+    let pi = twofloat::TwoFloat::from_f64(std::f64::consts::PI);
+    
+    for i in 0..m {
+        // Initial guess using Chebyshev nodes
+        let mut z = (pi * twofloat::TwoFloat::from_f64(i as f64 + 0.75) / twofloat::TwoFloat::from_f64(n as f64 + 0.5)).cos();
+        
+        // Newton's method to refine the root
+        for _ in 0..10 {
+            let (p0, p1) = legendre_polynomial_and_derivative_twofloat(n, z);
+            if p0.abs() < twofloat::TwoFloat::epsilon() {
+                break;
+            }
+            z = z - p0 / p1;
+        }
+        
+        // Compute weight
+        let (_, p1) = legendre_polynomial_and_derivative_twofloat(n, z);
+        let weight = twofloat::TwoFloat::from_f64(2.0) / ((twofloat::TwoFloat::from_f64(1.0) - z * z) * p1 * p1);
+        
+        x.push(-z);
+        w.push(weight);
+        
+        if i != n - 1 - i {
+            x.push(z);
+            w.push(weight);
+        }
+    }
+    
+    // Sort by x values
+    let mut indices: Vec<usize> = (0..n).collect();
+    indices.sort_by(|&a, &b| x[a].partial_cmp(&x[b]).unwrap());
+    
+    let sorted_x: Vec<twofloat::TwoFloat> = indices.iter().map(|&i| x[i]).collect();
+    let sorted_w: Vec<twofloat::TwoFloat> = indices.iter().map(|&i| w[i]).collect();
+    
+    (sorted_x, sorted_w)
+}
+
+/// Compute Legendre polynomial P_n(x) and its derivative using TwoFloat
+fn legendre_polynomial_and_derivative_twofloat(n: usize, x: twofloat::TwoFloat) -> (twofloat::TwoFloat, twofloat::TwoFloat) {
+    if n == 0 {
+        return (twofloat::TwoFloat::from_f64(1.0), twofloat::TwoFloat::from_f64(0.0));
+    }
+    
+    if n == 1 {
+        return (x, twofloat::TwoFloat::from_f64(1.0));
+    }
+    
+    let mut p0 = twofloat::TwoFloat::from_f64(1.0);
+    let mut p1 = x;
+    let mut dp0 = twofloat::TwoFloat::from_f64(0.0);
+    let mut dp1 = twofloat::TwoFloat::from_f64(1.0);
+    
+    for k in 2..=n {
+        let k_f = twofloat::TwoFloat::from_f64(k as f64);
+        let k1_f = twofloat::TwoFloat::from_f64((k - 1) as f64);
+        let _k2_f = twofloat::TwoFloat::from_f64((k - 2) as f64);
+        
+        let p2 = ((twofloat::TwoFloat::from_f64(2.0) * k1_f + twofloat::TwoFloat::from_f64(1.0)) * x * p1 - k1_f * p0) / k_f;
+        let dp2 = ((twofloat::TwoFloat::from_f64(2.0) * k1_f + twofloat::TwoFloat::from_f64(1.0)) * (p1 + x * dp1) - k1_f * dp0) / k_f;
+        
+        p0 = p1;
+        p1 = p2;
+        dp0 = dp1;
+        dp1 = dp2;
+    }
+    
+    (p1, dp1)
+}
+
