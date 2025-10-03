@@ -121,17 +121,6 @@ typedef struct _spir_kernel spir_kernel;
 **Note**: The project is organized from foundational components to higher-level interfaces
 ```
 sparseir-rust/
-├── sparseir-poly/          # Piecewise polynomial representations (foundation)
-│   ├── Cargo.toml
-│   └── src/
-│       ├── lib.rs
-│       ├── piecewise.rs    # Basic piecewise polynomial
-│       ├── legendre.rs     # Legendre polynomial implementation
-│       ├── vector.rs       # PiecewiseLegendrePolyVector
-│       ├── fourier.rs      # Fourier transform for polynomials
-│       ├── specfuncs.rs    # Special functions (Bessel, Gamma, Legendre)
-│       ├── gauss.rs        # Gaussian integration
-│       └── traits.rs       # Polynomial trait definitions
 ├── xprec-svd/              # High-precision SVD implementation (independent)
 │   ├── Cargo.toml
 │   └── src/
@@ -144,7 +133,15 @@ sparseir-rust/
 │   ├── Cargo.toml
 │   └── src/
 │       ├── lib.rs
-│       ├── linalg.rs    # Linear algebra wrappers
+│       ├── poly.rs         # Piecewise polynomial representations
+│       │   ├── piecewise.rs    # Basic piecewise polynomial
+│       │   ├── legendre.rs     # Legendre polynomial implementation
+│       │   ├── vector.rs       # PiecewiseLegendrePolyVector
+│       │   ├── fourier.rs      # Fourier transform for polynomials
+│       │   ├── specfuncs.rs    # Special functions (Bessel, Gamma, Legendre)
+│       │   ├── gauss.rs        # Gaussian integration
+│       │   └── traits.rs       # Polynomial trait definitions
+│       ├── linalg.rs       # Linear algebra wrappers
 │       ├── kernel.rs       # Kernel implementation
 │       ├── basis.rs        # Basis implementation
 │       ├── funcs.rs        # Function implementation
@@ -201,26 +198,20 @@ blas = "0.22"             # BLAS bindings (default)
 
 **Crate Dependencies**
 
-**sparseir-poly** (Polynomial representations - foundation)
-- `special` (Bessel, Gamma functions)
-- Custom Legendre polynomial implementation
-- Gaussian integration
-
 **xprec-svd** (High-precision SVD functionality)
 - High-precision TSVD implementation
 - Independent mathematical functionality
 
 **sparseir-rust** (Rust interface for SparseIR functionality)
-- `sparseir-poly` (internal)
 - `xprec-svd` (internal)
 - `ndarray`, `nalgebra` (linear algebra)
 - `twofloat` (extended precision)
 - `special`, `statrs` (special functions)
+- Internal `poly` module (polynomial representations)
 
 **sparseir-capi** (C-API layer and integration)
 - `sparseir-rust` (internal)
 - `xprec-svd` (internal)
-- `sparseir-poly` (internal)
 - `libc` (FFI)
 - Main integration point for all SparseIR functionality
 
@@ -237,14 +228,14 @@ blas = "0.22"             # BLAS bindings (default)
 - **double-double precision**: Achieves high precision as sum of two f64 values
 - **Numerical stability**: For high-precision numerical integration
 
-**Piecewise Polynomial Representation (sparseir-poly)**
-- **Independent crate**: Self-contained polynomial functionality
+**Piecewise Polynomial Representation (poly module)**
+- **Internal module**: Integrated polynomial functionality within sparseir-rust
 - **Legendre polynomials**: Custom implementation (no existing Rust crates)
 - **Vector operations**: Efficient piecewise polynomial vector operations
 - **Fourier transforms**: Polynomial Fourier representations
 - **Special functions**: Bessel, Gamma functions (using `special` crate)
 - **Integration**: Gaussian integration for piecewise polynomials
-- **Advantages**: Uses existing implemented crate, no maintenance required
+- **Advantages**: Simplified dependency management, no separate crate maintenance
 
 ### Phase 2: Core Implementation
 
