@@ -10,8 +10,8 @@ pub mod poly;
 
 // Re-export commonly used types and traits
 pub use traits::{Statistics, StatisticsType, Fermionic, Bosonic, StatisticsMarker};
-pub use kernel::{AbstractKernel, LogisticKernel, RegularizedBoseKernel, compute_f64};
-pub use poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector, PolynomialData, PolynomialInfo};
+pub use kernel::{AbstractKernel, LogisticKernel, RegularizedBoseKernel, ReducedKernel, compute_f64, KernelProperties};
+pub use poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
 
 // Re-export external dependencies for convenience
 pub use ndarray::{Array1, Array2};

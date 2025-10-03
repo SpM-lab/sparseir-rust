@@ -556,11 +556,11 @@ impl PiecewiseLegendrePolyVector {
         self.polyvec[0].polyorder
     }
     
-    pub fn get_norms(&self) -> Vec<f64> {
+    pub fn get_norms(&self) -> &[f64] {
         if self.polyvec.is_empty() {
             panic!("Cannot get norms from empty PiecewiseLegendrePolyVector");
         }
-        self.polyvec[0].norms.clone()
+        &self.polyvec[0].norms
     }
     
     pub fn get_symm(&self) -> Vec<i32> {

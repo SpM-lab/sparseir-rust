@@ -11,16 +11,15 @@ fn test_kernel_integration() {
     // Test that kernels work with different statistics types
     let logistic_kernel = LogisticKernel::new(10.0);
     
-    // Test fermionic case
-    let result_fermi = logistic_kernel.compute_weighted::<Fermionic>(
-        TwoFloat::from(0.0), TwoFloat::from(0.0), 1.0, 1.0
-    );
+    // Test fermionic case - manually compute weighted value
+    let k_value = logistic_kernel.compute(TwoFloat::from(0.0), TwoFloat::from(0.0));
+    let inv_w_fermi = logistic_kernel.inv_weight::<Fermionic>(1.0, 1.0);
+    let result_fermi = k_value * TwoFloat::from(inv_w_fermi);
     assert!(Into::<f64>::into(result_fermi) > 0.0);
     
-    // Test bosonic case
-    let result_bose = logistic_kernel.compute_weighted::<Bosonic>(
-        TwoFloat::from(0.0), TwoFloat::from(0.0), 1.0, 1.0
-    );
+    // Test bosonic case - manually compute weighted value
+    let inv_w_bose = logistic_kernel.inv_weight::<Bosonic>(1.0, 1.0);
+    let result_bose = k_value * TwoFloat::from(inv_w_bose);
     assert!(Into::<f64>::into(result_bose) > 0.0);
 }
 
@@ -28,10 +27,10 @@ fn test_kernel_integration() {
 fn test_bose_kernel_integration() {
     let bose_kernel = RegularizedBoseKernel::new(10.0);
     
-    // Test bosonic case (should work)
-    let result = bose_kernel.compute_weighted::<Bosonic>(
-        TwoFloat::from(0.0), TwoFloat::from(0.0), 1.0, 1.0
-    );
+    // Test bosonic case (should work) - manually compute weighted value
+    let k_value = bose_kernel.compute(TwoFloat::from(0.0), TwoFloat::from(0.0));
+    let inv_w = bose_kernel.inv_weight::<Bosonic>(1.0, 1.0);
+    let result = k_value * TwoFloat::from(inv_w);
     // Result might be NaN for certain values, which is expected
     let result_f64 = Into::<f64>::into(result);
     
