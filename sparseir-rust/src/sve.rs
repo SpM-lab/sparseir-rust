@@ -97,7 +97,7 @@ impl SVEResult {
 
 /// Compute SVD of a matrix
 /// 
-/// Returns (U, singular_values, V^T) where A = U * S * V^T
+/// Returns (U, singular_values, V) where A = U * S * V^T
 pub fn compute_svd<T: CustomNumeric + 'static>(matrix: &Array2<T>) -> (Array2<T>, Array1<T>, Array2<T>) {
     // Use different SVD implementations based on type
     if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
@@ -147,50 +147,97 @@ fn compute_svd_twofloat_xprec<T: CustomNumeric>(matrix: &Array2<T>) -> (Array2<T
 }
 
 /// Truncate SVD results based on cutoff and maximum size
-pub fn truncate<T: CustomNumeric>(
+pub fn truncate<T: CustomNumeric + num_traits::Zero>(
     u_list: Vec<Array2<T>>,
     s_list: Vec<Array1<T>>,
     v_list: Vec<Array2<T>>,
-    cutoff: T,
-    lmax: Option<usize>,
+    rtol: T,
+    max_num_svals: Option<usize>,
 ) -> (Vec<Array2<T>>, Vec<Array1<T>>, Vec<Array2<T>>) {
+    // Validate parameters (following C++ implementation)
+    if let Some(max) = max_num_svals {
+        if (max as isize) < 0 {
+            panic!("max_num_svals must be non-negative");
+        }
+    }
+    if rtol < T::zero() || rtol > <T as CustomNumeric>::from_f64(1.0) {
+        panic!("rtol must be in [0, 1]");
+    }
+    
+    // Collect all singular values from all SVD results (following C++ implementation)
+    let mut all_singular_values = Vec::new();
+    for s in &s_list {
+        for &val in s.iter() {
+            all_singular_values.push(val);
+        }
+    }
+    
+    // Find global maximum singular value
+    let max_singular_value = all_singular_values.iter()
+        .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        .copied()
+        .unwrap_or(T::zero());
+    
+    // Calculate global cutoff value
+    let cutoff = if let Some(max_count) = max_num_svals {
+        if max_count < all_singular_values.len() {
+            // Sort in descending order and take the max_count-th largest
+            let mut sorted = all_singular_values.clone();
+            sorted.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+            let nth_largest = sorted[max_count - 1];
+            // Use the maximum of rtol * max_singular_value and nth_largest
+            if rtol * max_singular_value > nth_largest {
+                rtol * max_singular_value
+            } else {
+                nth_largest
+            }
+        } else {
+            rtol * max_singular_value
+        }
+    } else {
+        rtol * max_singular_value
+    };
+    
+    // Count singular values above cutoff for each SVD result (using same global cutoff)
+    let mut scount = Vec::new();
+    for s in &s_list {
+        let mut count = 0;
+        for &val in s.iter() {
+            if val > cutoff {
+                count += 1;
+            }
+        }
+        scount.push(count);
+    }
+    
+    // Truncate each SVD result individually
     let mut truncated_u = Vec::new();
     let mut truncated_s = Vec::new();
     let mut truncated_v = Vec::new();
     
-    for ((u, s), v) in u_list.into_iter().zip(s_list.into_iter()).zip(v_list.into_iter()) {
-        // Find cutoff point
-        let mut cut = 0;
-        for &val in s.iter() {
-            if val >= cutoff {
-                cut += 1;
-            } else {
-                break;
-            }
-        }
+    for (i, ((u, s), v)) in u_list.into_iter().zip(s_list.into_iter()).zip(v_list.into_iter()).enumerate() {
+        let count = scount[i];
         
-        // Apply maximum size limit
-        if let Some(max) = lmax {
-            cut = cut.min(max);
-        }
-        
-        // Truncate
-        truncated_u.push(u.slice(ndarray::s![.., ..cut]).to_owned());
-        truncated_s.push(s.slice(ndarray::s![..cut]).to_owned());
-        truncated_v.push(v.slice(ndarray::s![.., ..cut]).to_owned());
+        truncated_u.push(u.slice(ndarray::s![.., ..count]).to_owned());
+        truncated_s.push(s.slice(ndarray::s![..count]).to_owned());
+        truncated_v.push(v.slice(ndarray::s![.., ..count]).to_owned());
     }
     
     (truncated_u, truncated_s, truncated_v)
 }
 
 /// Compute safe epsilon value and determine working precision
-fn safe_epsilon(epsilon: f64, twork: TworkType, _svd_strategy: SVDStrategy) -> (f64, TworkType, SVDStrategy) {
-    let safe_epsilon = epsilon.max(1e-15); // Ensure minimum precision
+fn safe_epsilon(epsilon: f64, twork: TworkType, svd_strategy: SVDStrategy) -> (f64, TworkType, SVDStrategy) {
+    // Check for negative epsilon (following C++ implementation)
+    if epsilon < 0.0 {
+        panic!("eps_required must be non-negative");
+    }
     
+    // First, choose the working dtype based on the eps required
     let twork_actual = match twork {
         TworkType::Auto => {
-            if safe_epsilon < 1e-12 {
-                TworkType::Float64X2
+            if epsilon.is_nan() || epsilon < 1e-8 {
+                TworkType::Float64X2  // MAX_DTYPE equivalent
             } else {
                 TworkType::Float64
             }
@@ -198,9 +245,35 @@ fn safe_epsilon(epsilon: f64, twork: TworkType, _svd_strategy: SVDStrategy) -> (
         other => other,
     };
     
-    let svd_strategy_actual = SVDStrategy::Accurate; // For now, always use accurate
+    // Next, work out the actual epsilon
+    let safe_eps = match twork_actual {
+        TworkType::Float64 => {
+            // This is technically a bit too low (the true value is about 1.5e-8),
+            // but it's not too far off and easier to remember for the user.
+            1e-8
+        }
+        TworkType::Float64X2 => {
+            // For TwoFloat, we don't have access to xprec::DDouble::epsilon()
+            // Use a reasonable approximation for double-double precision
+            1e-15
+        }
+        _ => 1e-8,
+    };
     
-    (safe_epsilon, twork_actual, svd_strategy_actual)
+    // Work out the SVD strategy to be used
+    let svd_strategy_actual = match svd_strategy {
+        SVDStrategy::Auto => {
+            if !epsilon.is_nan() && epsilon < safe_eps {
+                // TODO: Add warning output like C++
+                SVDStrategy::Accurate
+            } else {
+                SVDStrategy::Fast
+            }
+        }
+        other => other,
+    };
+    
+    (safe_eps, twork_actual, svd_strategy_actual)
 }
 
 /// Determine the appropriate SVE strategy based on kernel properties
@@ -247,7 +320,7 @@ fn pre_postprocess<T, K>(
     safe_epsilon: f64,
     n_gauss: Option<usize>,
     cutoff: Option<f64>,
-    lmax: Option<usize>,
+    max_num_svals: Option<usize>,
 ) -> (SVEResult, Box<dyn SVEStrategy<T>>)
 where
     T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive + 'static,
@@ -271,17 +344,17 @@ where
         v_list.push(v);
     }
     
-    // Determine cutoff
-    let cutoff_actual = cutoff.unwrap_or(2.0 * f64::EPSILON);
-    let cutoff_t = <T as CustomNumeric>::from_f64(cutoff_actual);
+    // Determine rtol (relative tolerance)
+    let rtol_actual = cutoff.unwrap_or(2.0 * f64::EPSILON);
+    let rtol_t = <T as CustomNumeric>::from_f64(rtol_actual);
     
     // Truncate results
     let (u_truncated, s_truncated, v_truncated) = truncate(
         u_list,
         s_list,
         v_list,
-        cutoff_t,
-        lmax,
+        rtol_t,
+        max_num_svals,
     );
     
     // Post-process to create SVEResult
@@ -298,7 +371,7 @@ pub fn compute_sve<T, K>(
     kernel: K,
     epsilon: f64,
     cutoff: Option<f64>,
-    lmax: Option<usize>,
+    max_num_svals: Option<usize>,
     n_gauss: Option<usize>,
     twork: TworkType,
 ) -> SVEResult
@@ -313,7 +386,7 @@ where
     // For now, only support f64 precision
     // TODO: Add proper TwoFloat support when num_traits are available
     if twork_actual == TworkType::Float64 || twork_actual == TworkType::Float64X2 {
-        pre_postprocess::<f64, K>(kernel, safe_epsilon, n_gauss, cutoff, lmax).0
+        pre_postprocess::<f64, K>(kernel, safe_epsilon, n_gauss, cutoff, max_num_svals).0
     } else {
         panic!("Invalid Twork type: {:?}", twork_actual);
     }
@@ -412,7 +485,7 @@ impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: Abstrac
         // svd_matrix can be either U (Left singular vectors) or V (Right singular vectors)
         // For U: (n_gauss * n_segments, n_singular_values)
         // For V: (n_gauss * n_segments, n_singular_values) - but this depends on the kernel structure
-        let expected_rows = n_gauss * n_segments;
+        let _expected_rows = n_gauss * n_segments;
         // For now, accept any dimensions that make sense
         // TODO: Implement proper dimension validation based on kernel type
         
@@ -613,5 +686,59 @@ impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: Abstrac
         // For now, just use even postprocessing
         // TODO: Implement proper centrosymmetric postprocessing
         self.even_sve.postprocess(u_list, s_list, v_list)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_safe_epsilon_boundary_switch() {
+        // Test boundary switching at 1e-8
+        // Case 1: epsilon = 1e-8 (should use FLOAT64)
+        let (safe_eps1, twork1, svd_strat1) = safe_epsilon(1e-8, TworkType::Auto, SVDStrategy::Auto);
+        assert_eq!(twork1, TworkType::Float64);
+        assert_eq!(safe_eps1, 1e-8);
+        assert_eq!(svd_strat1, SVDStrategy::Fast); // 1e-8 >= 1e-8, so Fast
+
+        // Case 2: epsilon = 0.9e-8 (should use FLOAT64X2)
+        let (safe_eps2, twork2, svd_strat2) = safe_epsilon(0.9e-8, TworkType::Auto, SVDStrategy::Auto);
+        assert_eq!(twork2, TworkType::Float64X2);
+        assert_eq!(safe_eps2, 1e-15); // Float64X2 safe epsilon
+                  assert_eq!(svd_strat2, SVDStrategy::Fast); // 0.9e-8 < 1e-15 is false, so Fast
+
+        println!("1e-8: twork={:?}, safe_eps={}, svd_strat={:?}", twork1, safe_eps1, svd_strat1);
+        println!("0.9e-8: twork={:?}, safe_eps={}, svd_strat={:?}", twork2, safe_eps2, svd_strat2);
+    }
+
+    #[test]
+    fn test_safe_epsilon_nan_handling() {
+        // Test NaN handling
+        let (safe_eps, twork, svd_strat) = safe_epsilon(f64::NAN, TworkType::Auto, SVDStrategy::Auto);
+        assert_eq!(twork, TworkType::Float64X2); // NaN should trigger FLOAT64X2
+        assert_eq!(safe_eps, 1e-15);
+        assert_eq!(svd_strat, SVDStrategy::Fast); // NaN comparison should be false
+    }
+
+    #[test]
+    fn test_safe_epsilon_negative_panic() {
+        // Test negative epsilon panic
+        let result = std::panic::catch_unwind(|| {
+            safe_epsilon(-1.0, TworkType::Auto, SVDStrategy::Auto);
+        });
+        assert!(result.is_err(), "Should panic for negative epsilon");
+    }
+
+    #[test]
+    fn test_safe_epsilon_explicit_types() {
+        // Test explicit TworkType usage
+        let (safe_eps1, twork1, _) = safe_epsilon(1e-6, TworkType::Float64, SVDStrategy::Auto);
+        assert_eq!(twork1, TworkType::Float64);
+        assert_eq!(safe_eps1, 1e-8);
+
+        let (safe_eps2, twork2, _) = safe_epsilon(1e-6, TworkType::Float64X2, SVDStrategy::Auto);
+        assert_eq!(twork2, TworkType::Float64X2);
+        assert_eq!(safe_eps2, 1e-15);
     }
 }
