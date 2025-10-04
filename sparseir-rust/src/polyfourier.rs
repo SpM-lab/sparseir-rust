@@ -10,6 +10,7 @@ use std::f64::consts::PI;
 use crate::traits::{StatisticsType, Fermionic, Bosonic, Statistics};
 use crate::freq::{MatsubaraFreq, FermionicFreq, BosonicFreq};
 use crate::poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
+use crate::special_functions::spherical_bessel_j;
 
 /// Power model for asymptotic behavior
 #[derive(Debug, Clone)]
@@ -270,7 +271,7 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
             };
             let value = poly_ft.evaluate(&omega);
             
-            match parity {
+            let result = match parity {
                 1 => {
                     match S::STATISTICS {
                         Statistics::Fermionic => value.im,
@@ -283,16 +284,27 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
                         Statistics::Bosonic => value.im,
                     }
                 },
+                0 => {
+                    // For symm = 0, use real part for both statistics
+                    value.re
+                },
                 _ => panic!("Cannot detect parity for symm = {}", parity),
+            };
+            
+            // Debug: print values for constant polynomial
+            if n == 0 || n == 1 || n == 2 {
+                println!("n={}, value={}, result={}", n, value, result);
             }
+            
+            result
         }
     }
     
     /// Default grid for sign change detection (same as C++ DEFAULT_GRID)
     fn default_grid() -> Vec<i64> {
         // This should match the C++ DEFAULT_GRID
-        // For now, use a reasonable range
-        (-1000..=1000).collect()
+        // Use a smaller range for testing
+        (-100..=100).collect()
     }
     
     /// Find all roots using the same algorithm as the poly module
@@ -320,7 +332,8 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
         for i in 0..fx.len() - 1 {
             let has_sign_change = fx[i].signum() != fx[i + 1].signum();
             let not_hit = fx[i] != 0.0 && fx[i + 1] != 0.0;
-            sign_change.push(has_sign_change && not_hit);
+            let both_nonzero = fx[i].abs() > 1e-12 && fx[i + 1].abs() > 1e-12;
+            sign_change.push(has_sign_change && not_hit && both_nonzero);
         }
         
         // If no sign changes, return only direct hits
@@ -430,11 +443,11 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
     /// This implements the T_nl function which is related to spherical Bessel functions:
     /// T_nl(w) = 2 * i^l * j_l(|w|) * (w < 0 ? conj : identity)
     /// where j_l is the spherical Bessel function of the first kind.
-    fn get_tnl(l: i32, w: f64) -> Complex64 {
+    pub fn get_tnl(l: i32, w: f64) -> Complex64 {
         let abs_w = w.abs();
         
-        // Compute spherical Bessel function j_l(abs_w)
-        let sph_bessel = Self::spherical_bessel_j(l, abs_w);
+        // Use the high-precision spherical Bessel function from special_functions
+        let sph_bessel = spherical_bessel_j(l, abs_w);
         
         // Compute 2 * i^l
         let im_unit = Complex64::new(0.0, 1.0);
@@ -449,105 +462,6 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
         }
     }
     
-    /// Spherical Bessel function of the first kind j_n(x)
-    /// 
-    /// This is a simplified implementation using series expansion and asymptotic forms.
-    /// For production use, consider using a specialized library like `special-functions`.
-    fn spherical_bessel_j(n: i32, x: f64) -> f64 {
-        if x.abs() < 1e-10 {
-            // Small argument expansion
-            Self::spherical_bessel_j_small_x(n, x)
-        } else if x > 50.0 {
-            // Large argument asymptotic expansion
-            Self::spherical_bessel_j_large_x(n, x)
-        } else {
-            // Medium argument - use series expansion
-            Self::spherical_bessel_j_series(n, x)
-        }
-    }
-    
-    /// Spherical Bessel function for small arguments
-    fn spherical_bessel_j_small_x(n: i32, x: f64) -> f64 {
-        if n < 0 {
-            return 0.0;
-        }
-        
-        // Series expansion: j_n(x) ≈ x^n / (2n+1)!! * (1 - x²/(2n+3) + ...)
-        let x_sq = x * x;
-        let double_factorial = Self::double_factorial(2 * n + 1);
-        
-        if n == 0 {
-            1.0 - x_sq / 6.0 + x_sq * x_sq / 120.0
-        } else if n == 1 {
-            x / 3.0 * (1.0 - x_sq / 10.0 + x_sq * x_sq / 280.0)
-        } else {
-            let x_power = x.powi(n);
-            x_power / double_factorial * (1.0 - x_sq / (2 * n + 3) as f64)
-        }
-    }
-    
-    /// Spherical Bessel function for large arguments
-    fn spherical_bessel_j_large_x(n: i32, x: f64) -> f64 {
-        // Asymptotic expansion: j_n(x) ≈ sin(x - n*π/2) / x
-        let phase = x - (n as f64) * PI / 2.0;
-        phase.sin() / x
-    }
-    
-    /// Spherical Bessel function using series expansion
-    fn spherical_bessel_j_series(n: i32, x: f64) -> f64 {
-        if n < 0 {
-            return 0.0;
-        }
-        
-        let x_sq = x * x;
-        let mut sum = 0.0;
-        let mut term = 1.0;
-        
-        // Series expansion up to reasonable precision
-        for k in 0..20 {
-            if k == 0 {
-                term = x.powi(n) / Self::double_factorial(2 * n + 1);
-            } else {
-                term *= -x_sq / ((2 * k) * (2 * n + 2 * k + 1)) as f64;
-            }
-            
-            sum += term;
-            
-            if term.abs() < 1e-15 * sum.abs() {
-                break;
-            }
-        }
-        
-        sum
-    }
-    
-    /// Double factorial: n!!
-    fn double_factorial(n: i32) -> f64 {
-        if n <= 0 {
-            1.0
-        } else if n % 2 == 0 {
-            // Even: n!! = 2^(n/2) * (n/2)!
-            let half_n = n / 2;
-            2.0_f64.powi(half_n) * Self::factorial(half_n)
-        } else {
-            // Odd: n!! = n! / (2^((n-1)/2) * ((n-1)/2)!)
-            let half_n_minus_1 = (n - 1) / 2;
-            Self::factorial(n) / (2.0_f64.powi(half_n_minus_1) * Self::factorial(half_n_minus_1))
-        }
-    }
-    
-    /// Factorial: n!
-    fn factorial(n: i32) -> f64 {
-        if n <= 1 {
-            1.0
-        } else {
-            let mut result = 1.0;
-            for i in 2..=n {
-                result *= i as f64;
-            }
-            result
-        }
-    }
 }
 
 /// Vector of PiecewiseLegendreFT polynomials

@@ -11,6 +11,7 @@ pub mod gauss;
 pub mod numeric;
 pub mod freq;
 pub mod polyfourier;
+pub mod special_functions;
 
 // Re-export commonly used types and traits
 pub use traits::{Statistics, StatisticsType, Fermionic, Bosonic, StatisticsMarker};
