@@ -262,7 +262,17 @@ pub fn spherical_bessel_j(n: i32, x: f64) -> f64 {
         panic!("sphericalBesselJ requires non-negative x");
     }
     
-    spherical_bessel_j_positive_args(n, x)
+    // Handle negative orders: j_{-n}(x) = (-1)^n * j_n(x)
+    if n < 0 {
+        let result = spherical_bessel_j_positive_args(-n, x);
+        if n % 2 == 0 {
+            result
+        } else {
+            -result
+        }
+    } else {
+        spherical_bessel_j_positive_args(n, x)
+    }
 }
 
 #[cfg(test)]
@@ -456,10 +466,13 @@ mod tests {
 
     #[test]
     fn test_spherical_bessel_j_negative_orders() {
-        // Test behavior for negative orders (should be zero or error)
+        // Test behavior for negative orders: j_{-n}(x) = (-1)^n * j_n(x)
         for n in -5..0 {
-            let result = spherical_bessel_j(n, 1.0);
-            assert!(result.abs() < 1e-15, "j_{}(1.0) should be 0 for negative n, got {}", n, result);
+            let result_neg = spherical_bessel_j(n, 1.0);
+            let result_pos = spherical_bessel_j(-n, 1.0);
+            let expected = if n % 2 == 0 { result_pos } else { -result_pos };
+            assert!((result_neg - expected).abs() < 1e-15, 
+                "j_{}(1.0) should be {} for negative n, got {}", n, expected, result_neg);
         }
     }
 

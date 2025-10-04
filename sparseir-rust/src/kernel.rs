@@ -15,7 +15,7 @@
 //! function ρ(y) into the scaled version ρ'(y) used in the integral equation.
 
 use twofloat::TwoFloat;
-use crate::traits::{StatisticsType, Statistics};
+use crate::traits::{StatisticsType, Statistics, Fermionic, Bosonic};
 use crate::gauss::Rule;
 use crate::numeric::CustomNumeric;
 use ndarray::Array2;
@@ -599,7 +599,13 @@ impl<InnerKernel: KernelProperties + AbstractKernel> KernelProperties for Reduce
         // For now, create a dummy LogisticKernel to get hints
         // TODO: Implement proper ReducedSVEHints that can be cloned
         let dummy_kernel = LogisticKernel::new(self.inner_kernel.lambda());
-        dummy_kernel.sve_hints(epsilon)
+        let hints = dummy_kernel.sve_hints(epsilon);
+        
+        // Adjust segments for reduced kernel range [0, xmax] and [0, ymax]
+        // For now, just use the original hints as the structure doesn't store segments directly
+        // TODO: Implement proper segment adjustment when LogisticSVEHints is refactored
+        
+        hints
     }
 }
 
@@ -676,11 +682,11 @@ mod tests {
         
         // Test bosonic weight
         let w_bose = kernel.weight::<Bosonic>(beta, omega);
-        let expected_w_bose = 1.0 / (0.5 * beta * omega).tanh();
+        let expected_w_bose = 1.0 / (0.5_f64 * beta * omega).tanh();
         assert!((w_bose - expected_w_bose).abs() < 1e-14);
         
         let inv_w_bose = kernel.inv_weight::<Bosonic>(beta, omega);
-        let expected_inv_w_bose = (0.5 * beta * omega).tanh();
+        let expected_inv_w_bose = (0.5_f64 * beta * omega).tanh();
         assert!((inv_w_bose - expected_inv_w_bose).abs() < 1e-14);
     }
     
@@ -818,7 +824,7 @@ mod tests {
         assert_eq!(w_fermi, 1.0);
         
         let w_bose = reduced_kernel.weight::<Bosonic>(beta, omega);
-        let expected_w_bose = 1.0 / (0.5 * beta * omega).tanh();
+        let expected_w_bose = 1.0 / (0.5_f64 * beta * omega).tanh();
         assert!((w_bose - expected_w_bose).abs() < 1e-14);
     }
     
@@ -843,11 +849,11 @@ mod tests {
         
         // Segments should be sorted
         let mut sorted_x = segments_x.clone();
-        sorted_x.sort_by(|a, b| a.partial_cmp(b));
+        sorted_x.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         assert_eq!(segments_x, sorted_x);
         
         let mut sorted_y = segments_y.clone();
-        sorted_y.sort_by(|a, b| a.partial_cmp(b));
+        sorted_y.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         assert_eq!(segments_y, sorted_y);
     }
     
@@ -864,7 +870,7 @@ mod tests {
         let nsvals = hints.nsvals();
         let ngauss = hints.ngauss();
         
-        // For reduced kernels, segments should be non-negative
+        // For reduced kernels, segments should be non-negative (absolute values)
         assert!(segments_x.iter().all(|&x| x >= 0.0));
         assert!(segments_y.iter().all(|&y| y >= 0.0));
         

@@ -3,7 +3,7 @@
 //! This module provides functionality for computing the singular value expansion
 //! of integral kernels, which is the core of the sparseir algorithm.
 
-use ndarray::{Array2, Array1};
+use ndarray::{Array2, Array1, Array3};
 use crate::{
     poly::{PiecewiseLegendrePolyVector, PiecewiseLegendrePoly},
     kernel::{AbstractKernel, KernelProperties, SVEHints},
@@ -117,16 +117,16 @@ fn compute_svd_f64_xprec<T: CustomNumeric>(matrix: &Array2<T>) -> (Array2<T>, Ar
     // Convert to f64 matrix for xprec-svd
     let matrix_f64: Array2<f64> = matrix.map(|&x| x.to_f64());
     
-    // Compute truncated SVD using xprec-svd with high tolerance
-    let rtol = 1e-15; // High precision tolerance
+    // Compute truncated SVD using xprec-svd with relaxed tolerance
+    let rtol = 1e-12; // Relaxed tolerance to avoid over-truncation
     let result = tsvd_f64(&matrix_f64, rtol).expect("SVD computation failed");
     
     // Convert results back to T type
     let u = result.u.map(|&x| <T as CustomNumeric>::from_f64(x));
     let s = result.s.map(|&x| <T as CustomNumeric>::from_f64(x));
-    let vt = result.v.map(|&x| <T as CustomNumeric>::from_f64(x));
+    let v = result.v.map(|&x| <T as CustomNumeric>::from_f64(x));  // v is already the right singular vectors
     
-    (u, s, vt)
+    (u, s, v)
 }
 
 /// Compute SVD for TwoFloat using xprec-svd
@@ -141,9 +141,9 @@ fn compute_svd_twofloat_xprec<T: CustomNumeric>(matrix: &Array2<T>) -> (Array2<T
     // Convert TwoFloatPrecision results back to T
     let u = result.u.map(|&x| <T as CustomNumeric>::from_f64(x.to_f64()));
     let s = result.s.map(|&x| <T as CustomNumeric>::from_f64(x.to_f64()));
-    let vt = result.v.map(|&x| <T as CustomNumeric>::from_f64(x.to_f64()));
+    let v = result.v.map(|&x| <T as CustomNumeric>::from_f64(x.to_f64()));  // v is already the right singular vectors
     
-    (u, s, vt)
+    (u, s, v)
 }
 
 /// Truncate SVD results based on cutoff and maximum size
@@ -177,7 +177,7 @@ pub fn truncate<T: CustomNumeric>(
         // Truncate
         truncated_u.push(u.slice(ndarray::s![.., ..cut]).to_owned());
         truncated_s.push(s.slice(ndarray::s![..cut]).to_owned());
-        truncated_v.push(v.slice(ndarray::s![..cut, ..]).to_owned());
+        truncated_v.push(v.slice(ndarray::s![.., ..cut]).to_owned());
     }
     
     (truncated_u, truncated_s, truncated_v)
@@ -259,7 +259,7 @@ where
     // Compute discretized matrices
     let matrices = sve.matrices();
     
-    // Compute SVD for each matrix
+    // Compute SVD for each matrix using xprec-svd
     let mut u_list = Vec::new();
     let mut s_list = Vec::new();
     let mut v_list = Vec::new();
@@ -403,20 +403,52 @@ impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: Abstrac
     ) -> Vec<PiecewiseLegendrePoly> {
         let mut polynomials = Vec::new();
         
-        for col in 0..svd_matrix.ncols() {
-            let coeffs = svd_matrix.column(col).to_owned();
+        // Calculate dimensions for 3D tensor reshaping
+        let n_gauss = self.gauss_x.gauss_x.x.len() / (segments.len() - 1);  // Total points / segments = points per segment
+        let n_segments = segments.len() - 1;  // segments contains n_segments + 1 boundary points
+        let n_singular_values = svd_matrix.ncols();
+        
+        // Validate dimensions
+        // svd_matrix can be either U (Left singular vectors) or V (Right singular vectors)
+        // For U: (n_gauss * n_segments, n_singular_values)
+        // For V: (n_gauss * n_segments, n_singular_values) - but this depends on the kernel structure
+        let expected_rows = n_gauss * n_segments;
+        // For now, accept any dimensions that make sense
+        // TODO: Implement proper dimension validation based on kernel type
+        
+        // Create 3D tensor: (n_gauss, n_segments, n_singular_values)
+        let mut tensor_3d = Array3::<f64>::zeros((n_gauss, n_segments, n_singular_values));
+        
+        // Copy elements from 2D matrix to 3D tensor
+        // Following C++ implementation: u_x(i, j, k) = u_x_(j * n_gauss + i, k)
+        for i in 0..n_gauss {
+            for j in 0..n_segments {
+                for k in 0..n_singular_values {
+                    let row_index = j * n_gauss + i;  // C++ indexing: j * n_gauss + i
+                    tensor_3d[[i, j, k]] = svd_matrix[[row_index, k]].to_f64();
+                }
+            }
+        }
+        
+        // Create polynomials from 3D tensor
+        for k in 0..n_singular_values {
+            let mut coeffs_2d = Array2::<f64>::zeros((n_segments, n_segments));  // n_segments列使用
             
-            // Convert coefficients to f64
-            let coeffs_f64 = coeffs.map(|&x| x.to_f64());
+            // Extract coefficients for this singular value
+            for j in 0..n_segments {
+                // Use the first gauss point for each segment (or average if needed)
+                coeffs_2d[[j, 0]] = tensor_3d[[0, j, k]];
+            }
             
-            // Create polynomial
-            let coeffs_2d = coeffs_f64.clone().into_shape((coeffs_f64.len(), 1)).unwrap().to_owned();
+            // Create knots from segments
+            let knots: Vec<f64> = segments.iter().map(|&x| x.to_f64()).collect();
+            
             let poly = PiecewiseLegendrePoly::new(
                 coeffs_2d,
-                segments.iter().map(|&x| x.to_f64()).collect(),
+                knots,
                 0,
                 None,
-                col as i32,
+                k as i32,
             );
             
             polynomials.push(poly);
@@ -435,8 +467,33 @@ impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: Abstrac
             &self.gauss_x.gauss_y,
         );
         
-        // Apply weights (sqrt of Gauss weights)
-        let weighted_matrix = discretized.apply_weights_for_sve();
+        // Apply weights (sqrt of Gauss weights) for SVE
+        // This is equivalent to C++ implementation:
+        // for (int i = 0; i < gauss_x.w.size(); ++i) {
+        //     A.row(i) *= sqrt_impl(gauss_x.w[i]);
+        // }
+        // for (int j = 0; j < gauss_y.w.size(); ++j) {
+        //     A.col(j) *= sqrt_impl(gauss_y.w[j]);
+        // }
+        let mut weighted_matrix = discretized.matrix.clone();
+        
+        // Apply row weights (sqrt of x Gauss weights)
+        for i in 0..self.gauss_x.gauss_x.w.len() {
+            let weight = self.gauss_x.gauss_x.w[i];
+            let sqrt_weight = <T as CustomNumeric>::sqrt(weight);
+            for j in 0..weighted_matrix.ncols() {
+                weighted_matrix[[i, j]] = weighted_matrix[[i, j]] * sqrt_weight;
+            }
+        }
+        
+        // Apply column weights (sqrt of y Gauss weights)
+        for j in 0..self.gauss_x.gauss_y.w.len() {
+            let weight = self.gauss_x.gauss_y.w[j];
+            let sqrt_weight = <T as CustomNumeric>::sqrt(weight);
+            for i in 0..weighted_matrix.nrows() {
+                weighted_matrix[[i, j]] = weighted_matrix[[i, j]] * sqrt_weight;
+            }
+        }
         
         vec![weighted_matrix]
     }
@@ -451,8 +508,29 @@ impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: Abstrac
         let s = &s_list[0];
         let v = &v_list[0];
         
+        
         // Convert singular values to f64
         let s_f64 = s.map(|&x| x.to_f64());
+        
+        // Remove weights from singular vectors (inverse of the weighting applied in matrices())
+        // C++ equivalent: u_x_(i, j) = u(i, j) / sqrt(gauss_x_w[i]);
+        let mut u_unweighted = u.clone();
+        for i in 0..u_unweighted.nrows() {
+            let weight = self.gauss_x.gauss_x.w[i];
+            let sqrt_weight = <T as CustomNumeric>::sqrt(weight);
+            for j in 0..u_unweighted.ncols() {
+                u_unweighted[[i, j]] = u_unweighted[[i, j]] / sqrt_weight;
+            }
+        }
+        
+        let mut v_unweighted = v.clone();
+        for j in 0..v_unweighted.ncols() {
+            let weight = self.gauss_x.gauss_y.w[j];
+            let sqrt_weight = <T as CustomNumeric>::sqrt(weight);
+            for i in 0..v_unweighted.nrows() {
+                v_unweighted[[i, j]] = v_unweighted[[i, j]] / sqrt_weight;
+            }
+        }
         
         // Create polynomial vectors from SVD results
         // Convert T rules to f64 rules for polynomial creation
@@ -469,8 +547,8 @@ impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: Abstrac
             self.gauss_y.gauss_y.b.to_f64(),
         );
         
-        let u_polys = self.svd_to_polynomials(u, &self.segs_x, &gauss_x_f64);
-        let v_polys = self.svd_to_polynomials(v, &self.segs_y, &gauss_y_f64);
+        let u_polys = self.svd_to_polynomials(&u_unweighted, &self.segs_x, &gauss_x_f64);
+        let v_polys = self.svd_to_polynomials(&v_unweighted, &self.segs_y, &gauss_y_f64);
         
         let u_vec = PiecewiseLegendrePolyVector::new(u_polys);
         let v_vec = PiecewiseLegendrePolyVector::new(v_polys);
