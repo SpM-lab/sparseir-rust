@@ -635,7 +635,7 @@ impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: Abstrac
 /// 
 /// Optimized SVE computation for centrosymmetric kernels that can be
 /// block-diagonalized to reduce computational cost.
-pub struct CentrosymmSVE<T: CustomNumeric + Send + Sync, K: AbstractKernel + KernelProperties + Clone, H: SVEHints<T> + Clone> {
+pub struct CentrosymmSVE<T: CustomNumeric + Send + Sync + 'static, K: AbstractKernel + KernelProperties + Clone> {
     /// The centrosymmetric kernel
     #[allow(dead_code)]
     kernel: K,
@@ -646,19 +646,32 @@ pub struct CentrosymmSVE<T: CustomNumeric + Send + Sync, K: AbstractKernel + Ker
     #[allow(dead_code)]
     n_gauss: usize,
     /// Even symmetry SVE
-    even_sve: SamplingSVE<T, K, H>,
+    even_sve: SamplingSVE<T, crate::kernel::SymmetrizedKernel<K>, crate::kernel::ReducedSVEHintsWrapper<T>>,
     /// Odd symmetry SVE
     #[allow(dead_code)]
-    odd_sve: SamplingSVE<T, K, H>,
+    odd_sve: SamplingSVE<T, crate::kernel::SymmetrizedKernel<K>, crate::kernel::ReducedSVEHintsWrapper<T>>,
 }
 
-impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: AbstractKernel + KernelProperties + Clone, H: SVEHints<T> + Clone> CentrosymmSVE<T, K, H> {
+impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive + 'static, K: AbstractKernel + KernelProperties + Clone> CentrosymmSVE<T, K> 
+where 
+    K::SVEHintsType<T>: SVEHints<T> + Clone,
+    crate::kernel::ReducedSVEHintsWrapper<T>: SVEHints<T> + Clone,
+{
     /// Create a new CentrosymmSVE
-    pub fn new(kernel: K, hints: H, epsilon: f64, n_gauss: Option<usize>) -> Self {
-        // For now, create two identical SamplingSVE instances
-        // TODO: Implement proper centrosymmetric decomposition
-        let even_sve = SamplingSVE::new(kernel.clone(), hints.clone(), epsilon, n_gauss);
-        let odd_sve = SamplingSVE::new(kernel.clone(), hints.clone(), epsilon, n_gauss);
+    pub fn new(kernel: K, _hints: K::SVEHintsType<T>, epsilon: f64, n_gauss: Option<usize>) -> Self {
+        use crate::kernel::SymmetrizedKernel;
+        
+        // Create even and odd symmetrized kernels
+        let even_kernel = SymmetrizedKernel::new(kernel.clone(), 1);  // +1 for even
+        let odd_kernel = SymmetrizedKernel::new(kernel.clone(), -1);  // -1 for odd
+        
+        // Create SVE hints for symmetrized kernels
+        let even_hints = even_kernel.sve_hints(epsilon);
+        let odd_hints = odd_kernel.sve_hints(epsilon);
+        
+        // Create SamplingSVE instances for even and odd components
+        let even_sve = SamplingSVE::new(even_kernel, even_hints, epsilon, n_gauss);
+        let odd_sve = SamplingSVE::new(odd_kernel, odd_hints, epsilon, n_gauss);
         
         Self {
             kernel,
@@ -670,11 +683,17 @@ impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: Abstrac
     }
 }
 
-impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: AbstractKernel + KernelProperties + Clone, H: SVEHints<T> + Clone> SVEStrategy<T> for CentrosymmSVE<T, K, H> {
+impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive + 'static, K: AbstractKernel + KernelProperties + Clone> SVEStrategy<T> for CentrosymmSVE<T, K> 
+where 
+    K::SVEHintsType<T>: SVEHints<T> + Clone,
+    crate::kernel::ReducedSVEHintsWrapper<T>: SVEHints<T> + Clone,
+{
     fn matrices(&self) -> Vec<Array2<T>> {
-        // For now, just return even matrices
-        // TODO: Implement proper centrosymmetric decomposition
-        self.even_sve.matrices()
+        // Return both even and odd matrices
+        let even_matrices = self.even_sve.matrices();
+        let odd_matrices = self.odd_sve.matrices();
+        
+        vec![even_matrices[0].clone(), odd_matrices[0].clone()]
     }
     
     fn postprocess(
@@ -683,9 +702,117 @@ impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: Abstrac
         s_list: Vec<Array1<T>>,
         v_list: Vec<Array2<T>>,
     ) -> SVEResult {
-        // For now, just use even postprocessing
-        // TODO: Implement proper centrosymmetric postprocessing
-        self.even_sve.postprocess(u_list, s_list, v_list)
+        // Separate even and odd results
+        let result_even = self.even_sve.postprocess(
+            vec![u_list[0].clone()], 
+            vec![s_list[0].clone()], 
+            vec![v_list[0].clone()]
+        );
+        let result_odd = self.odd_sve.postprocess(
+            vec![u_list[1].clone()], 
+            vec![s_list[1].clone()], 
+            vec![v_list[1].clone()]
+        );
+        
+        // Merge singular values and create signs
+        let mut s_merged = result_even.s.to_vec();
+        s_merged.extend(result_odd.s.to_vec());
+        
+        // Create signs: +1 for even, -1 for odd
+        let mut signs = vec![1.0; result_even.s.len()];
+        signs.extend(vec![-1.0; result_odd.s.len()]);
+        
+        // Sort by singular values (descending order)
+        let mut indices: Vec<usize> = (0..s_merged.len()).collect();
+        indices.sort_by(|&a, &b| s_merged[b].partial_cmp(&s_merged[a]).unwrap());
+        
+        // Get full segments for complete domain from the original LogisticKernel
+        // This matches C++ implementation: sve_hints<T>(kernel, epsilon)
+        use crate::kernel::LogisticKernel;
+        let original_kernel = LogisticKernel::new(self.kernel.lambda());
+        let full_hints = original_kernel.sve_hints::<f64>(self.epsilon);
+        let segs_x_full = full_hints.segments_x();
+        let segs_y_full = full_hints.segments_y();
+        
+        
+        // Create poly_flip_x: alternating signs for Legendre polynomials
+        let n_poly_coeffs = result_even.u.polyvec[0].data.shape()[0];
+        let mut poly_flip_x = Vec::new();
+        for i in 0..n_poly_coeffs {
+            poly_flip_x.push(if i % 2 == 0 { 1.0 } else { -1.0 });
+        }
+        
+        // Create complete singular functions
+        let mut u_complete = Vec::new();
+        let mut v_complete = Vec::new();
+        let mut s_sorted = Vec::new();
+        
+        for &idx in &indices {
+            let sign = signs[idx];
+            
+            // Get the original polynomial (from reduced domain)
+            let u_poly = if idx < result_even.u.polyvec.len() {
+                &result_even.u.polyvec[idx]
+            } else {
+                &result_odd.u.polyvec[idx - result_even.u.polyvec.len()]
+            };
+            
+            let v_poly = if idx < result_even.v.polyvec.len() {
+                &result_even.v.polyvec[idx]
+            } else {
+                &result_odd.v.polyvec[idx - result_even.v.polyvec.len()]
+            };
+            
+            // Normalize by 1/sqrt(2) and convert to f64
+            let u_pos_data = u_poly.data.mapv(|x| x.to_f64() / 2.0_f64.sqrt());
+            let v_pos_data = v_poly.data.mapv(|x| x.to_f64() / 2.0_f64.sqrt());
+            
+            
+            // Create negative part by reversing and applying signs
+            let mut u_neg_data = u_pos_data.clone();
+            u_neg_data = u_neg_data.slice(ndarray::s![..;-1, ..]).to_owned();
+            for (i, &flip_sign) in poly_flip_x.iter().enumerate() {
+                let coeff_sign = flip_sign * sign;
+                u_neg_data.row_mut(i).mapv_inplace(|x| x * coeff_sign);
+            }
+            
+            let mut v_neg_data = v_pos_data.clone();
+            v_neg_data = v_neg_data.slice(ndarray::s![..;-1, ..]).to_owned();
+            for (i, &flip_sign) in poly_flip_x.iter().enumerate() {
+                let coeff_sign = flip_sign * sign;
+                v_neg_data.row_mut(i).mapv_inplace(|x| x * coeff_sign);
+            }
+            
+            // Combine positive and negative parts
+            let u_combined = ndarray::concatenate![ndarray::Axis(1), u_neg_data, u_pos_data];
+            let v_combined = ndarray::concatenate![ndarray::Axis(1), v_neg_data, v_pos_data];
+            
+            // Create complete polynomial with full segments
+            let u_complete_poly = crate::poly::PiecewiseLegendrePoly::new(
+                u_combined,
+                segs_x_full.clone(),
+                u_poly.polyorder as i32,
+                None, // delta_x
+                0     // symm (no symmetry)
+            );
+            let v_complete_poly = crate::poly::PiecewiseLegendrePoly::new(
+                v_combined,
+                segs_y_full.clone(),
+                v_poly.polyorder as i32,
+                None, // delta_x
+                0     // symm (no symmetry)
+            );
+            
+            u_complete.push(u_complete_poly);
+            v_complete.push(v_complete_poly);
+            s_sorted.push(s_merged[idx]);
+        }
+        
+        let u_final = crate::poly::PiecewiseLegendrePolyVector::new(u_complete);
+        let v_final = crate::poly::PiecewiseLegendrePolyVector::new(v_complete);
+        let s_final = ndarray::Array1::from_vec(s_sorted);
+        
+        SVEResult::new(u_final, s_final, v_final, self.epsilon)
     }
 }
 

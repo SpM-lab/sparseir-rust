@@ -18,6 +18,7 @@ pub use utils::{norm_2, norm_frobenius, norm_inf, norm_max, permutation_matrix};
 // Re-export common types
 pub use ndarray::{Array1, Array2};
 
+
 // Type aliases for convenience
 pub type Matrix = Array2<f64>;
 pub type Vector = Array1<f64>;

@@ -1,0 +1,8 @@
+[package]
+name = "test_ndarray_linalg"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ndarray = "0.15"
+ndarray-linalg = { version = "0.16", features = ["netlib"] }

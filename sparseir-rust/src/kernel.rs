@@ -354,23 +354,64 @@ where
     }
     
     fn segments_y(&self) -> Vec<T> {
-        // Simplified implementation
+        // C++ equivalent implementation from SVEHintsLogistic::segments_y
         let nzeros = std::cmp::max(
             (20.0 * self.kernel.lambda().log10()).round() as usize, 2
         );
         
-        let mut segments = Vec::with_capacity(2 * nzeros + 3);
-        segments.push(<T as CustomNumeric>::from_f64(-1.0));
+        // Initial differences (from C++ implementation)
+        let mut diffs = vec![
+            0.01523, 0.03314, 0.04848, 0.05987, 0.06703,
+            0.07028, 0.07030, 0.06791, 0.06391, 0.05896,
+            0.05358, 0.04814, 0.04288, 0.03795, 0.03342,
+            0.02932, 0.02565, 0.02239, 0.01951, 0.01699
+        ];
         
-        for i in 1..=nzeros {
-            let pos = <T as CustomNumeric>::from_f64(0.05 * i as f64);
-            let neg = <T as CustomNumeric>::from_f64(-0.05 * i as f64);
-            segments.push(neg);
-            segments.push(pos);
+        // Truncate diffs if necessary
+        if nzeros < diffs.len() {
+            diffs.truncate(nzeros);
         }
         
-        segments.push(<T as CustomNumeric>::from_f64(1.0));
-        segments.sort_by(|a, b| a.to_f64().partial_cmp(&b.to_f64()).unwrap_or(std::cmp::Ordering::Equal));
+        // Calculate trailing differences
+        for i in 20..nzeros {
+            let x = 0.141 * i as f64;
+            diffs.push(0.25 * (-x).exp());
+        }
+        
+        // Calculate cumulative sum of diffs
+        let mut zeros = Vec::with_capacity(nzeros);
+        zeros.push(diffs[0]);
+        for i in 1..nzeros {
+            zeros.push(zeros[i - 1] + diffs[i]);
+        }
+        
+        // Normalize zeros
+        let last_zero = zeros[nzeros - 1];
+        for i in 0..nzeros {
+            zeros[i] /= last_zero;
+        }
+        zeros.pop(); // Remove last element
+        
+        // Updated nzeros
+        let nzeros = zeros.len();
+        
+        // Adjust zeros
+        for i in 0..nzeros {
+            zeros[i] -= 1.0;
+        }
+        
+        // Create the final segments vector (2 * nzeros + 3 elements)
+        let mut segments = vec![<T as CustomNumeric>::from_f64(0.0); 2 * nzeros + 3];
+        
+        for i in 0..nzeros {
+            segments[1 + i] = <T as CustomNumeric>::from_f64(zeros[i]);
+            segments[1 + nzeros + 1 + i] = <T as CustomNumeric>::from_f64(-zeros[nzeros - i - 1]);
+        }
+        
+        segments[0] = <T as CustomNumeric>::from_f64(-1.0);
+        segments[1 + nzeros] = <T as CustomNumeric>::from_f64(0.0);
+        segments[2 * nzeros + 2] = <T as CustomNumeric>::from_f64(1.0);
+        
         segments
     }
     
@@ -460,6 +501,66 @@ where
     
     fn ngauss(&self) -> usize {
         if self.epsilon >= 1e-8 { 10 } else { 16 }
+    }
+}
+
+/// Function to validate symmetry and extract the positive half of segments
+/// This is equivalent to C++ symm_segments function
+fn symm_segments<T: CustomNumeric + Copy + Debug + Send + Sync>(segments: &[T]) -> Vec<T> {
+    let n = segments.len();
+    
+    // Check if the vector is symmetric
+    for i in 0..n / 2 {
+        let left = segments[i].to_f64();
+        let right = segments[n - i - 1].to_f64();
+        if (left + right).abs() > f64::EPSILON {
+            panic!("segments must be symmetric: segments[{}] = {}, segments[{}] = {}", 
+                   i, left, n - i - 1, right);
+        }
+    }
+    
+    // Extract the second half of the vector starting from the middle
+    let mid = n / 2;
+    let mut xpos: Vec<T> = segments[mid..].to_vec();
+    
+    // Ensure the first element of xpos is zero; if not, prepend zero
+    if xpos.is_empty() || xpos[0].to_f64().abs() > f64::EPSILON {
+        xpos.insert(0, <T as CustomNumeric>::from_f64(0.0));
+    }
+    
+    xpos
+}
+
+/// SVE hints wrapper that implements reduced domain logic for symmetrized kernels
+/// This is equivalent to C++ SVEHintsReduced class
+#[derive(Debug, Clone)]
+pub struct ReducedSVEHintsWrapper<T> {
+    inner: LogisticSVEHints<T>,
+}
+
+impl<T: CustomNumeric + Copy + Debug + Send + Sync> ReducedSVEHintsWrapper<T> {
+    pub fn new(inner: LogisticSVEHints<T>) -> Self {
+        Self { inner }
+    }
+}
+
+impl<T: CustomNumeric + Copy + Debug + Send + Sync> SVEHints<T> for ReducedSVEHintsWrapper<T> {
+    fn segments_x(&self) -> Vec<T> {
+        let full_segments = self.inner.segments_x();
+        symm_segments(&full_segments)
+    }
+    
+    fn segments_y(&self) -> Vec<T> {
+        let full_segments = self.inner.segments_y();
+        symm_segments(&full_segments)
+    }
+    
+    fn nsvals(&self) -> usize {
+        (self.inner.nsvals() + 1) / 2
+    }
+    
+    fn ngauss(&self) -> usize {
+        self.inner.ngauss()
     }
 }
 
@@ -1084,4 +1185,155 @@ pub fn matrix_from_gauss_parallel<T: CustomNumeric + ToPrimitive + num_traits::Z
     }
     
     DiscretizedKernel::new(result, gauss_x.clone(), gauss_y.clone())
+}
+
+/// Test kernel that returns the same values as LogisticKernel but is not centrosymmetric
+/// This is useful for testing CentrosymmSVE vs SamplingSVE equivalence
+#[derive(Debug, Clone)]
+pub struct TestNonCentrosymmKernel {
+    pub lambda: f64,
+}
+
+impl TestNonCentrosymmKernel {
+    pub fn new(lambda: f64) -> Self {
+        Self { lambda }
+    }
+}
+
+impl KernelProperties for TestNonCentrosymmKernel {
+    type SVEHintsType<T: CustomNumeric + Copy + Debug + Send + Sync + 'static> = LogisticSVEHints<T>;
+    
+    fn is_centrosymmetric(&self) -> bool {
+        false  // Key difference: not centrosymmetric
+    }
+    
+    fn ypower(&self) -> i32 {
+        0
+    }
+    
+    fn xrange(&self) -> (f64, f64) {
+        (-1.0, 1.0)
+    }
+    
+    fn yrange(&self) -> (f64, f64) {
+        (-1.0, 1.0)
+    }
+    
+    
+    fn weight<S: StatisticsType + 'static>(&self, _beta: f64, _omega: f64) -> f64 {
+        // Same weight function as LogisticKernel
+        1.0
+    }
+    
+    fn inv_weight<S: StatisticsType + 'static>(&self, _beta: f64, _omega: f64) -> f64 {
+        // Same inverse weight function as LogisticKernel
+        1.0
+    }
+    
+    fn sve_hints<T: CustomNumeric + Copy + Debug + Send + Sync + 'static>(&self, epsilon: f64) -> Self::SVEHintsType<T> {
+        // Use the same SVE hints as LogisticKernel
+        LogisticSVEHints::<T>::new(LogisticKernel::new(self.lambda), epsilon)
+    }
+}
+
+impl AbstractKernel for TestNonCentrosymmKernel {
+    fn compute(&self, x: TwoFloat, y: TwoFloat) -> TwoFloat {
+        // Delegate to LogisticKernel for the same computation
+        let logistic_kernel = LogisticKernel::new(self.lambda);
+        logistic_kernel.compute(x, y)
+    }
+    
+    fn lambda(&self) -> f64 {
+        self.lambda
+    }
+    
+    fn conv_radius(&self) -> f64 {
+        40.0 * self.lambda  // Same as LogisticKernel
+    }
+    
+}
+
+/// Symmetrized kernel wrapper for centrosymmetric decomposition
+#[derive(Debug, Clone)]
+pub struct SymmetrizedKernel<K> {
+    inner: K,
+    sign: i32,  // +1 for even, -1 for odd
+}
+
+impl<K> SymmetrizedKernel<K> {
+    pub fn new(inner: K, sign: i32) -> Self {
+        Self { inner, sign }
+    }
+}
+
+impl<K: AbstractKernel + Clone> AbstractKernel for SymmetrizedKernel<K> {
+    fn compute(&self, x: TwoFloat, y: TwoFloat) -> TwoFloat {
+        // C++ callreduced implementation: K(x, +y) + sign * K(x, -y)
+        let k_plus = self.inner.compute(x, y);
+        let k_minus = self.inner.compute(x, -y);
+        k_plus + TwoFloat::from(self.sign as f64) * k_minus
+    }
+    
+    fn lambda(&self) -> f64 {
+        self.inner.lambda()
+    }
+    
+    fn conv_radius(&self) -> f64 {
+        self.inner.conv_radius()
+    }
+}
+
+impl<K: KernelProperties + AbstractKernel + Clone> KernelProperties for SymmetrizedKernel<K> {
+    type SVEHintsType<T: CustomNumeric + Copy + Debug + Send + Sync + 'static> = ReducedSVEHintsWrapper<T>;
+    
+    fn is_centrosymmetric(&self) -> bool {
+        false  // Symmetrized kernels are not centrosymmetric themselves
+    }
+    
+    fn ypower(&self) -> i32 {
+        self.inner.ypower()
+    }
+    
+    fn xrange(&self) -> (f64, f64) {
+        // For symmetrized kernels, we use the positive range [0, xmax]
+        let (xmin, xmax) = self.inner.xrange();
+        if xmin < 0.0 && xmax > 0.0 {
+            (0.0, xmax)
+        } else {
+            (xmin, xmax)
+        }
+    }
+    
+    fn yrange(&self) -> (f64, f64) {
+        // For symmetrized kernels, we use the positive range [0, ymax]
+        let (ymin, ymax) = self.inner.yrange();
+        if ymin < 0.0 && ymax > 0.0 {
+            (0.0, ymax)
+        } else {
+            (ymin, ymax)
+        }
+    }
+    
+    fn weight<S: StatisticsType + 'static>(&self, beta: f64, omega: f64) -> f64 {
+        self.inner.weight::<S>(beta, omega)
+    }
+    
+    fn inv_weight<S: StatisticsType + 'static>(&self, beta: f64, omega: f64) -> f64 {
+        self.inner.inv_weight::<S>(beta, omega)
+    }
+    
+    fn sve_hints<T: CustomNumeric + Copy + Debug + Send + Sync + 'static>(&self, epsilon: f64) -> Self::SVEHintsType<T> {
+        // For symmetrized kernels, we need to adjust the hints to reflect the symmetry
+        // Use ReducedSVEHints to implement the same algorithm as C++ SVEHintsReduced
+        let inner_hints = self.inner.sve_hints::<T>(epsilon);
+        
+        // For now, we need to create a new LogisticSVEHints from the inner kernel
+        // This is a workaround since we can't directly cast the associated type
+        let logistic_kernel = LogisticKernel::new(self.inner.lambda());
+        let logistic_hints = logistic_kernel.sve_hints::<T>(epsilon);
+        
+        // Create a wrapper that implements the reduced domain logic
+        // This is equivalent to C++ SVEHintsReduced class
+        ReducedSVEHintsWrapper::new(logistic_hints)
+    }
 }

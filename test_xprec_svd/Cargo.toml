@@ -1,0 +1,14 @@
+[package]
+name = "test_xprec_svd"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# xprec-svd依存
+xprec-svd = { path = "../xprec-svd" }
+
+# ndarray依存を追加
+ndarray = "0.15"
+
+# ndarray-linalg依存をコメントアウトしてテスト
+# ndarray-linalg = { version = "0.16", features = ["netlib"] }
