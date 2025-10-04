@@ -565,6 +565,53 @@ fn test_vector_roots() {
 }
 
 #[test]
+fn test_julia_random_data() {
+    // Initialize data and knots as per the C++ test
+    // julia> using StableRNGs
+    // julia> rng = StableRNG(2024)
+    // julia> data = rand(rng, 3, 3)
+    // julia> knots = rand(rng, size(data, 2) + 1) |> sort
+    let data = arr2(&[
+        [0.8177021060277301, 0.7085670484724618, 0.5033588232863977],
+        [0.3804323567786363, 0.7911959541742282, 0.8268504271915096],
+        [0.5425813266814807, 0.38397463704084633, 0.21626598379927042]
+    ]);
+    
+    let knots = vec![0.507134318967235, 0.5766150365607372, 0.7126662232433161, 0.7357313003784003];
+    let l = 3;
+    
+    // Create the PiecewiseLegendrePoly object
+    let poly = PiecewiseLegendrePoly::new(data.clone(), knots.clone(), l, None, 0);
+    
+    // Test that the object is initialized correctly
+    let poly_data = poly.get_data();
+    for i in 0..data.nrows() {
+        for j in 0..data.ncols() {
+            assert!((poly_data[[i, j]] - data[[i, j]]).abs() < 1e-15);
+        }
+    }
+    assert_eq!(poly.get_xmin(), knots[0]);
+    assert_eq!(poly.get_xmax(), knots[knots.len() - 1]);
+    assert!(poly.get_knots().iter().zip(knots.iter()).all(|(a, b)| (a - b).abs() < 1e-15));
+    assert_eq!(poly.get_polyorder(), data.nrows());
+    assert_eq!(poly.get_symm(), 0);
+    
+    // Test evaluation at specific point
+    let x = 0.5328437345518631;
+    let result = poly.evaluate(x);
+    let expected = 2.696073744825952;
+    println!("Julia random data test - x: {}, expected: {}, actual: {}", x, expected, result);
+    assert!((result - expected).abs() < 1e-10);
+    
+    // Test split function (equivalent to C++ split)
+    let (i, tilde_x) = poly.split(x);
+    assert_eq!(i, 0);
+    let expected_tilde_x = -0.25995538114498773;
+    println!("Split - i: {}, expected tilde_x: {}, actual: {}", i, expected_tilde_x, tilde_x);
+    assert!((tilde_x - expected_tilde_x).abs() < 1e-10);
+}
+
+#[test]
 fn test_high_order_polynomial_vector() {
     // Test with high-order polynomials from C++ poly.cxx
     // These are 16th-order polynomials with complex coefficients
