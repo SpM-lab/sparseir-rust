@@ -10,6 +10,7 @@ repository = "https://github.com/sparseir-rust/sparseir-rust"
 # Core linear algebra
 ndarray = "0.15"
 nalgebra = "0.32"
+ndarray-linalg = "0.16"
 
 # Extended precision
 twofloat = "0.2"

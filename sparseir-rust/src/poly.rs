@@ -422,7 +422,7 @@ impl PiecewiseLegendrePoly {
 }
 
 /// Vector of piecewise Legendre polynomials
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PiecewiseLegendrePolyVector {
     /// Individual polynomials
     pub polyvec: Vec<PiecewiseLegendrePoly>,
@@ -438,6 +438,11 @@ impl PiecewiseLegendrePolyVector {
             panic!("Cannot create empty PiecewiseLegendrePolyVector");
         }
         Self { polyvec }
+    }
+
+    /// Get the polynomials
+    pub fn get_polys(&self) -> &[PiecewiseLegendrePoly] {
+        &self.polyvec
     }
     
     /// Constructor with a 3D array, knots, and symmetry vector

@@ -79,6 +79,7 @@ impl CustomNumeric for f64 {
     }
 }
 
+
 /// TwoFloat implementation of CustomNumeric
 impl CustomNumeric for TwoFloat {
     fn from_f64(x: f64) -> Self {
@@ -86,6 +87,7 @@ impl CustomNumeric for TwoFloat {
     }
     
     fn to_f64(self) -> f64 {
+        // TwoFloat can be converted to f64 directly
         self.into()
     }
     

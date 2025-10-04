@@ -126,19 +126,19 @@ pub fn gamma_func(x: f64) -> f64 {
 ///   J_nu(x) = sum_{m=0}^∞ (-1)^m / (m! * Gamma(nu+m+1)) * (x/2)^(2m+nu)
 pub fn cyl_bessel_j(nu: f64, x: f64) -> f64 {
     let eps = f64::EPSILON;
-    let mut sum = 0.0;
+    let mut _sum = 0.0;
     let mut term = (x / 2.0).powf(nu) / gamma_func(nu + 1.0);
-    sum = term;
+    _sum = term;
     
     for m in 1..1000 {
         term *= -(x * x / 4.0) / (m as f64 * (nu + m as f64));
-        sum += term;
-        if term.abs() < sum.abs() * eps {
+        _sum += term;
+        if term.abs() < _sum.abs() * eps {
             break;
         }
     }
     
-    sum
+    _sum
 }
 
 /// Spherical Bessel function j_n(x) using the relation:
@@ -182,7 +182,7 @@ fn bessel_j_ratio_jnu_jnum1(n: f64, x: f64) -> f64 {
     
     for _i in 0..MAX_ITER {
         d = 1.0 / (b - d);
-        a *= (b * d - 1.0);
+        a *= b * d - 1.0;
         h += a;
         b += xinv2;
         
@@ -200,18 +200,18 @@ fn spherical_bessel_y_forward_recurrence(nu: i32, x: f64) -> (f64, f64) {
     let xinv = 1.0 / x;
     let s = x.sin();
     let c = x.cos();
-    let mut sY0 = -c * xinv;
-    let mut sY1 = xinv * (sY0 - s);
+    let mut s_y0 = -c * xinv;
+    let mut s_y1 = xinv * (s_y0 - s);
     let mut nu_start = 1.0;
     
     while nu_start < nu as f64 + 0.5 {
-        let temp = sY1;
-        sY1 = ((2.0 * nu_start + 1.0) * xinv * sY1 - sY0);
-        sY0 = temp;
+        let temp = s_y1;
+        s_y1 = (2.0 * nu_start + 1.0) * xinv * s_y1 - s_y0;
+        s_y0 = temp;
         nu_start += 1.0;
     }
     
-    (sY0, sY1)
+    (s_y0, s_y1)
 }
 
 /// Uses forward recurrence if stable; otherwise uses spherical Bessel y recurrence
@@ -220,24 +220,24 @@ fn spherical_bessel_j_recurrence(nu: i32, x: f64) -> f64 {
         let xinv = 1.0 / x;
         let s = x.sin();
         let c = x.cos();
-        let mut sJ0 = s * xinv;
-        let mut sJ1 = (sJ0 - c) * xinv;
+        let mut s_j0 = s * xinv;
+        let mut s_j1 = (s_j0 - c) * xinv;
         let mut nu_start = 1.0;
         
         while nu_start < nu as f64 + 0.5 {
-            let temp = sJ1;
-            sJ1 = ((2.0 * nu_start + 1.0) * xinv * sJ1 - sJ0);
-            sJ0 = temp;
+            let temp = s_j1;
+            s_j1 = (2.0 * nu_start + 1.0) * xinv * s_j1 - s_j0;
+            s_j0 = temp;
             nu_start += 1.0;
         }
         
-        sJ0
+        s_j0
     } else {
         // For x < nu, use the alternative method
         // This should return j_nu(x), not j_nu-1(x)
-        let (sYnm1, sYn) = spherical_bessel_y_forward_recurrence(nu, x);
+        let (s_ynm1, s_yn) = spherical_bessel_y_forward_recurrence(nu, x);
         let h = bessel_j_ratio_jnu_jnum1(nu as f64 + 1.5, x);
-        1.0 / (x * x * (h * sYnm1 - sYn))
+        1.0 / (x * x * (h * s_ynm1 - s_yn))
     }
 }
 

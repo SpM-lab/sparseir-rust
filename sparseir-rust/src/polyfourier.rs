@@ -4,11 +4,10 @@
 //! polynomials, enabling evaluation in Matsubara frequency domain.
 
 use num_complex::Complex64;
-use ndarray;
 use std::f64::consts::PI;
 
 use crate::traits::{StatisticsType, Fermionic, Bosonic, Statistics};
-use crate::freq::{MatsubaraFreq, FermionicFreq, BosonicFreq};
+use crate::freq::MatsubaraFreq;
 use crate::poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
 use crate::special_functions::spherical_bessel_j;
 

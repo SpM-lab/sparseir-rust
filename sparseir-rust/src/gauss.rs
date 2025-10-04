@@ -76,8 +76,8 @@ where
             w: Array1::from(vec![]),
             x_forward: Array1::from(vec![]),
             x_backward: Array1::from(vec![]),
-            a: T::from_f64(-1.0),
-            b: T::from_f64(1.0),
+            a: <T as CustomNumeric>::from_f64(-1.0),
+            b: <T as CustomNumeric>::from_f64(1.0),
         }
     }
     
@@ -86,8 +86,8 @@ where
     /// Scales and translates the quadrature points and weights to the new interval.
     pub fn reseat(&self, a: T, b: T) -> Self {
         let scaling = (b - a) / (self.b - self.a);
-        let midpoint_old = (self.b + self.a) * T::from_f64(0.5);
-        let midpoint_new = (b + a) * T::from_f64(0.5);
+        let midpoint_old = (self.b + self.a) * <T as CustomNumeric>::from_f64(0.5);
+        let midpoint_new = (b + a) * <T as CustomNumeric>::from_f64(0.5);
         
         // Transform x: scaling * (xi - midpoint_old) + midpoint_new
         let new_x = self.x.mapv(|xi| scaling * (xi - midpoint_old) + midpoint_new);
@@ -215,12 +215,12 @@ where
     where
         U: CustomNumeric + Copy + Debug + std::fmt::Display,
     {
-        let x: Array1<U> = self.x.iter().map(|&xi| U::from_f64(xi.to_f64())).collect();
-        let w: Array1<U> = self.w.iter().map(|&wi| U::from_f64(wi.to_f64())).collect();
-        let x_forward: Array1<U> = self.x_forward.iter().map(|&xi| U::from_f64(xi.to_f64())).collect();
-        let x_backward: Array1<U> = self.x_backward.iter().map(|&xi| U::from_f64(xi.to_f64())).collect();
-        let a = U::from_f64(self.a.to_f64());
-        let b = U::from_f64(self.b.to_f64());
+        let x: Array1<U> = self.x.iter().map(|&xi| <U as CustomNumeric>::from_f64(xi.to_f64())).collect();
+        let w: Array1<U> = self.w.iter().map(|&wi| <U as CustomNumeric>::from_f64(wi.to_f64())).collect();
+        let x_forward: Array1<U> = self.x_forward.iter().map(|&xi| <U as CustomNumeric>::from_f64(xi.to_f64())).collect();
+        let x_backward: Array1<U> = self.x_backward.iter().map(|&xi| <U as CustomNumeric>::from_f64(xi.to_f64())).collect();
+        let a = <U as CustomNumeric>::from_f64(self.a.to_f64());
+        let b = <U as CustomNumeric>::from_f64(self.b.to_f64());
         
         Rule {
             x,
@@ -312,8 +312,8 @@ where
     /// Reseat the rule to a new interval [a, b] (CustomNumeric version).
     pub fn reseat_custom(&self, a: T, b: T) -> Self {
         let scaling = (b - a) / (self.b - self.a);
-        let midpoint_old = (self.b + self.a) * T::from_f64(0.5);
-        let midpoint_new = (b + a) * T::from_f64(0.5);
+        let midpoint_old = (self.b + self.a) * <T as CustomNumeric>::from_f64(0.5);
+        let midpoint_new = (b + a) * <T as CustomNumeric>::from_f64(0.5);
         
         // Transform x: scaling * (xi - midpoint_old) + midpoint_new
         let new_x = self.x.mapv(|xi| scaling * (xi - midpoint_old) + midpoint_new);
@@ -417,8 +417,8 @@ impl Rule<twofloat::TwoFloat> {
     /// Reseat the rule to a new interval [a, b] (TwoFloat version).
     pub fn reseat_twofloat(&self, a: twofloat::TwoFloat, b: twofloat::TwoFloat) -> Self {
         let scaling = (b - a) / (self.b - self.a);
-        let midpoint_old = (self.b + self.a) * twofloat::TwoFloat::from_f64(0.5);
-        let midpoint_new = (b + a) * twofloat::TwoFloat::from_f64(0.5);
+        let midpoint_old = (self.b + self.a) * <twofloat::TwoFloat as CustomNumeric>::from_f64(0.5);
+        let midpoint_new = (b + a) * <twofloat::TwoFloat as CustomNumeric>::from_f64(0.5);
         
         // Transform x: scaling * (xi - midpoint_old) + midpoint_new
         let new_x = self.x.mapv(|xi| scaling * (xi - midpoint_old) + midpoint_new);
@@ -508,7 +508,7 @@ where
     }
     
     if n == 1 {
-        return (vec![T::from_f64(0.0)], vec![T::from_f64(2.0)]);
+        return (vec![<T as CustomNumeric>::from_f64(0.0)], vec![<T as CustomNumeric>::from_f64(2.0)]);
     }
     
     let mut x = Vec::with_capacity(n);
@@ -516,11 +516,11 @@ where
     
     // Use Newton's method to find roots of Legendre polynomial
     let m = (n + 1) / 2;
-    let pi = T::from_f64(std::f64::consts::PI);
+    let pi = <T as CustomNumeric>::from_f64(std::f64::consts::PI);
     
     for i in 0..m {
         // Initial guess using Chebyshev nodes
-        let mut z = (pi * T::from_f64(i as f64 + 0.75) / T::from_f64(n as f64 + 0.5)).cos();
+        let mut z = (pi * <T as CustomNumeric>::from_f64(i as f64 + 0.75) / <T as CustomNumeric>::from_f64(n as f64 + 0.5)).cos();
         
         // Newton's method to refine the root
         for _ in 0..10 {
@@ -533,7 +533,7 @@ where
         
         // Compute weight
         let (_, p1) = legendre_polynomial_and_derivative(n, z);
-        let weight = T::from_f64(2.0) / ((T::from_f64(1.0) - z * z) * p1 * p1);
+        let weight = <T as CustomNumeric>::from_f64(2.0) / ((<T as CustomNumeric>::from_f64(1.0) - z * z) * p1 * p1);
         
         x.push(-z);
         w.push(weight);
@@ -560,25 +560,25 @@ where
     T: CustomNumeric + Copy + Debug + std::fmt::Display,
 {
     if n == 0 {
-        return (T::from_f64(1.0), T::from_f64(0.0));
+        return (<T as CustomNumeric>::from_f64(1.0), <T as CustomNumeric>::from_f64(0.0));
     }
     
     if n == 1 {
-        return (x, T::from_f64(1.0));
+        return (x, <T as CustomNumeric>::from_f64(1.0));
     }
     
-    let mut p0 = T::from_f64(1.0);
+    let mut p0 = <T as CustomNumeric>::from_f64(1.0);
     let mut p1 = x;
-    let mut dp0 = T::from_f64(0.0);
-    let mut dp1 = T::from_f64(1.0);
+    let mut dp0 = <T as CustomNumeric>::from_f64(0.0);
+    let mut dp1 = <T as CustomNumeric>::from_f64(1.0);
     
     for k in 2..=n {
-        let k_f = T::from_f64(k as f64);
-        let k1_f = T::from_f64((k - 1) as f64);
-        let _k2_f = T::from_f64((k - 2) as f64);
+        let k_f = <T as CustomNumeric>::from_f64(k as f64);
+        let k1_f = <T as CustomNumeric>::from_f64((k - 1) as f64);
+        let _k2_f = <T as CustomNumeric>::from_f64((k - 2) as f64);
         
-        let p2 = ((T::from_f64(2.0) * k1_f + T::from_f64(1.0)) * x * p1 - k1_f * p0) / k_f;
-        let dp2 = ((T::from_f64(2.0) * k1_f + T::from_f64(1.0)) * (p1 + x * dp1) - k1_f * dp0) / k_f;
+        let p2 = ((<T as CustomNumeric>::from_f64(2.0) * k1_f + <T as CustomNumeric>::from_f64(1.0)) * x * p1 - k1_f * p0) / k_f;
+        let dp2 = ((<T as CustomNumeric>::from_f64(2.0) * k1_f + <T as CustomNumeric>::from_f64(1.0)) * (p1 + x * dp1) - k1_f * dp0) / k_f;
         
         p0 = p1;
         p1 = p2;
@@ -606,7 +606,7 @@ where
     
     let (x, w) = gauss_legendre_nodes_weights(n);
     
-    Rule::from_vectors(x, w, T::from_f64(-1.0), T::from_f64(1.0))
+    Rule::from_vectors(x, w, <T as CustomNumeric>::from_f64(-1.0), <T as CustomNumeric>::from_f64(1.0))
 }
 
 /// Compute Gauss-Legendre quadrature nodes and weights using CustomNumeric
@@ -619,7 +619,7 @@ where
     }
     
     if n == 1 {
-        return (vec![T::from_f64(0.0)], vec![T::from_f64(2.0)]);
+        return (vec![<T as CustomNumeric>::from_f64(0.0)], vec![<T as CustomNumeric>::from_f64(2.0)]);
     }
     
     let mut x = Vec::with_capacity(n);
@@ -627,11 +627,11 @@ where
     
     // Use Newton's method to find roots of Legendre polynomial
     let m = (n + 1) / 2;
-    let pi = T::from_f64(std::f64::consts::PI);
+    let pi = <T as CustomNumeric>::from_f64(std::f64::consts::PI);
     
     for i in 0..m {
         // Initial guess using Chebyshev nodes
-        let mut z = (pi * T::from_f64(i as f64 + 0.75) / T::from_f64(n as f64 + 0.5)).cos();
+        let mut z = (pi * <T as CustomNumeric>::from_f64(i as f64 + 0.75) / <T as CustomNumeric>::from_f64(n as f64 + 0.5)).cos();
         
         // Newton's method to refine the root
         for _ in 0..10 {
@@ -644,7 +644,7 @@ where
         
         // Compute weight
         let (_, p1) = legendre_polynomial_and_derivative_custom(n, z);
-        let weight = T::from_f64(2.0) / ((T::from_f64(1.0) - z * z) * p1 * p1);
+        let weight = <T as CustomNumeric>::from_f64(2.0) / ((<T as CustomNumeric>::from_f64(1.0) - z * z) * p1 * p1);
         
         x.push(-z);
         w.push(weight);
@@ -671,25 +671,25 @@ where
     T: CustomNumeric,
 {
     if n == 0 {
-        return (T::from_f64(1.0), T::from_f64(0.0));
+        return (<T as CustomNumeric>::from_f64(1.0), <T as CustomNumeric>::from_f64(0.0));
     }
     
     if n == 1 {
-        return (x, T::from_f64(1.0));
+        return (x, <T as CustomNumeric>::from_f64(1.0));
     }
     
-    let mut p0 = T::from_f64(1.0);
+    let mut p0 = <T as CustomNumeric>::from_f64(1.0);
     let mut p1 = x;
-    let mut dp0 = T::from_f64(0.0);
-    let mut dp1 = T::from_f64(1.0);
+    let mut dp0 = <T as CustomNumeric>::from_f64(0.0);
+    let mut dp1 = <T as CustomNumeric>::from_f64(1.0);
     
     for k in 2..=n {
-        let k_f = T::from_f64(k as f64);
-        let k1_f = T::from_f64((k - 1) as f64);
-        let _k2_f = T::from_f64((k - 2) as f64);
+        let k_f = <T as CustomNumeric>::from_f64(k as f64);
+        let k1_f = <T as CustomNumeric>::from_f64((k - 1) as f64);
+        let _k2_f = <T as CustomNumeric>::from_f64((k - 2) as f64);
         
-        let p2 = ((T::from_f64(2.0) * k1_f + T::from_f64(1.0)) * x * p1 - k1_f * p0) / k_f;
-        let dp2 = ((T::from_f64(2.0) * k1_f + T::from_f64(1.0)) * (p1 + x * dp1) - k1_f * dp0) / k_f;
+        let p2 = ((<T as CustomNumeric>::from_f64(2.0) * k1_f + <T as CustomNumeric>::from_f64(1.0)) * x * p1 - k1_f * p0) / k_f;
+        let dp2 = ((<T as CustomNumeric>::from_f64(2.0) * k1_f + <T as CustomNumeric>::from_f64(1.0)) * (p1 + x * dp1) - k1_f * dp0) / k_f;
         
         p0 = p1;
         p1 = p2;
@@ -706,12 +706,12 @@ where
     T: CustomNumeric,
 {
     if n == 0 {
-        return Rule::new_custom(Array1::from(vec![]), Array1::from(vec![]), T::from_f64(-1.0), T::from_f64(1.0));
+        return Rule::new_custom(Array1::from(vec![]), Array1::from(vec![]), <T as CustomNumeric>::from_f64(-1.0), <T as CustomNumeric>::from_f64(1.0));
     }
     
     let (x, w) = gauss_legendre_nodes_weights_custom(n);
     
-    Rule::from_vectors_custom(x, w, T::from_f64(-1.0), T::from_f64(1.0))
+    Rule::from_vectors_custom(x, w, <T as CustomNumeric>::from_f64(-1.0), <T as CustomNumeric>::from_f64(1.0))
 }
 
 /// Create a Gauss-Legendre quadrature rule with n points on [-1, 1] (TwoFloat version).
@@ -720,14 +720,14 @@ pub fn legendre_twofloat(n: usize) -> Rule<twofloat::TwoFloat> {
         return Rule::new_twofloat(
             Array1::from(vec![]), 
             Array1::from(vec![]), 
-            twofloat::TwoFloat::from_f64(-1.0), 
-            twofloat::TwoFloat::from_f64(1.0)
+            <twofloat::TwoFloat as CustomNumeric>::from_f64(-1.0), 
+            <twofloat::TwoFloat as CustomNumeric>::from_f64(1.0)
         );
     }
     
     let (x, w) = gauss_legendre_nodes_weights_twofloat(n);
     
-    Rule::from_vectors_twofloat(x, w, twofloat::TwoFloat::from_f64(-1.0), twofloat::TwoFloat::from_f64(1.0))
+    Rule::from_vectors_twofloat(x, w, <twofloat::TwoFloat as CustomNumeric>::from_f64(-1.0), <twofloat::TwoFloat as CustomNumeric>::from_f64(1.0))
 }
 
 /// Compute Gauss-Legendre quadrature nodes and weights using TwoFloat
@@ -737,7 +737,7 @@ fn gauss_legendre_nodes_weights_twofloat(n: usize) -> (Vec<twofloat::TwoFloat>, 
     }
     
     if n == 1 {
-        return (vec![twofloat::TwoFloat::from_f64(0.0)], vec![twofloat::TwoFloat::from_f64(2.0)]);
+        return (vec![<twofloat::TwoFloat as CustomNumeric>::from_f64(0.0)], vec![<twofloat::TwoFloat as CustomNumeric>::from_f64(2.0)]);
     }
     
     let mut x = Vec::with_capacity(n);
@@ -745,11 +745,11 @@ fn gauss_legendre_nodes_weights_twofloat(n: usize) -> (Vec<twofloat::TwoFloat>, 
     
     // Use Newton's method to find roots of Legendre polynomial
     let m = (n + 1) / 2;
-    let pi = twofloat::TwoFloat::from_f64(std::f64::consts::PI);
+    let pi = <twofloat::TwoFloat as CustomNumeric>::from_f64(std::f64::consts::PI);
     
     for i in 0..m {
         // Initial guess using Chebyshev nodes
-        let mut z = (pi * twofloat::TwoFloat::from_f64(i as f64 + 0.75) / twofloat::TwoFloat::from_f64(n as f64 + 0.5)).cos();
+        let mut z = (pi * <twofloat::TwoFloat as CustomNumeric>::from_f64(i as f64 + 0.75) / <twofloat::TwoFloat as CustomNumeric>::from_f64(n as f64 + 0.5)).cos();
         
         // Newton's method to refine the root
         for _ in 0..10 {
@@ -762,7 +762,7 @@ fn gauss_legendre_nodes_weights_twofloat(n: usize) -> (Vec<twofloat::TwoFloat>, 
         
         // Compute weight
         let (_, p1) = legendre_polynomial_and_derivative_twofloat(n, z);
-        let weight = twofloat::TwoFloat::from_f64(2.0) / ((twofloat::TwoFloat::from_f64(1.0) - z * z) * p1 * p1);
+        let weight = <twofloat::TwoFloat as CustomNumeric>::from_f64(2.0) / ((<twofloat::TwoFloat as CustomNumeric>::from_f64(1.0) - z * z) * p1 * p1);
         
         x.push(-z);
         w.push(weight);
@@ -786,25 +786,25 @@ fn gauss_legendre_nodes_weights_twofloat(n: usize) -> (Vec<twofloat::TwoFloat>, 
 /// Compute Legendre polynomial P_n(x) and its derivative using TwoFloat
 fn legendre_polynomial_and_derivative_twofloat(n: usize, x: twofloat::TwoFloat) -> (twofloat::TwoFloat, twofloat::TwoFloat) {
     if n == 0 {
-        return (twofloat::TwoFloat::from_f64(1.0), twofloat::TwoFloat::from_f64(0.0));
+        return (<twofloat::TwoFloat as CustomNumeric>::from_f64(1.0), <twofloat::TwoFloat as CustomNumeric>::from_f64(0.0));
     }
     
     if n == 1 {
-        return (x, twofloat::TwoFloat::from_f64(1.0));
+        return (x, <twofloat::TwoFloat as CustomNumeric>::from_f64(1.0));
     }
     
-    let mut p0 = twofloat::TwoFloat::from_f64(1.0);
+    let mut p0 = <twofloat::TwoFloat as CustomNumeric>::from_f64(1.0);
     let mut p1 = x;
-    let mut dp0 = twofloat::TwoFloat::from_f64(0.0);
-    let mut dp1 = twofloat::TwoFloat::from_f64(1.0);
+    let mut dp0 = <twofloat::TwoFloat as CustomNumeric>::from_f64(0.0);
+    let mut dp1 = <twofloat::TwoFloat as CustomNumeric>::from_f64(1.0);
     
     for k in 2..=n {
-        let k_f = twofloat::TwoFloat::from_f64(k as f64);
-        let k1_f = twofloat::TwoFloat::from_f64((k - 1) as f64);
-        let _k2_f = twofloat::TwoFloat::from_f64((k - 2) as f64);
+        let k_f = <twofloat::TwoFloat as CustomNumeric>::from_f64(k as f64);
+        let k1_f = <twofloat::TwoFloat as CustomNumeric>::from_f64((k - 1) as f64);
+        let _k2_f = <twofloat::TwoFloat as CustomNumeric>::from_f64((k - 2) as f64);
         
-        let p2 = ((twofloat::TwoFloat::from_f64(2.0) * k1_f + twofloat::TwoFloat::from_f64(1.0)) * x * p1 - k1_f * p0) / k_f;
-        let dp2 = ((twofloat::TwoFloat::from_f64(2.0) * k1_f + twofloat::TwoFloat::from_f64(1.0)) * (p1 + x * dp1) - k1_f * dp0) / k_f;
+        let p2 = ((<twofloat::TwoFloat as CustomNumeric>::from_f64(2.0) * k1_f + <twofloat::TwoFloat as CustomNumeric>::from_f64(1.0)) * x * p1 - k1_f * p0) / k_f;
+        let dp2 = ((<twofloat::TwoFloat as CustomNumeric>::from_f64(2.0) * k1_f + <twofloat::TwoFloat as CustomNumeric>::from_f64(1.0)) * (p1 + x * dp1) - k1_f * dp0) / k_f;
         
         p0 = p1;
         p1 = p2;
