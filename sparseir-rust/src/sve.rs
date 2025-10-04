@@ -367,7 +367,7 @@ where
 /// 
 /// This function orchestrates the SVE computation by choosing the appropriate
 /// strategy based on kernel properties and computing parameters.
-pub fn compute_sve<T, K>(
+pub fn compute_sve<K>(
     kernel: K,
     epsilon: f64,
     cutoff: Option<f64>,
@@ -376,9 +376,9 @@ pub fn compute_sve<T, K>(
     twork: TworkType,
 ) -> SVEResult
 where
-    T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive + 'static,
+    //T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive + 'static,
     K: AbstractKernel + KernelProperties + Clone + 'static,
-    <K as KernelProperties>::SVEHintsType<T>: SVEHints<T> + Clone + 'static,
+    //<K as KernelProperties>::SVEHintsType<T>: SVEHints<T> + Clone + 'static,
 {
     // Compute safe epsilon and determine working precision
     let (safe_epsilon, twork_actual, _svd_strategy_actual) = safe_epsilon(epsilon, twork, SVDStrategy::Auto);
@@ -414,9 +414,9 @@ pub struct SamplingSVE<T: CustomNumeric + Send + Sync, K: AbstractKernel + Kerne
     /// Segments for y coordinate
     segs_y: Vec<T>,
     /// Gauss points for x coordinate
-    gauss_x: DiscretizedKernel<T>,
-    /// Gauss points for y coordinate
-    gauss_y: DiscretizedKernel<T>,
+    gauss_x: Rule<T>,
+    gauss_y: Rule<T>,
+    
 }
 
 impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: AbstractKernel + KernelProperties + Clone, H: SVEHints<T> + Clone> SamplingSVE<T, K, H> {
@@ -436,23 +436,8 @@ impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: Abstrac
         let segs_x = hints.segments_x();
         let segs_y = hints.segments_y();
         
-        let gauss_x_rule = rule.piecewise(&segs_x);
-        let gauss_y_rule = rule.piecewise(&segs_y);
-        
-        // Create dummy matrices for DiscretizedKernel
-        let dummy_matrix_x = Array2::zeros((gauss_x_rule.x.len(), 1));
-        let dummy_matrix_y = Array2::zeros((gauss_y_rule.x.len(), 1));
-        
-        let gauss_x = DiscretizedKernel::new(
-            dummy_matrix_x,
-            gauss_x_rule.clone(),
-            gauss_y_rule.clone(),
-        );
-        let gauss_y = DiscretizedKernel::new(
-            dummy_matrix_y,
-            gauss_x_rule,
-            gauss_y_rule,
-        );
+        let gauss_x = rule.piecewise(&segs_x);
+        let gauss_y = rule.piecewise(&segs_y);
         
         Self {
             kernel,
@@ -463,71 +448,149 @@ impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: Abstrac
             segs_x,
             segs_y,
             gauss_x,
-            gauss_y,
+            gauss_y
         }
     }
     
     /// Convert SVD matrix to polynomial representation
     fn svd_to_polynomials(
         &self,
-        svd_matrix: &Array2<T>,
+        u_or_v: &Array2<T>,
         segments: &[T],
-        _gauss_rule: &crate::gauss::Rule<f64>,
+        gauss_rule: &crate::gauss::Rule<f64>,
     ) -> Vec<PiecewiseLegendrePoly> {
         let mut polynomials = Vec::new();
         
         // Calculate dimensions for 3D tensor reshaping
-        let n_gauss = self.gauss_x.gauss_x.x.len() / (segments.len() - 1);  // Total points / segments = points per segment
-        let n_segments = segments.len() - 1;  // segments contains n_segments + 1 boundary points
-        let n_singular_values = svd_matrix.ncols();
-        
-        // Validate dimensions
-        // svd_matrix can be either U (Left singular vectors) or V (Right singular vectors)
-        // For U: (n_gauss * n_segments, n_singular_values)
-        // For V: (n_gauss * n_segments, n_singular_values) - but this depends on the kernel structure
-        let _expected_rows = n_gauss * n_segments;
-        // For now, accept any dimensions that make sense
-        // TODO: Implement proper dimension validation based on kernel type
+        let n_gauss = self.n_gauss;
+        let n_segments = segments.len() - 1;
+        let n_singular_values = u_or_v.ncols();
         
         // Create 3D tensor: (n_gauss, n_segments, n_singular_values)
         let mut tensor_3d = Array3::<f64>::zeros((n_gauss, n_segments, n_singular_values));
         
         // Copy elements from 2D matrix to 3D tensor
         // Following C++ implementation: u_x(i, j, k) = u_x_(j * n_gauss + i, k)
-        for i in 0..n_gauss {
-            for j in 0..n_segments {
-                for k in 0..n_singular_values {
+        // COMMENT: Is there permutedims or transpose functions in ndarray? It would be much easier.
+        for i in 0..n_gauss { //COMMENT: rename to idx_gauss_sampling_point
+            for j in 0..n_segments { //COMMENT: rename to idx_segment
+                for k in 0..n_singular_values { //COMMENT: rename to idx_sval
                     let row_index = j * n_gauss + i;  // C++ indexing: j * n_gauss + i
-                    tensor_3d[[i, j, k]] = svd_matrix[[row_index, k]].to_f64();
+                    tensor_3d[[i, j, k]] = u_or_v[[row_index, k]].to_f64();
                 }
             }
         }
         
-        // Create polynomials from 3D tensor
+        // Create Legendre collocation matrix
+        // COMMENT: cmat size is (number of polys, number of gauss sampling points)
+        let cmat = self.legendre_collocation(gauss_rule, n_gauss);
+        println!("DEBUG: cmat shape = [{}, {}], n_gauss = {}", cmat.nrows(), cmat.ncols(), n_gauss);
+        
+        // Transform to Legendre basis: u_data(i, j, k) = sum over l: cmat(i, l) * u_x(l, j, k)
+        let mut u_data = Array3::<f64>::zeros((cmat.nrows(), n_segments, n_singular_values));
+        // COMMENT: is there any contraction code in ndarray? The following loops can be simplified.
+        for j in 0..n_segments { //COMMENT: rename variable
+            for k in 0..n_singular_values { //COMMENT: rename variable
+                for i in 0..cmat.nrows() { //COMMENT: rename variable
+                    let mut sum = 0.0;
+                    for l in 0..n_gauss {
+                        sum += cmat[[i, l]] * tensor_3d[[l, j, k]];
+                    }
+                    u_data[[i, j, k]] = sum;
+                }
+            }
+        }
+        
+        // Apply segment length normalization: sqrt(0.5 * delta_segment)
+        let mut dsegs = Vec::new();
+        for i in 0..segments.len() - 1 {
+            dsegs.push(segments[i + 1].to_f64() - segments[i].to_f64());
+        }
+        
+        for j in 0..n_segments {
+            let normalization = (0.5 * dsegs[j]).sqrt();
+            for i in 0..u_data.shape()[0] {
+                for k in 0..n_singular_values {
+                    u_data[[i, j, k]] *= normalization;
+                }
+            }
+        }
+        
+        // Create polynomials from transformed data
+        let knots: Vec<f64> = segments.iter().map(|&x| x.to_f64()).collect();
+        
         for k in 0..n_singular_values {
-            let mut coeffs_2d = Array2::<f64>::zeros((n_segments, n_segments));  // n_segments列使用
-            
             // Extract coefficients for this singular value
-            for j in 0..n_segments {
-                // Use the first gauss point for each segment (or average if needed)
-                coeffs_2d[[j, 0]] = tensor_3d[[0, j, k]];
+            let mut coeffs_2d = Array2::<f64>::zeros((u_data.shape()[0], n_segments));
+            for i in 0..u_data.shape()[0] {
+                for j in 0..n_segments {
+                    coeffs_2d[[i, j]] = u_data[[i, j, k]];
+                }
             }
             
-            // Create knots from segments
-            let knots: Vec<f64> = segments.iter().map(|&x| x.to_f64()).collect();
+            // Calculate delta_x like C++: diff(knots)
+            let delta_x: Vec<f64> = knots.windows(2).map(|w| w[1] - w[0]).collect();
             
             let poly = PiecewiseLegendrePoly::new(
                 coeffs_2d,
-                knots,
-                0,
-                None,
+                knots.clone(),
                 k as i32,
+                Some(delta_x),
+                0,  // no symmetry
             );
             
             polynomials.push(poly);
         }
         
         polynomials
+    }
+    
+    /// Create Legendre collocation matrix
+    /// Equivalent to C++ legendre_collocation function
+    /// COMMENT: check the return size (number of polys, number of points) 
+    fn legendre_collocation(&self, rule: &crate::gauss::Rule<f64>, n: usize) -> Array2<f64> {
+        // Create Legendre Vandermonde matrix
+        let lv = self.legvander(&rule.x.to_vec(), n - 1);
+        
+        // Apply weights: lv(i, j) *= rule.w[i]
+        let mut weighted_lv = lv.clone();
+        for i in 0..rule.w.len() {
+            for j in 0..weighted_lv.ncols() {
+                weighted_lv[[i, j]] *= rule.w[i];
+            }
+        }
+        
+        // Transpose the result
+        weighted_lv.t().to_owned()
+    }
+    
+    /// Create Legendre Vandermonde matrix
+    /// Equivalent to C++ legvander function
+    fn legvander(&self, x: &[f64], deg: usize) -> Array2<f64> {
+        let n = x.len();
+        let mut v = Array2::<f64>::zeros((n, deg + 1));
+        
+        // First column is all ones
+        for i in 0..n {
+            v[[i, 0]] = 1.0;
+        }
+        
+        // Second column is x
+        if deg > 0 {
+            for i in 0..n {
+                v[[i, 1]] = x[i];
+            }
+        }
+        
+        // Recurrence relation: P_n(x) = ((2*n-1)*x*P_{n-1}(x) - (n-1)*P_{n-2}(x)) / n
+        for j in 2..=deg {
+            for i in 0..n {
+                let n_f64 = j as f64;
+                v[[i, j]] = ((2.0 * n_f64 - 1.0) * x[i] * v[[i, j-1]] - (n_f64 - 1.0) * v[[i, j-2]]) / n_f64;
+            }
+        }
+        
+        v
     }
 }
 
@@ -536,8 +599,8 @@ impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: Abstrac
         // Compute kernel matrix using Gauss quadrature
         let discretized = matrix_from_gauss(
             &self.kernel,
-            &self.gauss_x.gauss_x,
-            &self.gauss_x.gauss_y,
+            &self.gauss_x,
+            &self.gauss_y,
         );
         
         // Apply weights (sqrt of Gauss weights) for SVE
@@ -551,8 +614,8 @@ impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: Abstrac
         let mut weighted_matrix = discretized.matrix.clone();
         
         // Apply row weights (sqrt of x Gauss weights)
-        for i in 0..self.gauss_x.gauss_x.w.len() {
-            let weight = self.gauss_x.gauss_x.w[i];
+        for i in 0..self.gauss_x.w.len() {
+            let weight = self.gauss_x.w[i];
             let sqrt_weight = <T as CustomNumeric>::sqrt(weight);
             for j in 0..weighted_matrix.ncols() {
                 weighted_matrix[[i, j]] = weighted_matrix[[i, j]] * sqrt_weight;
@@ -560,8 +623,8 @@ impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: Abstrac
         }
         
         // Apply column weights (sqrt of y Gauss weights)
-        for j in 0..self.gauss_x.gauss_y.w.len() {
-            let weight = self.gauss_x.gauss_y.w[j];
+        for j in 0..self.gauss_y.w.len() {
+            let weight = self.gauss_y.w[j];
             let sqrt_weight = <T as CustomNumeric>::sqrt(weight);
             for i in 0..weighted_matrix.nrows() {
                 weighted_matrix[[i, j]] = weighted_matrix[[i, j]] * sqrt_weight;
@@ -589,7 +652,7 @@ impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: Abstrac
         // C++ equivalent: u_x_(i, j) = u(i, j) / sqrt(gauss_x_w[i]);
         let mut u_unweighted = u.clone();
         for i in 0..u_unweighted.nrows() {
-            let weight = self.gauss_x.gauss_x.w[i];
+            let weight = self.gauss_x.w[i];
             let sqrt_weight = <T as CustomNumeric>::sqrt(weight);
             for j in 0..u_unweighted.ncols() {
                 u_unweighted[[i, j]] = u_unweighted[[i, j]] / sqrt_weight;
@@ -598,7 +661,7 @@ impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: Abstrac
         
         let mut v_unweighted = v.clone();
         for j in 0..v_unweighted.ncols() {
-            let weight = self.gauss_x.gauss_y.w[j];
+            let weight = self.gauss_y.w[j];
             let sqrt_weight = <T as CustomNumeric>::sqrt(weight);
             for i in 0..v_unweighted.nrows() {
                 v_unweighted[[i, j]] = v_unweighted[[i, j]] / sqrt_weight;
@@ -608,18 +671,18 @@ impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: Abstrac
         // Create polynomial vectors from SVD results
         // Convert T rules to f64 rules for polynomial creation
         let gauss_x_f64 = Rule::<f64>::from_vectors(
-            self.gauss_x.gauss_x.x.iter().map(|&x| x.to_f64()).collect(),
-            self.gauss_x.gauss_x.w.iter().map(|&w| w.to_f64()).collect(),
-            self.gauss_x.gauss_x.a.to_f64(),
-            self.gauss_x.gauss_x.b.to_f64(),
+            self.gauss_x.x.iter().map(|&x| x.to_f64()).collect(),
+            self.gauss_x.w.iter().map(|&w| w.to_f64()).collect(),
+            self.gauss_x.a.to_f64(),
+            self.gauss_x.b.to_f64(),
         );
         let gauss_y_f64 = Rule::<f64>::from_vectors(
-            self.gauss_y.gauss_y.x.iter().map(|&x| x.to_f64()).collect(),
-            self.gauss_y.gauss_y.w.iter().map(|&w| w.to_f64()).collect(),
-            self.gauss_y.gauss_y.a.to_f64(),
-            self.gauss_y.gauss_y.b.to_f64(),
+            self.gauss_y.x.iter().map(|&x| x.to_f64()).collect(),
+            self.gauss_y.w.iter().map(|&w| w.to_f64()).collect(),
+            self.gauss_y.a.to_f64(),
+            self.gauss_y.b.to_f64(),
         );
-        
+
         let u_polys = self.svd_to_polynomials(&u_unweighted, &self.segs_x, &gauss_x_f64);
         let v_polys = self.svd_to_polynomials(&v_unweighted, &self.segs_y, &gauss_y_f64);
         
@@ -635,6 +698,7 @@ impl<T: CustomNumeric + Send + Sync + num_traits::Zero + ToPrimitive, K: Abstrac
 /// 
 /// Optimized SVE computation for centrosymmetric kernels that can be
 /// block-diagonalized to reduce computational cost.
+/// TODO: restrict to a centrosymmetric kernel
 pub struct CentrosymmSVE<T: CustomNumeric + Send + Sync + 'static, K: AbstractKernel + KernelProperties + Clone> {
     /// The centrosymmetric kernel
     #[allow(dead_code)]
@@ -660,6 +724,10 @@ where
     /// Create a new CentrosymmSVE
     pub fn new(kernel: K, _hints: K::SVEHintsType<T>, epsilon: f64, n_gauss: Option<usize>) -> Self {
         use crate::kernel::SymmetrizedKernel;
+
+        if (!kernel.is_centrosymmetric()) {
+            panic!("Supported only centrosymmetric kernel!");
+        }
         
         // Create even and odd symmetrized kernels
         let even_kernel = SymmetrizedKernel::new(kernel.clone(), 1);  // +1 for even
@@ -742,13 +810,14 @@ where
             poly_flip_x.push(if i % 2 == 0 { 1.0 } else { -1.0 });
         }
         
-        // Create complete singular functions
+        // Create complete singular functions using helper function
         let mut u_complete = Vec::new();
         let mut v_complete = Vec::new();
         let mut s_sorted = Vec::new();
         
         for &idx in &indices {
             let sign = signs[idx];
+            println!("s_merged {} {}", idx, s_merged[idx]);
             
             // Get the original polynomial (from reduced domain)
             let u_poly = if idx < result_even.u.polyvec.len() {
@@ -763,44 +832,12 @@ where
                 &result_odd.v.polyvec[idx - result_even.v.polyvec.len()]
             };
             
-            // Normalize by 1/sqrt(2) and convert to f64
-            let u_pos_data = u_poly.data.mapv(|x| x.to_f64() / 2.0_f64.sqrt());
-            let v_pos_data = v_poly.data.mapv(|x| x.to_f64() / 2.0_f64.sqrt());
-            
-            
-            // Create negative part by reversing and applying signs
-            let mut u_neg_data = u_pos_data.clone();
-            u_neg_data = u_neg_data.slice(ndarray::s![..;-1, ..]).to_owned();
-            for (i, &flip_sign) in poly_flip_x.iter().enumerate() {
-                let coeff_sign = flip_sign * sign;
-                u_neg_data.row_mut(i).mapv_inplace(|x| x * coeff_sign);
-            }
-            
-            let mut v_neg_data = v_pos_data.clone();
-            v_neg_data = v_neg_data.slice(ndarray::s![..;-1, ..]).to_owned();
-            for (i, &flip_sign) in poly_flip_x.iter().enumerate() {
-                let coeff_sign = flip_sign * sign;
-                v_neg_data.row_mut(i).mapv_inplace(|x| x * coeff_sign);
-            }
-            
-            // Combine positive and negative parts
-            let u_combined = ndarray::concatenate![ndarray::Axis(1), u_neg_data, u_pos_data];
-            let v_combined = ndarray::concatenate![ndarray::Axis(1), v_neg_data, v_pos_data];
-            
-            // Create complete polynomial with full segments
-            let u_complete_poly = crate::poly::PiecewiseLegendrePoly::new(
-                u_combined,
-                segs_x_full.clone(),
-                u_poly.polyorder as i32,
-                None, // delta_x
-                0     // symm (no symmetry)
+            // Extend polynomial to full domain
+            let u_complete_poly = extend_polynomial_to_full_domain(
+                u_poly, &segs_x_full, sign, &poly_flip_x
             );
-            let v_complete_poly = crate::poly::PiecewiseLegendrePoly::new(
-                v_combined,
-                segs_y_full.clone(),
-                v_poly.polyorder as i32,
-                None, // delta_x
-                0     // symm (no symmetry)
+            let v_complete_poly = extend_polynomial_to_full_domain(
+                v_poly, &segs_y_full, sign, &poly_flip_x
             );
             
             u_complete.push(u_complete_poly);
@@ -816,9 +853,45 @@ where
     }
 }
 
+/// Extend a polynomial from reduced domain [0, 1] to full domain [-1, 1]
+/// following the C++ implementation logic
+fn extend_polynomial_to_full_domain(
+    poly: &crate::poly::PiecewiseLegendrePoly,
+    full_segments: &[f64],
+    sign: f64,
+    poly_flip_x: &[f64],
+) -> crate::poly::PiecewiseLegendrePoly {
+    // Normalize by 1/sqrt(2) and convert to f64
+    let pos_data = poly.data.mapv(|x| x.to_f64() / 2.0_f64.sqrt());
+    
+    // Create negative part by reversing and applying signs
+    let mut neg_data = pos_data.clone();
+    neg_data = neg_data.slice(ndarray::s![..;-1, ..]).to_owned();
+    
+    // Apply poly_flip_x and sign to negative part
+    for (i, &flip_sign) in poly_flip_x.iter().enumerate() {
+        let coeff_sign = flip_sign * sign;
+        neg_data.row_mut(i).mapv_inplace(|x| x * coeff_sign);
+    }
+    
+    // Combine positive and negative parts
+    let combined_data = ndarray::concatenate![ndarray::Axis(1), neg_data, pos_data];
+    
+    // Create complete polynomial with full segments
+    crate::poly::PiecewiseLegendrePoly::new(
+        combined_data,
+        full_segments.to_vec(),
+        poly.polyorder as i32,
+        None, // delta_x
+        0     // symm (no symmetry)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::poly::PiecewiseLegendrePoly;
+    use ndarray::Array2;
 
     #[test]
     fn test_safe_epsilon_boundary_switch() {
@@ -867,5 +940,84 @@ mod tests {
         let (safe_eps2, twork2, _) = safe_epsilon(1e-6, TworkType::Float64X2, SVDStrategy::Auto);
         assert_eq!(twork2, TworkType::Float64X2);
         assert_eq!(safe_eps2, 1e-15);
+    }
+
+    #[test]
+    fn test_extend_polynomial_to_full_domain() {
+        // Create a simple polynomial in reduced domain [0, 1]
+        let reduced_segments = vec![0.0, 1.0];  // 1 segment, 2 knots
+        let full_segments = vec![-1.0, 0.0, 1.0];  // 2 segments, 3 knots
+        
+        // Create test polynomial data: 2x1 matrix (2 polynomial orders, 1 segment)
+        let data = Array2::from_shape_vec((2, 1), vec![1.0, 2.0]).unwrap();
+        let poly = PiecewiseLegendrePoly::new(data, reduced_segments, 1, None, 0);
+        
+        // Test even symmetry (sign = +1)
+        let poly_flip_x = vec![1.0, -1.0];  // alternating signs for Legendre polynomials
+        let extended_poly = extend_polynomial_to_full_domain(
+            &poly, &full_segments, 1.0, &poly_flip_x
+        );
+        
+        // Verify the extended polynomial has correct dimensions
+        // Should have 2 polynomial orders and 2 segments (full domain)
+        assert_eq!(extended_poly.data.shape(), [2, 2]);
+        
+        // Verify the segments are correct
+        assert_eq!(extended_poly.knots, full_segments);
+        
+        // Test odd symmetry (sign = -1)
+        let extended_poly_odd = extend_polynomial_to_full_domain(
+            &poly, &full_segments, -1.0, &poly_flip_x
+        );
+        
+        // Verify the extended polynomial has correct dimensions
+        assert_eq!(extended_poly_odd.data.shape(), [2, 2]);
+        assert_eq!(extended_poly_odd.knots, full_segments);
+        
+        // Test that even and odd extensions produce different results
+        // (due to different signs applied to the negative part)
+        assert_ne!(extended_poly.data, extended_poly_odd.data);
+    }
+
+    #[test]
+    fn test_extend_polynomial_basic_functionality() {
+        // Test basic functionality of the extension
+        let reduced_segments = vec![0.0, 1.0];  // 1 segment
+        let full_segments = vec![-1.0, 0.0, 1.0];  // 2 segments
+        
+        // Create simple polynomial data: constant function
+        let data = Array2::from_shape_vec((2, 1), vec![1.0, 0.0]).unwrap();  // constant + linear term
+        let poly = PiecewiseLegendrePoly::new(data, reduced_segments, 1, None, 0);
+        
+        let poly_flip_x = vec![1.0, -1.0];
+        
+        // Test even extension
+        let extended_even = extend_polynomial_to_full_domain(
+            &poly, &full_segments, 1.0, &poly_flip_x
+        );
+        
+        // Test odd extension
+        let extended_odd = extend_polynomial_to_full_domain(
+            &poly, &full_segments, -1.0, &poly_flip_x
+        );
+        
+        // Verify both extensions have correct dimensions
+        assert_eq!(extended_even.data.shape(), [2, 2]);
+        assert_eq!(extended_odd.data.shape(), [2, 2]);
+        
+        // Verify both use the correct full segments
+        assert_eq!(extended_even.knots, full_segments);
+        assert_eq!(extended_odd.knots, full_segments);
+        
+        // Test that extensions produce different results
+        assert_ne!(extended_even.data, extended_odd.data);
+        
+        // Test evaluation at origin (should work for both)
+        let even_at_0 = extended_even.evaluate(0.0);
+        let odd_at_0 = extended_odd.evaluate(0.0);
+        
+        // Both should be finite values
+        assert!(even_at_0.is_finite());
+        assert!(odd_at_0.is_finite());
     }
 }

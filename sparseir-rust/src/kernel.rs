@@ -972,6 +972,7 @@ mod tests {
         let ngauss = hints.ngauss();
         
         // For reduced kernels, segments should be non-negative (absolute values)
+        println!("DEBUG in test_reduced_sve_hints: {:?}", segments_x);
         assert!(segments_x.iter().all(|&x| x >= 0.0));
         assert!(segments_y.iter().all(|&y| y >= 0.0));
         

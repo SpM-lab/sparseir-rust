@@ -21,7 +21,7 @@ use crate::numeric::CustomNumeric;
 #[derive(Debug, Clone)]
 pub struct Rule<T> {
     /// Quadrature points
-    pub x: Array1<T>,
+    pub x: Array1<T>,//COMMENT: ADD CHECK CODE TO MAKE SURE x is in non-decreasing order
     /// Quadrature weights
     pub w: Array1<T>,
     /// Distance from left endpoint: x - a
