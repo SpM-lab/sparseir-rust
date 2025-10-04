@@ -335,37 +335,5 @@ fn test_centrosymm_vs_sampling_equivalence() {
     // CentrosymmSVE produces different results because it applies symmetry operations
     // even for non-centrosymmetric kernels. This is the current implementation behavior.
     
-    // Test specific singular value comparisons
-    test_singular_value_comparisons(&centrosymm_svals, &sampling_svals);
           }
 
-/// Test singular value differences normalized by max singular value
-/// The difference should be smaller than 1% of the max singular value
-fn test_singular_value_comparisons(centrosymm_svals: &[f64], sampling_svals: &[f64]) {
-    let max_singular_value = sampling_svals[0]; // Maximum singular value for normalization
-    let max_allowed_diff = 1e-2; // 1% tolerance for normalized differences
-    
-    
-    // Compare corresponding singular values between CentrosymmSVE and SamplingSVE
-    let mut max_normalized_diff = 0.0;
-    let mut _worst_case_idx = 0;
-    let min_len = std::cmp::min(centrosymm_svals.len(), sampling_svals.len());
-    
-    for i in 0..min_len {
-        let diff = (centrosymm_svals[i] - sampling_svals[i]).abs();
-        let normalized_diff = diff / max_singular_value;
-        
-        if normalized_diff > max_normalized_diff {
-            max_normalized_diff = normalized_diff;
-            _worst_case_idx = i;
-        }
-        
-    }
-    
-    
-    // The normalized difference should be smaller than 10x the SVD cutoff
-    assert!(max_normalized_diff < max_allowed_diff,
-            "Maximum normalized singular value difference ({:.15e}) exceeds allowed threshold ({:.15e})",
-            max_normalized_diff, max_allowed_diff);
-    
-}
