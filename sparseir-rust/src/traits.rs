@@ -51,12 +51,12 @@ impl Statistics {
     pub fn is_fermionic(self) -> bool {
         matches!(self, Statistics::Fermionic)
     }
-    
+
     /// Check if this statistics type is bosonic
     pub fn is_bosonic(self) -> bool {
         matches!(self, Statistics::Bosonic)
     }
-    
+
     /// Get the string representation of the statistics
     pub fn as_str(self) -> &'static str {
         match self {
@@ -69,26 +69,26 @@ impl Statistics {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_statistics_type_trait() {
         assert_eq!(Fermionic::STATISTICS, Statistics::Fermionic);
         assert_eq!(Bosonic::STATISTICS, Statistics::Bosonic);
     }
-    
+
     #[test]
     fn test_statistics_marker_trait() {
         assert_eq!(Fermionic::statistics(), Statistics::Fermionic);
         assert_eq!(Bosonic::statistics(), Statistics::Bosonic);
     }
-    
+
     #[test]
     fn test_statistics_utility_methods() {
         assert!(Statistics::Fermionic.is_fermionic());
         assert!(!Statistics::Fermionic.is_bosonic());
         assert!(!Statistics::Bosonic.is_fermionic());
         assert!(Statistics::Bosonic.is_bosonic());
-        
+
         assert_eq!(Statistics::Fermionic.as_str(), "fermionic");
         assert_eq!(Statistics::Bosonic.as_str(), "bosonic");
     }

@@ -4,24 +4,33 @@
 //! library in Rust, providing analytical continuation and sparse representation
 //! functionality for quantum many-body physics calculations.
 
-pub mod traits;
-pub mod kernel;
-pub mod poly;
-pub mod gauss;
-pub mod numeric;
 pub mod freq;
+pub mod gauss;
+pub mod kernel;
+pub mod numeric;
+pub mod poly;
 pub mod polyfourier;
 pub mod special_functions;
+pub mod traits;
 //pub mod sve;
 
 // Re-export commonly used types and traits
-pub use traits::{Statistics, StatisticsType, Fermionic, Bosonic, StatisticsMarker};
-pub use kernel::{CentrosymmKernel, LogisticKernel, KernelProperties, SVEHints, LogisticSVEHints, SymmetryType, compute_logistic_kernel};
-pub use poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
-pub use gauss::{Rule, legendre, legendre_custom, legendre_twofloat};
+pub use freq::{
+    create_statistics, fermionic_sign, is_less, is_zero, sign, zero, BosonicFreq, FermionicFreq,
+    MatsubaraFreq,
+};
+pub use gauss::{legendre, legendre_custom, legendre_twofloat, Rule};
+pub use kernel::{
+    compute_logistic_kernel, CentrosymmKernel, KernelProperties, LogisticKernel, LogisticSVEHints,
+    SVEHints, SymmetryType,
+};
 pub use numeric::{CustomNumeric, TwoFloatArrayOps};
-pub use freq::{MatsubaraFreq, FermionicFreq, BosonicFreq, sign, fermionic_sign, zero, is_zero, is_less, create_statistics};
-pub use polyfourier::{PiecewiseLegendreFT, PiecewiseLegendreFTVector, PowerModel, FermionicPiecewiseLegendreFT, BosonicPiecewiseLegendreFT, FermionicPiecewiseLegendreFTVector, BosonicPiecewiseLegendreFTVector};
+pub use poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
+pub use polyfourier::{
+    BosonicPiecewiseLegendreFT, BosonicPiecewiseLegendreFTVector, FermionicPiecewiseLegendreFT,
+    FermionicPiecewiseLegendreFTVector, PiecewiseLegendreFT, PiecewiseLegendreFTVector, PowerModel,
+};
+pub use traits::{Bosonic, Fermionic, Statistics, StatisticsMarker, StatisticsType};
 //pub use kernel::{matrix_from_gauss, matrix_from_gauss_parallel, DiscretizedKernel};
 //pub use sve::{SVEResult, TworkType, SVDStrategy, SamplingSVE, CentrosymmSVE, SVEStrategy, compute_sve, compute_svd, truncate};
 

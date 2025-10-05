@@ -43,23 +43,26 @@ impl PiecewiseLegendrePoly {
     ) -> Self {
         let polyorder = data.nrows();
         let nsegments = data.ncols();
-        
+
         if knots.len() != nsegments + 1 {
-            panic!("Invalid knots array: expected {} knots, got {}", nsegments + 1, knots.len());
+            panic!(
+                "Invalid knots array: expected {} knots, got {}",
+                nsegments + 1,
+                knots.len()
+            );
         }
-        
+
         // Validate knots are sorted
         for i in 1..knots.len() {
-            if knots[i] <= knots[i-1] {
+            if knots[i] <= knots[i - 1] {
                 panic!("Knots must be monotonically increasing");
             }
         }
-        
+
         // Compute delta_x if not provided
-        let delta_x = delta_x.unwrap_or_else(|| {
-            (1..knots.len()).map(|i| knots[i] - knots[i-1]).collect()
-        });
-        
+        let delta_x =
+            delta_x.unwrap_or_else(|| (1..knots.len()).map(|i| knots[i] - knots[i - 1]).collect());
+
         // Validate delta_x matches knots
         for i in 0..delta_x.len() {
             let expected = knots[i + 1] - knots[i];
@@ -67,18 +70,18 @@ impl PiecewiseLegendrePoly {
                 panic!("delta_x must match knots");
             }
         }
-        
+
         // Compute segment midpoints
         let xm: Vec<f64> = (0..nsegments)
             .map(|i| 0.5 * (knots[i] + knots[i + 1]))
             .collect();
-        
+
         // Compute inverse segment widths
         let inv_xs: Vec<f64> = delta_x.iter().map(|&dx| 2.0 / dx).collect();
-        
+
         // Compute normalization factors
         let norms: Vec<f64> = inv_xs.iter().map(|&inv_x| inv_x.sqrt()).collect();
-        
+
         Self {
             polyorder,
             xmin: knots[0],
@@ -93,7 +96,7 @@ impl PiecewiseLegendrePoly {
             norms,
         }
     }
-    
+
     /// Create a new PiecewiseLegendrePoly with new data but same structure
     pub fn with_data(&self, new_data: ndarray::Array2<f64>) -> Self {
         Self {
@@ -101,7 +104,7 @@ impl PiecewiseLegendrePoly {
             ..self.clone()
         }
     }
-    
+
     /// Create a new PiecewiseLegendrePoly with new data and symmetry
     pub fn with_data_and_symmetry(&self, new_data: ndarray::Array2<f64>, new_symm: i32) -> Self {
         Self {
@@ -110,7 +113,7 @@ impl PiecewiseLegendrePoly {
             ..self.clone()
         }
     }
-    
+
     /// Evaluate the polynomial at a given point
     pub fn evaluate(&self, x: f64) -> f64 {
         let (i, x_tilde) = self.split(x);
@@ -119,18 +122,18 @@ impl PiecewiseLegendrePoly {
         let value = self.evaluate_legendre_polynomial(x_tilde, &coeffs_vec);
         value * self.norms[i]
     }
-    
+
     /// Evaluate the polynomial at multiple points
     pub fn evaluate_many(&self, xs: &[f64]) -> Vec<f64> {
         xs.iter().map(|&x| self.evaluate(x)).collect()
     }
-    
+
     /// Split x into segment index and normalized x
     pub fn split(&self, x: f64) -> (usize, f64) {
         if x < self.xmin || x > self.xmax {
             panic!("x = {} is outside domain [{}, {}]", x, self.xmin, self.xmax);
         }
-        
+
         // Find the segment containing x
         for i in 0..self.knots.len() - 1 {
             if x >= self.knots[i] && x <= self.knots[i + 1] {
@@ -139,23 +142,23 @@ impl PiecewiseLegendrePoly {
                 return (i, x_tilde);
             }
         }
-        
+
         // Handle edge case: x exactly at the last knot
         let last_idx = self.knots.len() - 2;
         let x_tilde = 2.0 * (x - self.xm[last_idx]) / self.delta_x[last_idx];
         (last_idx, x_tilde)
     }
-    
+
     /// Evaluate Legendre polynomial using recurrence relation
     pub fn evaluate_legendre_polynomial(&self, x: f64, coeffs: &[f64]) -> f64 {
         if coeffs.is_empty() {
             return 0.0;
         }
-        
+
         let mut result = 0.0;
-        let mut p_prev = 1.0;  // P_0(x) = 1
-        let mut p_curr = x;    // P_1(x) = x
-        
+        let mut p_prev = 1.0; // P_0(x) = 1
+        let mut p_curr = x; // P_1(x) = x
+
         // Add first two terms
         if coeffs.len() > 0 {
             result += coeffs[0] * p_prev;
@@ -163,30 +166,31 @@ impl PiecewiseLegendrePoly {
         if coeffs.len() > 1 {
             result += coeffs[1] * p_curr;
         }
-        
+
         // Use recurrence relation: P_{n+1}(x) = ((2n+1)x*P_n(x) - n*P_{n-1}(x))/(n+1)
         for n in 1..coeffs.len() - 1 {
-            let p_next = ((2.0 * (n as f64) + 1.0) * x * p_curr - (n as f64) * p_prev) / ((n + 1) as f64);
+            let p_next =
+                ((2.0 * (n as f64) + 1.0) * x * p_curr - (n as f64) * p_prev) / ((n + 1) as f64);
             result += coeffs[n + 1] * p_next;
             p_prev = p_curr;
             p_curr = p_next;
         }
-        
+
         result
     }
-    
+
     /// Compute derivative of the polynomial
     pub fn deriv(&self, n: usize) -> Self {
         if n == 0 {
             return self.clone();
         }
-        
+
         // Compute derivative coefficients
         let mut ddata = self.data.clone();
         for _ in 0..n {
             ddata = self.compute_derivative_coefficients(&ddata);
         }
-        
+
         // Apply scaling factors (C++: ddata.col(i) *= std::pow(inv_xs[i], n))
         for i in 0..ddata.ncols() {
             let inv_x_power = self.inv_xs[i].powi(n as i32);
@@ -194,30 +198,33 @@ impl PiecewiseLegendrePoly {
                 ddata[[j, i]] *= inv_x_power;
             }
         }
-        
+
         // Update symmetry: C++: int new_symm = std::pow(-1, n) * symm;
         let new_symm = if n % 2 == 0 { self.symm } else { -self.symm };
-        
+
         Self {
             data: ddata,
             symm: new_symm,
             ..self.clone()
         }
     }
-    
+
     /// Compute derivative coefficients using the same algorithm as C++ legder function
-    fn compute_derivative_coefficients(&self, coeffs: &ndarray::Array2<f64>) -> ndarray::Array2<f64> {
+    fn compute_derivative_coefficients(
+        &self,
+        coeffs: &ndarray::Array2<f64>,
+    ) -> ndarray::Array2<f64> {
         let mut c = coeffs.clone();
         let mut n = c.nrows();
-        
+
         // Single derivative step (equivalent to C++ legder with cnt=1)
         if n <= 1 {
             return ndarray::Array2::zeros((1, c.ncols()));
         }
-        
+
         n -= 1;
         let mut der = ndarray::Array2::zeros((n, c.ncols()));
-        
+
         // C++ implementation: for (int j = n; j >= 2; --j)
         for j in (2..=n).rev() {
             // C++: der.row(j - 1) = (2 * j - 1) * c.row(j);
@@ -229,88 +236,99 @@ impl PiecewiseLegendrePoly {
                 c[[j - 2, col]] += c[[j, col]];
             }
         }
-        
+
         // C++: if (n > 1) der.row(1) = 3 * c.row(2);
         if n > 1 {
             for col in 0..c.ncols() {
                 der[[1, col]] = 3.0 * c[[2, col]];
             }
         }
-        
+
         // C++: der.row(0) = c.row(1);
         for col in 0..c.ncols() {
             der[[0, col]] = c[[1, col]];
         }
-        
+
         der
     }
-    
+
     /// Compute derivatives at a point x
     pub fn derivs(&self, x: f64) -> Vec<f64> {
         let mut results = Vec::new();
-        
+
         // Compute up to polyorder derivatives
         for n in 0..self.polyorder {
             let deriv_poly = self.deriv(n);
             results.push(deriv_poly.evaluate(x));
         }
-        
+
         results
     }
-    
+
     /// Compute overlap integral with a function
-    pub fn overlap<F>(&self, f: F) -> f64 
-    where 
+    pub fn overlap<F>(&self, f: F) -> f64
+    where
         F: Fn(f64) -> f64,
     {
         let mut integral = 0.0;
-        
+
         for i in 0..self.knots.len() - 1 {
-            let segment_integral = self.gauss_legendre_quadrature(
-                self.knots[i], 
-                self.knots[i + 1], 
-                |x| self.evaluate(x) * f(x)
-            );
+            let segment_integral =
+                self.gauss_legendre_quadrature(self.knots[i], self.knots[i + 1], |x| {
+                    self.evaluate(x) * f(x)
+                });
             integral += segment_integral;
         }
-        
+
         integral
     }
-    
+
     /// Gauss-Legendre quadrature over [a, b]
-    fn gauss_legendre_quadrature<F>(&self, a: f64, b: f64, f: F) -> f64 
-    where 
+    fn gauss_legendre_quadrature<F>(&self, a: f64, b: f64, f: F) -> f64
+    where
         F: Fn(f64) -> f64,
     {
         // 5-point Gauss-Legendre quadrature
-        const XG: [f64; 5] = [-0.906179845938664, -0.538469310105683, 0.0, 0.538469310105683, 0.906179845938664];
-        const WG: [f64; 5] = [0.236926885056189, 0.478628670499366, 0.568888888888889, 0.478628670499366, 0.236926885056189];
-        
+        const XG: [f64; 5] = [
+            -0.906179845938664,
+            -0.538469310105683,
+            0.0,
+            0.538469310105683,
+            0.906179845938664,
+        ];
+        const WG: [f64; 5] = [
+            0.236926885056189,
+            0.478628670499366,
+            0.568888888888889,
+            0.478628670499366,
+            0.236926885056189,
+        ];
+
         let c1 = (b - a) / 2.0;
         let c2 = (b + a) / 2.0;
-        
+
         let mut integral = 0.0;
         for j in 0..5 {
             let x = c1 * XG[j] + c2;
             integral += WG[j] * f(x);
         }
-        
+
         integral * c1
     }
-    
+
     /// Find roots of the polynomial using C++ compatible algorithm
     pub fn roots(&self) -> Vec<f64> {
         // Refine the grid by factor of 2 (like C++ implementation)
         let refined_grid = self.refine_grid(&self.knots, 2);
-        
+
         // Find all roots using the refined grid
         self.find_all_roots(&refined_grid)
     }
-    
+
     /// Refine grid by factor alpha (C++ compatible)
     fn refine_grid(&self, grid: &[f64], alpha: usize) -> Vec<f64> {
         let mut refined = Vec::new();
-        
+
         for i in 0..grid.len() - 1 {
             let start = grid[i];
             let step = (grid[i + 1] - grid[i]) / (alpha as f64);
@@ -321,16 +339,16 @@ impl PiecewiseLegendrePoly {
         refined.push(grid[grid.len() - 1]);
         refined
     }
-    
+
     /// Find all roots using refined grid (C++ compatible)
     fn find_all_roots(&self, xgrid: &[f64]) -> Vec<f64> {
         if xgrid.is_empty() {
             return Vec::new();
         }
-        
+
         // Evaluate function at all grid points
         let fx: Vec<f64> = xgrid.iter().map(|&x| self.evaluate(x)).collect();
-        
+
         // Find exact zeros (direct hits)
         let mut x_hit = Vec::new();
         for i in 0..fx.len() {
@@ -338,7 +356,7 @@ impl PiecewiseLegendrePoly {
                 x_hit.push(xgrid[i]);
             }
         }
-        
+
         // Find sign changes
         let mut sign_change = Vec::new();
         for i in 0..fx.len() - 1 {
@@ -346,18 +364,18 @@ impl PiecewiseLegendrePoly {
             let not_hit = fx[i] != 0.0 && fx[i + 1] != 0.0;
             sign_change.push(has_sign_change && not_hit);
         }
-        
+
         // If no sign changes, return only direct hits
         if sign_change.iter().all(|&sc| !sc) {
             x_hit.sort_by(|a, b| a.partial_cmp(b).unwrap());
             return x_hit;
         }
-        
+
         // Find intervals with sign changes
         let mut a_intervals = Vec::new();
         let mut b_intervals = Vec::new();
         let mut fa_values = Vec::new();
-        
+
         for i in 0..sign_change.len() {
             if sign_change[i] {
                 a_intervals.push(xgrid[i]);
@@ -365,34 +383,34 @@ impl PiecewiseLegendrePoly {
                 fa_values.push(fx[i]);
             }
         }
-        
+
         // Calculate epsilon for convergence
         let max_elm = xgrid.iter().map(|&x| x.abs()).fold(0.0, f64::max);
         let epsilon_x = f64::EPSILON * max_elm;
-        
+
         // Use bisection for each interval with sign change
         for i in 0..a_intervals.len() {
             let root = self.bisect(a_intervals[i], b_intervals[i], fa_values[i], epsilon_x);
             x_hit.push(root);
         }
-        
+
         // Sort and return
         x_hit.sort_by(|a, b| a.partial_cmp(b).unwrap());
         x_hit
     }
-    
+
     /// Bisection method to find root (C++ compatible)
     fn bisect(&self, a: f64, b: f64, fa: f64, eps: f64) -> f64 {
         let mut a = a;
         let mut b = b;
         let mut fa = fa;
-        
+
         loop {
             let mid = (a + b) / 2.0;
             if self.close_enough(a, mid, eps) {
                 return mid;
             }
-            
+
             let fmid = self.evaluate(mid);
             if fa.signum() != fmid.signum() {
                 b = mid;
@@ -402,23 +420,43 @@ impl PiecewiseLegendrePoly {
             }
         }
     }
-    
+
     /// Check if two values are close enough (C++ compatible)
     fn close_enough(&self, a: f64, b: f64, eps: f64) -> bool {
         (a - b).abs() <= eps
     }
-    
+
     // Accessor methods to match C++ interface
-    pub fn get_xmin(&self) -> f64 { self.xmin }
-    pub fn get_xmax(&self) -> f64 { self.xmax }
-    pub fn get_l(&self) -> i32 { self.l }
-    pub fn get_domain(&self) -> (f64, f64) { (self.xmin, self.xmax) }
-    pub fn get_knots(&self) -> &[f64] { &self.knots }
-    pub fn get_delta_x(&self) -> &[f64] { &self.delta_x }
-    pub fn get_symm(&self) -> i32 { self.symm }
-    pub fn get_data(&self) -> &ndarray::Array2<f64> { &self.data }
-    pub fn get_norms(&self) -> &[f64] { &self.norms }
-    pub fn get_polyorder(&self) -> usize { self.polyorder }
+    pub fn get_xmin(&self) -> f64 {
+        self.xmin
+    }
+    pub fn get_xmax(&self) -> f64 {
+        self.xmax
+    }
+    pub fn get_l(&self) -> i32 {
+        self.l
+    }
+    pub fn get_domain(&self) -> (f64, f64) {
+        (self.xmin, self.xmax)
+    }
+    pub fn get_knots(&self) -> &[f64] {
+        &self.knots
+    }
+    pub fn get_delta_x(&self) -> &[f64] {
+        &self.delta_x
+    }
+    pub fn get_symm(&self) -> i32 {
+        self.symm
+    }
+    pub fn get_data(&self) -> &ndarray::Array2<f64> {
+        &self.data
+    }
+    pub fn get_norms(&self) -> &[f64] {
+        &self.norms
+    }
+    pub fn get_polyorder(&self) -> usize {
+        self.polyorder
+    }
 }
 
 /// Vector of piecewise Legendre polynomials
@@ -430,7 +468,7 @@ pub struct PiecewiseLegendrePolyVector {
 
 impl PiecewiseLegendrePolyVector {
     /// Constructor with a vector of PiecewiseLegendrePoly
-    /// 
+    ///
     /// # Panics
     /// Panics if the input vector is empty, as empty PiecewiseLegendrePolyVector is not meaningful
     pub fn new(polyvec: Vec<PiecewiseLegendrePoly>) -> Self {
@@ -444,7 +482,7 @@ impl PiecewiseLegendrePolyVector {
     pub fn get_polys(&self) -> &[PiecewiseLegendrePoly] {
         &self.polyvec
     }
-    
+
     /// Constructor with a 3D array, knots, and symmetry vector
     pub fn from_3d_data(
         data3d: ndarray::Array3<f64>,
@@ -453,18 +491,16 @@ impl PiecewiseLegendrePolyVector {
     ) -> Self {
         let npolys = data3d.shape()[2];
         let mut polyvec = Vec::with_capacity(npolys);
-        
+
         if let Some(ref symm_vec) = symm {
             if symm_vec.len() != npolys {
                 panic!("Sizes of data and symm don't match");
             }
         }
-        
+
         // Compute delta_x from knots
-        let delta_x: Vec<f64> = (1..knots.len())
-            .map(|i| knots[i] - knots[i-1])
-            .collect();
-        
+        let delta_x: Vec<f64> = (1..knots.len()).map(|i| knots[i] - knots[i - 1]).collect();
+
         for i in 0..npolys {
             // Extract 2D data for this polynomial
             let mut data = ndarray::Array2::zeros((data3d.shape()[0], data3d.shape()[1]));
@@ -473,7 +509,7 @@ impl PiecewiseLegendrePolyVector {
                     data[[j, k]] = data3d[[j, k, i]];
                 }
             }
-            
+
             let poly = PiecewiseLegendrePoly::new(
                 data,
                 knots.clone(),
@@ -481,38 +517,38 @@ impl PiecewiseLegendrePolyVector {
                 Some(delta_x.clone()),
                 symm.as_ref().map_or(0, |s| s[i]),
             );
-            
+
             polyvec.push(poly);
         }
-        
+
         Self { polyvec }
     }
-    
+
     /// Get the size of the vector
     pub fn size(&self) -> usize {
         self.polyvec.len()
     }
-    
+
     /// Get polynomial by index (immutable)
     pub fn get(&self, index: usize) -> Option<&PiecewiseLegendrePoly> {
         self.polyvec.get(index)
     }
-    
+
     /// Get polynomial by index (mutable) - deprecated, use immutable design instead
-    #[deprecated(note = "PiecewiseLegendrePolyVector is designed to be immutable. Use get() and create new instances for modifications.")]
+    #[deprecated(
+        note = "PiecewiseLegendrePolyVector is designed to be immutable. Use get() and create new instances for modifications."
+    )]
     pub fn get_mut(&mut self, index: usize) -> Option<&mut PiecewiseLegendrePoly> {
         self.polyvec.get_mut(index)
     }
-    
+
     /// Extract a single polynomial as a vector
     pub fn slice_single(&self, index: usize) -> Option<Self> {
-        self.polyvec.get(index).map(|poly| {
-            Self {
-                polyvec: vec![poly.clone()],
-            }
+        self.polyvec.get(index).map(|poly| Self {
+            polyvec: vec![poly.clone()],
         })
     }
-    
+
     /// Extract multiple polynomials by indices
     pub fn slice_multi(&self, indices: &[usize]) -> Self {
         // Validate indices
@@ -521,7 +557,7 @@ impl PiecewiseLegendrePolyVector {
                 panic!("Index {} out of range", idx);
             }
         }
-        
+
         // Check for duplicates
         {
             let mut unique_indices = indices.to_vec();
@@ -531,34 +567,37 @@ impl PiecewiseLegendrePolyVector {
                 panic!("Duplicate indices not allowed");
             }
         }
-        
-        let new_polyvec: Vec<_> = indices.iter()
+
+        let new_polyvec: Vec<_> = indices
+            .iter()
             .map(|&idx| self.polyvec[idx].clone())
             .collect();
-        
-        Self { polyvec: new_polyvec }
+
+        Self {
+            polyvec: new_polyvec,
+        }
     }
-    
+
     /// Evaluate all polynomials at a single point
     pub fn evaluate_at(&self, x: f64) -> Vec<f64> {
         self.polyvec.iter().map(|poly| poly.evaluate(x)).collect()
     }
-    
+
     /// Evaluate all polynomials at multiple points
     pub fn evaluate_at_many(&self, xs: &[f64]) -> ndarray::Array2<f64> {
         let n_funcs = self.polyvec.len();
         let n_points = xs.len();
         let mut results = ndarray::Array2::zeros((n_funcs, n_points));
-        
+
         for (i, poly) in self.polyvec.iter().enumerate() {
             for (j, &x) in xs.iter().enumerate() {
                 results[[i, j]] = poly.evaluate(x);
             }
         }
-        
+
         results
     }
-    
+
     // Accessor methods to match C++ interface
     pub fn xmin(&self) -> f64 {
         if self.polyvec.is_empty() {
@@ -566,21 +605,21 @@ impl PiecewiseLegendrePolyVector {
         }
         self.polyvec[0].xmin
     }
-    
+
     pub fn xmax(&self) -> f64 {
         if self.polyvec.is_empty() {
             panic!("Cannot get xmax from empty PiecewiseLegendrePolyVector");
         }
         self.polyvec[0].xmax
     }
-    
+
     pub fn get_knots(&self, tolerance: Option<f64>) -> Vec<f64> {
         if self.polyvec.is_empty() {
             panic!("Cannot get knots from empty PiecewiseLegendrePolyVector");
         }
         const DEFAULT_TOLERANCE: f64 = 1e-10;
         let tolerance = tolerance.unwrap_or(DEFAULT_TOLERANCE);
-        
+
         // Collect all knots from all polynomials
         let mut all_knots = Vec::new();
         for poly in &self.polyvec {
@@ -588,7 +627,7 @@ impl PiecewiseLegendrePolyVector {
                 all_knots.push(knot);
             }
         }
-        
+
         // Sort and remove duplicates
         {
             all_knots.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -596,47 +635,47 @@ impl PiecewiseLegendrePolyVector {
         }
         all_knots
     }
-    
+
     pub fn get_delta_x(&self) -> Vec<f64> {
         if self.polyvec.is_empty() {
             panic!("Cannot get delta_x from empty PiecewiseLegendrePolyVector");
         }
         self.polyvec[0].delta_x.clone()
     }
-    
+
     pub fn get_polyorder(&self) -> usize {
         if self.polyvec.is_empty() {
             panic!("Cannot get polyorder from empty PiecewiseLegendrePolyVector");
         }
         self.polyvec[0].polyorder
     }
-    
+
     pub fn get_norms(&self) -> &[f64] {
         if self.polyvec.is_empty() {
             panic!("Cannot get norms from empty PiecewiseLegendrePolyVector");
         }
         &self.polyvec[0].norms
     }
-    
+
     pub fn get_symm(&self) -> Vec<i32> {
         if self.polyvec.is_empty() {
             panic!("Cannot get symm from empty PiecewiseLegendrePolyVector");
         }
         self.polyvec.iter().map(|poly| poly.symm).collect()
     }
-    
+
     /// Get data as 3D tensor: [segment][degree][polynomial]
     pub fn get_data(&self) -> ndarray::Array3<f64> {
         if self.polyvec.is_empty() {
             panic!("Cannot get data from empty PiecewiseLegendrePolyVector");
         }
-        
+
         let nsegments = self.polyvec[0].data.ncols();
         let polyorder = self.polyvec[0].polyorder;
         let npolys = self.polyvec.len();
-        
+
         let mut data = ndarray::Array3::zeros((nsegments, polyorder, npolys));
-        
+
         for (poly_idx, poly) in self.polyvec.iter().enumerate() {
             for segment in 0..nsegments {
                 for degree in 0..polyorder {
@@ -644,10 +683,10 @@ impl PiecewiseLegendrePolyVector {
                 }
             }
         }
-        
+
         data
     }
-    
+
     /// Find roots of all polynomials
     pub fn roots(&self, tolerance: Option<f64>) -> Vec<f64> {
         if self.polyvec.is_empty() {
@@ -656,14 +695,14 @@ impl PiecewiseLegendrePolyVector {
         const DEFAULT_TOLERANCE: f64 = 1e-10;
         let tolerance = tolerance.unwrap_or(DEFAULT_TOLERANCE);
         let mut all_roots = Vec::new();
-        
+
         for poly in &self.polyvec {
             let poly_roots = poly.roots();
             for root in poly_roots {
                 all_roots.push(root);
             }
         }
-        
+
         // Sort in descending order and remove duplicates (like C++ implementation)
         {
             all_roots.sort_by(|a, b| b.partial_cmp(a).unwrap());
@@ -671,7 +710,7 @@ impl PiecewiseLegendrePolyVector {
         }
         all_roots
     }
-    
+
     /// Get the number of roots
     pub fn nroots(&self, tolerance: Option<f64>) -> usize {
         if self.polyvec.is_empty() {
@@ -681,10 +720,9 @@ impl PiecewiseLegendrePolyVector {
     }
 }
 
-
 impl std::ops::Index<usize> for PiecewiseLegendrePolyVector {
     type Output = PiecewiseLegendrePoly;
-    
+
     fn index(&self, index: usize) -> &Self::Output {
         &self.polyvec[index]
     }
@@ -695,5 +733,3 @@ impl std::ops::Index<usize> for PiecewiseLegendrePolyVector {
 
 // Note: FnOnce implementation removed due to experimental nature
 // Use evaluate_at() and evaluate_at_many() methods directly
-
-

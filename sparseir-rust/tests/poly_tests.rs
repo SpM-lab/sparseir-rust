@@ -1,24 +1,27 @@
 //! Tests for piecewise Legendre polynomial implementations
 
-use sparseir_rust::poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
 use ndarray::arr2;
+use sparseir_rust::poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
 
 #[test]
 fn test_basic_polynomial_creation() {
     // Test data from C++ tests
-    let data = arr2(&[[
-        0.8177021060277301, 0.7085670484724618, 0.5033588232863977
-    ], [
-        0.3804323567786363, 0.7911959541742282, 0.8268504271915096
-    ], [
-        0.5425813266814807, 0.38397463704084633, 0.21626598379927042
-    ]]);
-    
-    let knots = vec![0.507134318967235, 0.5766150365607372, 0.7126662232433161, 0.7357313003784003];
+    let data = arr2(&[
+        [0.8177021060277301, 0.7085670484724618, 0.5033588232863977],
+        [0.3804323567786363, 0.7911959541742282, 0.8268504271915096],
+        [0.5425813266814807, 0.38397463704084633, 0.21626598379927042],
+    ]);
+
+    let knots = vec![
+        0.507134318967235,
+        0.5766150365607372,
+        0.7126662232433161,
+        0.7357313003784003,
+    ];
     let l = 3;
-    
+
     let poly = PiecewiseLegendrePoly::new(data.clone(), knots.clone(), l, None, 0);
-    
+
     assert_eq!(poly.data, data);
     assert_eq!(poly.xmin, knots[0]);
     assert_eq!(poly.xmax, knots[knots.len() - 1]);
@@ -32,12 +35,12 @@ fn test_polynomial_evaluation() {
     let data = arr2(&[[1.0, 2.0], [3.0, 4.0]]);
     let knots = vec![0.0, 1.0, 2.0];
     let poly = PiecewiseLegendrePoly::new(data, knots, 1, None, 0);
-    
+
     // Test evaluation at various points
     let x = 0.5;
     let result = poly.evaluate(x);
     println!("poly(0.5) = {}", result);
-    
+
     // Test split function
     let (i, x_tilde) = poly.split(0.5);
     assert_eq!(i, 0);
@@ -50,17 +53,17 @@ fn test_derivative_calculation() {
     let data = arr2(&[[1.0], [2.0], [3.0]]);
     let knots = vec![0.0, 1.0];
     let poly = PiecewiseLegendrePoly::new(data, knots, 0, None, 0);
-    
+
     // Test first derivative
     let deriv1 = poly.deriv(1);
     println!("Original poly: {:?}", poly.data);
     println!("First derivative: {:?}", deriv1.data);
-    
+
     // Test derivatives at a point
     let x = 0.5;
     let derivs = poly.derivs(x);
     println!("Derivatives at x={}: {:?}", x, derivs);
-    
+
     assert_eq!(derivs.len(), poly.polyorder);
 }
 
@@ -70,11 +73,11 @@ fn test_overlap_integral() {
     let data = arr2(&[[1.0]]);
     let knots = vec![0.0, 1.0];
     let poly = PiecewiseLegendrePoly::new(data, knots, 0, None, 0);
-    
+
     // Test overlap with constant function f(x) = 1
     let result = poly.overlap(|_| 1.0);
     println!("Overlap with f(x)=1: {}", result);
-    
+
     // The result includes normalization factor sqrt(2/delta_x) = sqrt(2)
     // So the expected result is sqrt(2) ≈ 1.414...
     let expected = 2.0_f64.sqrt();
@@ -84,26 +87,34 @@ fn test_overlap_integral() {
 #[test]
 fn test_high_precision_overlap_integral() {
     // Test with exact values from C++ poly.cxx
-    let data = arr2(&[[
-        0.8177021060277301, 0.7085670484724618, 0.5033588232863977
-    ], [
-        0.3804323567786363, 0.7911959541742282, 0.8268504271915096
-    ], [
-        0.5425813266814807, 0.38397463704084633, 0.21626598379927042
-    ]]);
-    
-    let knots = vec![0.507134318967235, 0.5766150365607372, 0.7126662232433161, 0.7357313003784003];
+    let data = arr2(&[
+        [0.8177021060277301, 0.7085670484724618, 0.5033588232863977],
+        [0.3804323567786363, 0.7911959541742282, 0.8268504271915096],
+        [0.5425813266814807, 0.38397463704084633, 0.21626598379927042],
+    ]);
+
+    let knots = vec![
+        0.507134318967235,
+        0.5766150365607372,
+        0.7126662232433161,
+        0.7357313003784003,
+    ];
     let l = 3;
     let poly = PiecewiseLegendrePoly::new(data, knots, l, None, 0);
-    
+
     // Test overlap with identity function f(x) = x
     let identity = |x: f64| x;
     let result = poly.overlap(identity);
-    
+
     // Expected result from C++ test
     let expected = 0.4934184996836403;
-    
-    println!("Expected overlap: {}, Actual: {}, Diff: {}", expected, result, (result - expected).abs());
+
+    println!(
+        "Expected overlap: {}, Actual: {}, Diff: {}",
+        expected,
+        result,
+        (result - expected).abs()
+    );
     assert!((result - expected).abs() < 1e-12);
 }
 
@@ -115,21 +126,21 @@ fn test_root_finding() {
     let data = arr2(&[[-0.5], [1.0]]);
     let knots = vec![0.0, 1.0];
     let poly = PiecewiseLegendrePoly::new(data, knots, 1, None, 0);
-    
+
     // Test evaluation at the expected root
     let x = 0.5;
     let value = poly.evaluate(x);
     println!("poly(0.5) = {}", value);
-    
+
     // For debugging: test at multiple points
     for test_x in [0.0, 0.25, 0.5, 0.75, 1.0] {
         let val = poly.evaluate(test_x);
         println!("poly({}) = {}", test_x, val);
     }
-    
+
     let roots = poly.roots();
     println!("Roots found: {:?}", roots);
-    
+
     // The root finding might not work perfectly due to normalization
     // Let's just check that the function behaves reasonably
     assert!(poly.evaluate(0.0) * poly.evaluate(1.0) <= 0.0); // Sign change
@@ -140,19 +151,40 @@ fn test_high_precision_root_finding() {
     // Test with exact values from C++ poly.cxx
     // This test uses a 16th-order polynomial with known roots
     let v = vec![
-        0.16774734206553019, 0.49223680914312595, -0.8276728567928646,
-        0.16912891046582143, -0.0016231275318572044, 0.00018381683946452256,
-        -9.699355027805034e-7, 7.60144228530804e-8, -2.8518324490258146e-10,
-        1.7090590205708293e-11, -5.0081401126025e-14, 2.1244236198427895e-15,
-        2.0478095258000225e-16, -2.676573801530628e-16, 2.338165820094204e-16,
-        -1.2050663212312096e-16, -0.16774734206553019, 0.49223680914312595,
-        0.8276728567928646, 0.16912891046582143, 0.0016231275318572044,
-        0.00018381683946452256, 9.699355027805034e-7, 7.60144228530804e-8,
-        2.8518324490258146e-10, 1.7090590205708293e-11, 5.0081401126025e-14,
-        2.1244236198427895e-15, -2.0478095258000225e-16, -2.676573801530628e-16,
-        -2.338165820094204e-16, -1.2050663212312096e-16
+        0.16774734206553019,
+        0.49223680914312595,
+        -0.8276728567928646,
+        0.16912891046582143,
+        -0.0016231275318572044,
+        0.00018381683946452256,
+        -9.699355027805034e-7,
+        7.60144228530804e-8,
+        -2.8518324490258146e-10,
+        1.7090590205708293e-11,
+        -5.0081401126025e-14,
+        2.1244236198427895e-15,
+        2.0478095258000225e-16,
+        -2.676573801530628e-16,
+        2.338165820094204e-16,
+        -1.2050663212312096e-16,
+        -0.16774734206553019,
+        0.49223680914312595,
+        0.8276728567928646,
+        0.16912891046582143,
+        0.0016231275318572044,
+        0.00018381683946452256,
+        9.699355027805034e-7,
+        7.60144228530804e-8,
+        2.8518324490258146e-10,
+        1.7090590205708293e-11,
+        5.0081401126025e-14,
+        2.1244236198427895e-15,
+        -2.0478095258000225e-16,
+        -2.676573801530628e-16,
+        -2.338165820094204e-16,
+        -1.2050663212312096e-16,
     ];
-    
+
     // Reshape into 16x2 matrix (column-major order like C++ Eigen)
     let mut data = ndarray::Array2::zeros((16, 2));
     for i in 0..16 {
@@ -160,35 +192,41 @@ fn test_high_precision_root_finding() {
             data[[i, j]] = v[i + j * 16]; // Column-major indexing
         }
     }
-    
+
     let knots = vec![0.0, 0.5, 1.0];
     let l = 3;
     let poly = PiecewiseLegendrePoly::new(data, knots.clone(), l, None, 0);
-    
+
     // Find roots
     let roots = poly.roots();
-    
+
     // Expected roots from C++ test
     let expected_roots = vec![0.1118633448586015, 0.4999999999999998, 0.8881366551413985];
-    
+
     println!("Expected roots: {:?}", expected_roots);
     println!("Actual roots: {:?}", roots);
-    
+
     // Check that we found the right number of roots
     assert_eq!(roots.len(), expected_roots.len());
-    
+
     // Check each root with high precision
     for i in 0..roots.len() {
-        println!("Root {}: Expected {}, Actual {}, Diff {}", i, expected_roots[i], roots[i], (roots[i] - expected_roots[i]).abs());
-        
+        println!(
+            "Root {}: Expected {}, Actual {}, Diff {}",
+            i,
+            expected_roots[i],
+            roots[i],
+            (roots[i] - expected_roots[i]).abs()
+        );
+
         // Check root accuracy
         assert!((roots[i] - expected_roots[i]).abs() < 1e-10);
-        
+
         // Verify that polynomial evaluates to zero at the root
         let root_value = poly.evaluate(roots[i]);
         println!("  poly({}) = {}", roots[i], root_value);
         assert!(root_value.abs() < 1e-10);
-        
+
         // Verify roots are in domain
         assert!(roots[i] >= knots[0]);
         assert!(roots[i] <= knots[knots.len() - 1]);
@@ -200,17 +238,17 @@ fn test_split_function() {
     let data = arr2(&[[1.0, 2.0], [3.0, 4.0]]);
     let knots = vec![0.0, 1.0, 2.0];
     let poly = PiecewiseLegendrePoly::new(data, knots, 0, None, 0);
-    
+
     // Test split at various points
     let test_points = vec![0.0, 0.5, 1.0, 1.5, 2.0];
-    
+
     for x in test_points {
         let (segment, x_tilde) = poly.split(x);
         println!("split({}) = ({}, {})", x, segment, x_tilde);
-        
+
         // Check that x_tilde is in [-1, 1]
         assert!(x_tilde >= -1.0 && x_tilde <= 1.0);
-        
+
         // Check that segment is valid
         assert!(segment < poly.knots.len() - 1);
     }
@@ -219,24 +257,19 @@ fn test_split_function() {
 #[test]
 fn test_legendre_polynomial_evaluation() {
     // Test the Legendre polynomial evaluation directly
-    let poly = PiecewiseLegendrePoly::new(
-        ndarray::Array2::zeros((3, 1)), 
-        vec![0.0, 1.0], 
-        0, 
-        None, 
-        0
-    );
-    
+    let poly =
+        PiecewiseLegendrePoly::new(ndarray::Array2::zeros((3, 1)), vec![0.0, 1.0], 0, None, 0);
+
     // Test P_0(x) = 1
     let coeffs = vec![1.0, 0.0, 0.0];
     let result = poly.evaluate_legendre_polynomial(0.5, &coeffs);
     assert!((result - 1.0).abs() < 1e-10);
-    
+
     // Test P_1(x) = x
     let coeffs = vec![0.0, 1.0, 0.0];
     let result = poly.evaluate_legendre_polynomial(0.5, &coeffs);
     assert!((result - 0.5).abs() < 1e-10);
-    
+
     // Test P_2(x) = (3x^2 - 1)/2
     let coeffs = vec![0.0, 0.0, 1.0];
     let result = poly.evaluate_legendre_polynomial(0.5, &coeffs);
@@ -249,13 +282,13 @@ fn test_with_data_methods() {
     let data = arr2(&[[1.0, 2.0], [3.0, 4.0]]);
     let knots = vec![0.0, 1.0, 2.0];
     let poly = PiecewiseLegendrePoly::new(data, knots, 1, None, 0);
-    
+
     // Test with_data
     let new_data = arr2(&[[5.0, 6.0], [7.0, 8.0]]);
     let new_poly = poly.with_data(new_data.clone());
     assert_eq!(new_poly.data, new_data);
     assert_eq!(new_poly.symm, poly.symm);
-    
+
     // Test with_data_and_symmetry
     let new_poly2 = poly.with_data_and_symmetry(new_data.clone(), 1);
     assert_eq!(new_poly2.data, new_data);
@@ -265,25 +298,28 @@ fn test_with_data_methods() {
 #[test]
 fn test_cpp_compatible_data() {
     // Test with the exact data from C++ tests
-    let data = arr2(&[[
-        0.8177021060277301, 0.7085670484724618, 0.5033588232863977
-    ], [
-        0.3804323567786363, 0.7911959541742282, 0.8268504271915096
-    ], [
-        0.5425813266814807, 0.38397463704084633, 0.21626598379927042
-    ]]);
-    
-    let knots = vec![0.507134318967235, 0.5766150365607372, 0.7126662232433161, 0.7357313003784003];
+    let data = arr2(&[
+        [0.8177021060277301, 0.7085670484724618, 0.5033588232863977],
+        [0.3804323567786363, 0.7911959541742282, 0.8268504271915096],
+        [0.5425813266814807, 0.38397463704084633, 0.21626598379927042],
+    ]);
+
+    let knots = vec![
+        0.507134318967235,
+        0.5766150365607372,
+        0.7126662232433161,
+        0.7357313003784003,
+    ];
     let l = 3;
-    
+
     let poly = PiecewiseLegendrePoly::new(data.clone(), knots.clone(), l, None, 0);
-    
+
     // Test basic properties
     assert_eq!(poly.data, data);
     assert_eq!(poly.knots, knots);
     assert_eq!(poly.l, l);
     assert_eq!(poly.polyorder, 3);
-    
+
     // Test evaluation at various points
     let test_points = vec![0.55, 0.6, 0.65, 0.7, 0.73];
     for x in test_points {
@@ -299,22 +335,22 @@ fn test_derivative_consistency() {
     let data = arr2(&[[1.0, 2.0], [3.0, 4.0]]);
     let knots = vec![0.0, 1.0, 2.0];
     let poly = PiecewiseLegendrePoly::new(data, knots, 1, None, 0);
-    
+
     let x = 0.5;
     let h = 1e-8;
-    
+
     // Numerical first derivative
     let f_plus = poly.evaluate(x + h);
     let f_minus = poly.evaluate(x - h);
     let numerical_deriv = (f_plus - f_minus) / (2.0 * h);
-    
+
     // Analytical first derivative
     let analytical_deriv = poly.deriv(1).evaluate(x);
-    
+
     println!("Numerical derivative: {}", numerical_deriv);
     println!("Analytical derivative: {}", analytical_deriv);
     println!("Difference: {}", (numerical_deriv - analytical_deriv).abs());
-    
+
     // Should be close (within numerical precision)
     assert!((numerical_deriv - analytical_deriv).abs() < 1e-6);
 }
@@ -322,41 +358,60 @@ fn test_derivative_consistency() {
 #[test]
 fn test_high_precision_derivative() {
     // Test with exact values from C++ poly.cxx
-    let data = arr2(&[[
-        0.8177021060277301, 0.7085670484724618, 0.5033588232863977
-    ], [
-        0.3804323567786363, 0.7911959541742282, 0.8268504271915096
-    ], [
-        0.5425813266814807, 0.38397463704084633, 0.21626598379927042
-    ]]);
-    
-    let knots = vec![0.507134318967235, 0.5766150365607372, 0.7126662232433161, 0.7357313003784003];
+    let data = arr2(&[
+        [0.8177021060277301, 0.7085670484724618, 0.5033588232863977],
+        [0.3804323567786363, 0.7911959541742282, 0.8268504271915096],
+        [0.5425813266814807, 0.38397463704084633, 0.21626598379927042],
+    ]);
+
+    let knots = vec![
+        0.507134318967235,
+        0.5766150365607372,
+        0.7126662232433161,
+        0.7357313003784003,
+    ];
     let l = 3;
     let poly = PiecewiseLegendrePoly::new(data, knots, l, None, 0);
-    
+
     // Test evaluation at x = 0.6 with high precision
     let x = 0.6;
     let expected_value = 0.9409047338158947;
     let actual_value = poly.evaluate(x);
-    
-    println!("Expected: {}, Actual: {}, Diff: {}", expected_value, actual_value, (actual_value - expected_value).abs());
+
+    println!(
+        "Expected: {}, Actual: {}, Diff: {}",
+        expected_value,
+        actual_value,
+        (actual_value - expected_value).abs()
+    );
     assert!((actual_value - expected_value).abs() < 1e-10);
-    
+
     // Test derivative evaluation at x = 0.6 with high precision
     let deriv_poly = poly.deriv(1);
     let expected_deriv = 1.9876646271069893;
     let actual_deriv = deriv_poly.evaluate(x);
-    
-    println!("Expected deriv: {}, Actual deriv: {}, Diff: {}", expected_deriv, actual_deriv, (actual_deriv - expected_deriv).abs());
+
+    println!(
+        "Expected deriv: {}, Actual deriv: {}, Diff: {}",
+        expected_deriv,
+        actual_deriv,
+        (actual_deriv - expected_deriv).abs()
+    );
     assert!((actual_deriv - expected_deriv).abs() < 1e-10);
-    
+
     // Test multiple derivatives at x = 0.6
     let expected_derivs = vec![0.9409047338158947, 1.9876646271069893, 954.4275060248603];
     let actual_derivs = poly.derivs(x);
-    
+
     assert_eq!(actual_derivs.len(), 3);
     for i in 0..3 {
-        println!("Deriv {}: Expected {}, Actual {}, Diff {}", i, expected_derivs[i], actual_derivs[i], (actual_derivs[i] - expected_derivs[i]).abs());
+        println!(
+            "Deriv {}: Expected {}, Actual {}, Diff {}",
+            i,
+            expected_derivs[i],
+            actual_derivs[i],
+            (actual_derivs[i] - expected_derivs[i]).abs()
+        );
         assert!((actual_derivs[i] - expected_derivs[i]).abs() < 1e-10);
     }
 }
@@ -364,30 +419,25 @@ fn test_high_precision_derivative() {
 #[test]
 fn test_legendre_polynomial_properties() {
     // Test that our Legendre polynomial evaluation matches known properties
-    let poly = PiecewiseLegendrePoly::new(
-        ndarray::Array2::zeros((5, 1)), 
-        vec![0.0, 1.0], 
-        0, 
-        None, 
-        0
-    );
-    
+    let poly =
+        PiecewiseLegendrePoly::new(ndarray::Array2::zeros((5, 1)), vec![0.0, 1.0], 0, None, 0);
+
     // Test P_0(x) = 1 at x = 0
     let coeffs = vec![1.0, 0.0, 0.0, 0.0, 0.0];
     let result = poly.evaluate_legendre_polynomial(0.0, &coeffs);
     assert!((result - 1.0).abs() < 1e-10);
-    
+
     // Test P_1(x) = x at x = 0.5
     let coeffs = vec![0.0, 1.0, 0.0, 0.0, 0.0];
     let result = poly.evaluate_legendre_polynomial(0.5, &coeffs);
     assert!((result - 0.5).abs() < 1e-10);
-    
+
     // Test P_2(x) = (3x^2 - 1)/2 at x = 1.0
     let coeffs = vec![0.0, 0.0, 1.0, 0.0, 0.0];
     let result = poly.evaluate_legendre_polynomial(1.0, &coeffs);
     let expected = (3.0 * 1.0 * 1.0 - 1.0) / 2.0;
     assert!((result - expected).abs() < 1e-10);
-    
+
     // Test P_3(x) = (5x^3 - 3x)/2 at x = 0.5
     let coeffs = vec![0.0, 0.0, 0.0, 1.0, 0.0];
     let result = poly.evaluate_legendre_polynomial(0.5, &coeffs);
@@ -402,7 +452,7 @@ fn test_accessor_methods() {
     let l = 5;
     let symm = 1;
     let poly = PiecewiseLegendrePoly::new(data.clone(), knots.clone(), l, None, symm);
-    
+
     // Test all accessor methods
     assert_eq!(poly.get_xmin(), knots[0]);
     assert_eq!(poly.get_xmax(), knots[knots.len() - 1]);
@@ -412,13 +462,13 @@ fn test_accessor_methods() {
     assert_eq!(poly.get_domain(), (knots[0], knots[knots.len() - 1]));
     assert_eq!(poly.get_knots(), knots.as_slice());
     assert_eq!(poly.get_data(), &data);
-    
+
     // Test delta_x and norms
     let delta_x = poly.get_delta_x();
     let norms = poly.get_norms();
     assert_eq!(delta_x.len(), knots.len() - 1);
     assert_eq!(norms.len(), knots.len() - 1);
-    
+
     // Check that delta_x matches knots
     for i in 0..delta_x.len() {
         assert!((delta_x[i] - (knots[i + 1] - knots[i])).abs() < 1e-10);
@@ -430,12 +480,12 @@ fn test_polynomial_vector_creation() {
     let data1 = arr2(&[[1.0, 2.0], [3.0, 4.0]]);
     let data2 = arr2(&[[5.0, 6.0], [7.0, 8.0]]);
     let knots = vec![0.0, 1.0, 2.0];
-    
+
     let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 0);
     let poly2 = PiecewiseLegendrePoly::new(data2, knots, 1, None, 0);
-    
+
     let vector = PiecewiseLegendrePolyVector::new(vec![poly1, poly2]);
-    
+
     assert_eq!(vector.size(), 2);
     assert_eq!(vector.get_polyorder(), 2);
 }
@@ -445,16 +495,16 @@ fn test_vector_evaluation() {
     let data1 = arr2(&[[1.0, 2.0], [3.0, 4.0]]);
     let data2 = arr2(&[[5.0, 6.0], [7.0, 8.0]]);
     let knots = vec![0.0, 1.0, 2.0];
-    
+
     let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 0);
     let poly2 = PiecewiseLegendrePoly::new(data2, knots, 1, None, 0);
-    
+
     let vector = PiecewiseLegendrePolyVector::new(vec![poly1, poly2]);
-    
+
     let results = vector.evaluate_at(0.5);
     assert_eq!(results.len(), 2);
     println!("Vector evaluation at 0.5: {:?}", results);
-    
+
     // Test multiple points
     let xs = vec![0.0, 0.5, 1.0];
     let results_matrix = vector.evaluate_at_many(&xs);
@@ -466,28 +516,28 @@ fn test_vector_evaluation() {
 fn test_vector_3d_construction() {
     // Create 3D data: 3 degrees, 2 segments, 2 polynomials
     let mut data3d = ndarray::Array3::zeros((3, 2, 2));
-    
+
     // Polynomial 0: coefficients for 3 degrees, 2 segments
     data3d[[0, 0, 0]] = 1.0; // degree 0, segment 0, poly 0
     data3d[[1, 0, 0]] = 2.0; // degree 1, segment 0, poly 0
     data3d[[0, 1, 0]] = 3.0; // degree 0, segment 1, poly 0
     data3d[[1, 1, 0]] = 4.0; // degree 1, segment 1, poly 0
-    
+
     // Polynomial 1: coefficients for 3 degrees, 2 segments
     data3d[[0, 0, 1]] = 5.0; // degree 0, segment 0, poly 1
     data3d[[1, 0, 1]] = 6.0; // degree 1, segment 0, poly 1
     data3d[[0, 1, 1]] = 7.0; // degree 0, segment 1, poly 1
     data3d[[1, 1, 1]] = 8.0; // degree 1, segment 1, poly 1
-    
+
     let knots = vec![0.0, 1.0, 2.0]; // 2 segments need 3 knots
     let symm = vec![0, 1];
-    
+
     let vector = PiecewiseLegendrePolyVector::from_3d_data(data3d, knots, Some(symm));
-    
+
     assert_eq!(vector.size(), 2);
     assert_eq!(vector.get_polyorder(), 3);
     assert_eq!(vector.get_symm(), vec![0, 1]);
-    
+
     // Test evaluation
     let results = vector.evaluate_at(0.5);
     assert_eq!(results.len(), 2);
@@ -500,22 +550,22 @@ fn test_vector_slicing() {
     let data2 = arr2(&[[5.0, 6.0], [7.0, 8.0]]);
     let data3 = arr2(&[[9.0, 10.0], [11.0, 12.0]]);
     let knots = vec![0.0, 1.0, 2.0];
-    
+
     let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 0);
     let poly2 = PiecewiseLegendrePoly::new(data2, knots.clone(), 1, None, 0);
     let poly3 = PiecewiseLegendrePoly::new(data3, knots, 2, None, 0);
-    
+
     let vector = PiecewiseLegendrePolyVector::new(vec![poly1, poly2, poly3]);
-    
+
     // Test single slice
     let single_slice = vector.slice_single(1);
     assert!(single_slice.is_some());
     assert_eq!(single_slice.unwrap().size(), 1);
-    
+
     // Test multi slice
     let multi_slice = vector.slice_multi(&[0, 2]);
     assert_eq!(multi_slice.size(), 2);
-    
+
     // Test evaluation of slice
     let slice_results = multi_slice.evaluate_at(0.5);
     assert_eq!(slice_results.len(), 2);
@@ -527,19 +577,19 @@ fn test_vector_accessors() {
     let data1 = arr2(&[[1.0, 2.0], [3.0, 4.0]]);
     let data2 = arr2(&[[5.0, 6.0], [7.0, 8.0]]);
     let knots = vec![0.0, 1.0, 2.0];
-    
+
     let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 0);
     let poly2 = PiecewiseLegendrePoly::new(data2, knots.clone(), 1, None, 0);
-    
+
     let vector = PiecewiseLegendrePolyVector::new(vec![poly1, poly2]);
-    
+
     // Test accessor methods
     assert_eq!(vector.xmin(), 0.0);
     assert_eq!(vector.xmax(), 2.0);
     assert_eq!(vector.get_knots(None), knots);
     assert_eq!(vector.get_polyorder(), 2);
     assert_eq!(vector.get_symm(), vec![0, 0]);
-    
+
     // Test 3D data conversion
     let data3d = vector.get_data();
     assert_eq!(data3d.shape(), [2, 2, 2]); // 2 segments, 2 degrees, 2 polynomials
@@ -551,15 +601,15 @@ fn test_vector_roots() {
     let data1 = arr2(&[[-0.5], [1.0]]); // Should have root at 0.5
     let data2 = arr2(&[[-1.0], [2.0]]); // Should have root at 0.5
     let knots = vec![0.0, 1.0];
-    
+
     let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 0);
     let poly2 = PiecewiseLegendrePoly::new(data2, knots, 1, None, 0);
-    
+
     let vector = PiecewiseLegendrePolyVector::new(vec![poly1, poly2]);
-    
+
     let roots = vector.roots(None);
     println!("Vector roots: {:?}", roots);
-    
+
     // Should find some roots (exact number depends on normalization)
     assert!(vector.nroots(None) >= 0);
 }
@@ -574,15 +624,20 @@ fn test_julia_random_data() {
     let data = arr2(&[
         [0.8177021060277301, 0.7085670484724618, 0.5033588232863977],
         [0.3804323567786363, 0.7911959541742282, 0.8268504271915096],
-        [0.5425813266814807, 0.38397463704084633, 0.21626598379927042]
+        [0.5425813266814807, 0.38397463704084633, 0.21626598379927042],
     ]);
-    
-    let knots = vec![0.507134318967235, 0.5766150365607372, 0.7126662232433161, 0.7357313003784003];
+
+    let knots = vec![
+        0.507134318967235,
+        0.5766150365607372,
+        0.7126662232433161,
+        0.7357313003784003,
+    ];
     let l = 3;
-    
+
     // Create the PiecewiseLegendrePoly object
     let poly = PiecewiseLegendrePoly::new(data.clone(), knots.clone(), l, None, 0);
-    
+
     // Test that the object is initialized correctly
     let poly_data = poly.get_data();
     for i in 0..data.nrows() {
@@ -592,22 +647,32 @@ fn test_julia_random_data() {
     }
     assert_eq!(poly.get_xmin(), knots[0]);
     assert_eq!(poly.get_xmax(), knots[knots.len() - 1]);
-    assert!(poly.get_knots().iter().zip(knots.iter()).all(|(a, b)| (a - b).abs() < 1e-15));
+    assert!(poly
+        .get_knots()
+        .iter()
+        .zip(knots.iter())
+        .all(|(a, b)| (a - b).abs() < 1e-15));
     assert_eq!(poly.get_polyorder(), data.nrows());
     assert_eq!(poly.get_symm(), 0);
-    
+
     // Test evaluation at specific point
     let x = 0.5328437345518631;
     let result = poly.evaluate(x);
     let expected = 2.696073744825952;
-    println!("Julia random data test - x: {}, expected: {}, actual: {}", x, expected, result);
+    println!(
+        "Julia random data test - x: {}, expected: {}, actual: {}",
+        x, expected, result
+    );
     assert!((result - expected).abs() < 1e-10);
-    
+
     // Test split function (equivalent to C++ split)
     let (i, tilde_x) = poly.split(x);
     assert_eq!(i, 0);
     let expected_tilde_x = -0.25995538114498773;
-    println!("Split - i: {}, expected tilde_x: {}, actual: {}", i, expected_tilde_x, tilde_x);
+    println!(
+        "Split - i: {}, expected tilde_x: {}, actual: {}",
+        i, expected_tilde_x, tilde_x
+    );
     assert!((tilde_x - expected_tilde_x).abs() < 1e-10);
 }
 
@@ -615,106 +680,173 @@ fn test_julia_random_data() {
 fn test_high_order_polynomial_vector() {
     // Test with high-order polynomials from C++ poly.cxx
     // These are 16th-order polynomials with complex coefficients
-    
+
     // Data for polynomial 1 (16x2 matrix)
     let data1_values = vec![
-        0.49996553669802485, -0.009838135710548356, 0.003315915376286483,
-        -2.4035906967802686e-5, 3.4824832610792906e-6, -1.6818592059096e-8,
-        1.5530850593697272e-9, -5.67191158452736e-12, 3.8438802553084145e-13,
-        -1.12861464373688e-15, -1.4028528586225198e-16, 5.199431653846204e-18,
-        -3.490774002228127e-16, 4.339342349553959e-18, -8.247505551908268e-17,
-        7.379549188001237e-19, 0.49996553669802485, 0.009838135710548356,
-        0.003315915376286483, 2.4035906967802686e-5, 3.4824832610792906e-6,
-        1.6818592059096e-8, 1.5530850593697272e-9, 5.67191158452736e-12,
-        3.8438802553084145e-13, 1.12861464373688e-15, -1.4028528586225198e-16,
-        -5.199431653846204e-18, -3.490774002228127e-16, -4.339342349553959e-18,
-        -8.247505551908268e-17, -7.379549188001237e-19
+        0.49996553669802485,
+        -0.009838135710548356,
+        0.003315915376286483,
+        -2.4035906967802686e-5,
+        3.4824832610792906e-6,
+        -1.6818592059096e-8,
+        1.5530850593697272e-9,
+        -5.67191158452736e-12,
+        3.8438802553084145e-13,
+        -1.12861464373688e-15,
+        -1.4028528586225198e-16,
+        5.199431653846204e-18,
+        -3.490774002228127e-16,
+        4.339342349553959e-18,
+        -8.247505551908268e-17,
+        7.379549188001237e-19,
+        0.49996553669802485,
+        0.009838135710548356,
+        0.003315915376286483,
+        2.4035906967802686e-5,
+        3.4824832610792906e-6,
+        1.6818592059096e-8,
+        1.5530850593697272e-9,
+        5.67191158452736e-12,
+        3.8438802553084145e-13,
+        1.12861464373688e-15,
+        -1.4028528586225198e-16,
+        -5.199431653846204e-18,
+        -3.490774002228127e-16,
+        -4.339342349553959e-18,
+        -8.247505551908268e-17,
+        -7.379549188001237e-19,
     ];
-    
+
     let mut data1 = ndarray::Array2::zeros((16, 2));
     for i in 0..16 {
         for j in 0..2 {
             data1[[i, j]] = data1_values[i * 2 + j];
         }
     }
-    
+
     // Data for polynomial 2 (16x2 matrix)
     let data2_values = vec![
-        -0.43195475509329695, 0.436151579050162, -0.005257007544885257,
-        0.0010660519696441624, -6.611545612452212e-6, 7.461310619506964e-7,
-        -3.2179499894475862e-9, 2.5166526274315926e-10, -8.387341925898803e-13,
-        5.008268649326024e-14, 3.7750894390998034e-17, -2.304983535459561e-16,
-        3.0252856483620636e-16, -1.923751082183687e-16, 7.201014354168769e-17,
-        -3.2715804561902326e-17, 0.43195475509329695, 0.436151579050162,
-        0.005257007544885257, 0.0010660519696441624, 6.611545612452212e-6,
-        7.461310619506964e-7, 3.2179499894475862e-9, 2.5166526274315926e-10,
-        8.387341925898803e-13, 5.008268649326024e-14, -3.7750894390998034e-17,
-        -2.304983535459561e-16, -3.0252856483620636e-16, -1.923751082183687e-16,
-        -7.201014354168769e-17, -3.2715804561902326e-17
+        -0.43195475509329695,
+        0.436151579050162,
+        -0.005257007544885257,
+        0.0010660519696441624,
+        -6.611545612452212e-6,
+        7.461310619506964e-7,
+        -3.2179499894475862e-9,
+        2.5166526274315926e-10,
+        -8.387341925898803e-13,
+        5.008268649326024e-14,
+        3.7750894390998034e-17,
+        -2.304983535459561e-16,
+        3.0252856483620636e-16,
+        -1.923751082183687e-16,
+        7.201014354168769e-17,
+        -3.2715804561902326e-17,
+        0.43195475509329695,
+        0.436151579050162,
+        0.005257007544885257,
+        0.0010660519696441624,
+        6.611545612452212e-6,
+        7.461310619506964e-7,
+        3.2179499894475862e-9,
+        2.5166526274315926e-10,
+        8.387341925898803e-13,
+        5.008268649326024e-14,
+        -3.7750894390998034e-17,
+        -2.304983535459561e-16,
+        -3.0252856483620636e-16,
+        -1.923751082183687e-16,
+        -7.201014354168769e-17,
+        -3.2715804561902326e-17,
     ];
-    
+
     let mut data2 = ndarray::Array2::zeros((16, 2));
     for i in 0..16 {
         for j in 0..2 {
             data2[[i, j]] = data2_values[i * 2 + j];
         }
     }
-    
+
     // Data for polynomial 3 (16x2 matrix)
     let data3_values = vec![
-        -0.005870438661638806, -0.8376202388555938, 0.28368166184926036,
-        -0.0029450618222246236, 0.0004277118923277169, -2.4101642603229184e-6,
-        2.2287962786878678e-7, -8.875091544426018e-10, 6.021488924175155e-11,
-        -1.8705305570705647e-13, 9.924398482443944e-15, 4.299521053905097e-16,
-        -1.0697019178666955e-16, 3.6972269778329906e-16, -8.848885164903329e-17,
-        6.327687614609368e-17, -0.005870438661638806, 0.8376202388555938,
-        0.28368166184926036, 0.0029450618222246236, 0.0004277118923277169,
-        2.4101642603229184e-6, 2.2287962786878678e-7, 8.875091544426018e-10,
-        6.021488924175155e-11, 1.8705305570705647e-13, 9.924398482443944e-15,
-        -4.299521053905097e-16, -1.0697019178666955e-16,
-        -3.6972269778329906e-16, -8.848885164903329e-17, -6.327687614609368e-17
+        -0.005870438661638806,
+        -0.8376202388555938,
+        0.28368166184926036,
+        -0.0029450618222246236,
+        0.0004277118923277169,
+        -2.4101642603229184e-6,
+        2.2287962786878678e-7,
+        -8.875091544426018e-10,
+        6.021488924175155e-11,
+        -1.8705305570705647e-13,
+        9.924398482443944e-15,
+        4.299521053905097e-16,
+        -1.0697019178666955e-16,
+        3.6972269778329906e-16,
+        -8.848885164903329e-17,
+        6.327687614609368e-17,
+        -0.005870438661638806,
+        0.8376202388555938,
+        0.28368166184926036,
+        0.0029450618222246236,
+        0.0004277118923277169,
+        2.4101642603229184e-6,
+        2.2287962786878678e-7,
+        8.875091544426018e-10,
+        6.021488924175155e-11,
+        1.8705305570705647e-13,
+        9.924398482443944e-15,
+        -4.299521053905097e-16,
+        -1.0697019178666955e-16,
+        -3.6972269778329906e-16,
+        -8.848885164903329e-17,
+        -6.327687614609368e-17,
     ];
-    
+
     let mut data3 = ndarray::Array2::zeros((16, 2));
     for i in 0..16 {
         for j in 0..2 {
             data3[[i, j]] = data3_values[i * 2 + j];
         }
     }
-    
+
     let knots = vec![-1.0, 0.0, 1.0];
-    
+
     // Create high-order polynomials
     let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 0);
     let poly2 = PiecewiseLegendrePoly::new(data2, knots.clone(), 1, None, 0);
     let poly3 = PiecewiseLegendrePoly::new(data3, knots.clone(), 2, None, 0);
-    
+
     // Create polynomial vector
-    let vector = PiecewiseLegendrePolyVector::new(vec![poly1.clone(), poly2.clone(), poly3.clone()]);
-    
+    let vector =
+        PiecewiseLegendrePolyVector::new(vec![poly1.clone(), poly2.clone(), poly3.clone()]);
+
     // Test basic properties
     assert_eq!(vector.size(), 3);
     assert_eq!(vector.xmin(), -1.0);
     assert_eq!(vector.xmax(), 1.0);
     assert_eq!(vector.get_polyorder(), 16);
-    
+
     // Test evaluation at a point
     let x = 0.5;
     let results = vector.evaluate_at(x);
     assert_eq!(results.len(), 3);
-    
+
     // Compare with individual polynomial evaluations
     let expected_results = vec![poly1.evaluate(x), poly2.evaluate(x), poly3.evaluate(x)];
     for i in 0..3 {
-        println!("Poly {} at {}: Expected {}, Actual {}", i, x, expected_results[i], results[i]);
+        println!(
+            "Poly {} at {}: Expected {}, Actual {}",
+            i, x, expected_results[i], results[i]
+        );
         assert!((results[i] - expected_results[i]).abs() < 1e-12);
     }
-    
+
     // Test evaluation at multiple points
     let xs = vec![-0.8, -0.2, 0.2, 0.8];
     let results_matrix = vector.evaluate_at_many(&xs);
     assert_eq!(results_matrix.shape(), [3, 4]);
-    
+
     // Verify each evaluation
     for i in 0..3 {
         for j in 0..4 {
@@ -728,6 +860,6 @@ fn test_high_order_polynomial_vector() {
             assert!((actual - expected).abs() < 1e-12);
         }
     }
-    
+
     println!("High-order polynomial vector test passed!");
 }

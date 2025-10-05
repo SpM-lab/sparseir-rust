@@ -6,10 +6,10 @@
 use num_complex::Complex64;
 use std::f64::consts::PI;
 
-use crate::traits::{StatisticsType, Fermionic, Bosonic, Statistics};
 use crate::freq::MatsubaraFreq;
 use crate::poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
 use crate::special_functions::spherical_bessel_j;
+use crate::traits::{Bosonic, Fermionic, Statistics, StatisticsType};
 
 /// Power model for asymptotic behavior
 #[derive(Debug, Clone)]
@@ -25,7 +25,7 @@ impl PowerModel {
 }
 
 /// Piecewise Legendre polynomial with Fourier transform capability
-/// 
+///
 /// This represents a piecewise Legendre polynomial that can be evaluated
 /// in the Matsubara frequency domain using Fourier transform.
 #[derive(Debug, Clone)]
@@ -45,27 +45,23 @@ pub type BosonicPiecewiseLegendreFT = PiecewiseLegendreFT<Bosonic>;
 
 impl<S: StatisticsType> PiecewiseLegendreFT<S> {
     /// Create a new PiecewiseLegendreFT from a polynomial and statistics
-    /// 
+    ///
     /// # Arguments
     /// * `poly` - The underlying piecewise Legendre polynomial
     /// * `stat` - Statistics type (Fermionic or Bosonic)
     /// * `n_asymp` - Asymptotic cutoff frequency index (default: infinity)
-    /// 
+    ///
     /// # Panics
     /// Panics if the polynomial domain is not [-1, 1]
-    pub fn new(
-        poly: PiecewiseLegendrePoly,
-        _stat: S,
-        n_asymp: Option<f64>,
-    ) -> Self {
+    pub fn new(poly: PiecewiseLegendrePoly, _stat: S, n_asymp: Option<f64>) -> Self {
         // Validate domain
         if (poly.xmin - (-1.0)).abs() > 1e-12 || (poly.xmax - 1.0).abs() > 1e-12 {
             panic!("Only interval [-1, 1] is supported for Fourier transform");
         }
-        
+
         let n_asymp = n_asymp.unwrap_or(f64::INFINITY);
         let model = Self::power_model(&poly);
-        
+
         Self {
             poly,
             n_asymp,
@@ -73,17 +69,17 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
             _phantom: std::marker::PhantomData,
         }
     }
-    
+
     /// Get the asymptotic cutoff frequency index
     pub fn get_n_asymp(&self) -> f64 {
         self.n_asymp
     }
-    
+
     /// Get the statistics type
     pub fn get_statistics(&self) -> Statistics {
         S::STATISTICS
     }
-    
+
     /// Get the zeta value for this statistics type
     pub fn zeta(&self) -> i64 {
         match S::STATISTICS {
@@ -91,17 +87,17 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
             Statistics::Bosonic => 0,
         }
     }
-    
+
     /// Get a reference to the underlying polynomial
     pub fn get_poly(&self) -> &PiecewiseLegendrePoly {
         &self.poly
     }
-    
+
     /// Evaluate the Fourier transform at a Matsubara frequency
-    /// 
+    ///
     /// # Arguments
     /// * `omega` - Matsubara frequency
-    /// 
+    ///
     /// # Returns
     /// The complex Fourier transform value
     pub fn evaluate(&self, omega: &MatsubaraFreq<S>) -> Complex64 {
@@ -112,7 +108,7 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
             self.giw(n)
         }
     }
-    
+
     /// Evaluate at integer Matsubara index
     pub fn evaluate_at_n(&self, n: i64) -> Complex64 {
         match MatsubaraFreq::<S>::new(n) {
@@ -120,43 +116,44 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
             Err(_) => Complex64::new(0.0, 0.0), // Return zero for invalid frequencies
         }
     }
-    
+
     /// Evaluate at multiple Matsubara indices
     pub fn evaluate_at_ns(&self, ns: &[i64]) -> Vec<Complex64> {
         ns.iter().map(|&n| self.evaluate_at_n(n)).collect()
     }
-    
+
     /// Create power model for asymptotic behavior
     fn power_model(poly: &PiecewiseLegendrePoly) -> PowerModel {
         let deriv_x1 = poly.derivs(1.0);
         let moments = Self::power_moments(&deriv_x1, poly.l);
         PowerModel::new(moments)
     }
-    
+
     /// Compute power moments for asymptotic expansion
     fn power_moments(deriv_x1: &[f64], l: i32) -> Vec<f64> {
         let statsign = match S::STATISTICS {
             Statistics::Fermionic => -1.0,
             Statistics::Bosonic => 1.0,
         };
-        
+
         let mut moments = deriv_x1.to_vec();
         for (m, moment) in moments.iter_mut().enumerate() {
             let m_f64 = (m + 1) as f64; // Julia uses 1-based indexing
-            *moment *= -(statsign * (-1.0_f64).powi(m_f64 as i32) + (-1.0_f64).powi(l)) / 2.0_f64.sqrt();
+            *moment *=
+                -(statsign * (-1.0_f64).powi(m_f64 as i32) + (-1.0_f64).powi(l)) / 2.0_f64.sqrt();
         }
         moments
     }
-    
+
     /// Compute the inner Fourier transform (for small frequencies)
     fn compute_unl_inner(&self, poly: &PiecewiseLegendrePoly, wn: i32) -> Complex64 {
         let wred = PI / 4.0 * wn as f64;
         let phase_wi = Self::phase_stable(poly, wn);
         let mut res = Complex64::new(0.0, 0.0);
-        
+
         let order_max = poly.polyorder;
         let segment_count = poly.knots.len() - 1;
-        
+
         for order in 0..order_max {
             for j in 0..segment_count {
                 let data_oj = poly.data[[order, j]];
@@ -164,22 +161,22 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
                 res += data_oj * tnl * phase_wi[j] / poly.norms[j];
             }
         }
-        
+
         res / 2.0_f64.sqrt()
     }
-    
+
     /// Compute asymptotic behavior (for large frequencies)
     fn giw(&self, wn: i32) -> Complex64 {
         let iw = Complex64::new(0.0, PI / 2.0 * wn as f64);
         if wn == 0 {
             return Complex64::new(0.0, 0.0);
         }
-        
+
         let inv_iw = 1.0 / iw;
         let result = inv_iw * Self::evalpoly(inv_iw, &self.model.moments);
         result
     }
-    
+
     /// Evaluate polynomial at complex point (Horner's method)
     fn evalpoly(x: Complex64, coeffs: &[f64]) -> Complex64 {
         let mut result = Complex64::new(0.0, 0.0);
@@ -188,12 +185,12 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
         }
         result
     }
-    
+
     /// Compute stable phase factors
     fn phase_stable(poly: &PiecewiseLegendrePoly, wn: i32) -> Vec<Complex64> {
         let mut phase_wi = Vec::with_capacity(poly.knots.len() - 1);
         let pi_over_4 = PI / 4.0;
-        
+
         for j in 0..poly.knots.len() - 1 {
             let xm = poly.xm[j];
             let phase = Complex64::new(
@@ -202,122 +199,116 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
             );
             phase_wi.push(phase);
         }
-        
+
         phase_wi
     }
-    
+
     /// Find sign changes in the Fourier transform
-    /// 
+    ///
     /// # Arguments
     /// * `positive_only` - If true, only return positive frequency sign changes
-    /// 
+    ///
     /// # Returns
     /// Vector of Matsubara frequencies where sign changes occur
     pub fn sign_changes(&self, positive_only: bool) -> Vec<MatsubaraFreq<S>> {
         let grid = Self::default_grid();
         let f = Self::func_for_part(self);
         let x0 = Self::find_all_roots(&f, &grid);
-        
+
         // Transform grid indices to Matsubara frequencies
-        let mut matsubara_indices: Vec<i64> = x0.into_iter()
-            .map(|x| 2 * x + self.zeta())
-            .collect();
-        
+        let mut matsubara_indices: Vec<i64> = x0.into_iter().map(|x| 2 * x + self.zeta()).collect();
+
         if !positive_only {
             Self::symmetrize_matsubara_inplace(&mut matsubara_indices);
         }
-        
-        matsubara_indices.into_iter()
+
+        matsubara_indices
+            .into_iter()
             .filter_map(|n| MatsubaraFreq::<S>::new(n).ok())
             .collect()
     }
-    
+
     /// Find extrema in the Fourier transform
-    /// 
+    ///
     /// # Arguments
     /// * `positive_only` - If true, only return positive frequency extrema
-    /// 
+    ///
     /// # Returns
     /// Vector of Matsubara frequencies where extrema occur
     pub fn find_extrema(&self, positive_only: bool) -> Vec<MatsubaraFreq<S>> {
         let grid = Self::default_grid();
         let f = Self::func_for_part(self);
         let x0 = Self::discrete_extrema(&f, &grid);
-        
+
         // Transform grid indices to Matsubara frequencies
-        let mut matsubara_indices: Vec<i64> = x0.into_iter()
-            .map(|x| 2 * x + self.zeta())
-            .collect();
-        
+        let mut matsubara_indices: Vec<i64> = x0.into_iter().map(|x| 2 * x + self.zeta()).collect();
+
         if !positive_only {
             Self::symmetrize_matsubara_inplace(&mut matsubara_indices);
         }
-        
-        matsubara_indices.into_iter()
+
+        matsubara_indices
+            .into_iter()
             .filter_map(|n| MatsubaraFreq::<S>::new(n).ok())
             .collect()
     }
-    
+
     /// Create function for extracting real or imaginary part based on parity
     fn func_for_part(&self) -> impl Fn(i64) -> f64 + '_ {
         let parity = self.poly.symm;
         let poly_ft = self.clone();
-        
+
         move |n| {
             let omega = match MatsubaraFreq::<S>::new(n) {
                 Ok(omega) => omega,
                 Err(_) => return 0.0,
             };
             let value = poly_ft.evaluate(&omega);
-            
+
             let result = match parity {
-                1 => {
-                    match S::STATISTICS {
-                        Statistics::Fermionic => value.im,
-                        Statistics::Bosonic => value.re,
-                    }
+                1 => match S::STATISTICS {
+                    Statistics::Fermionic => value.im,
+                    Statistics::Bosonic => value.re,
                 },
-                -1 => {
-                    match S::STATISTICS {
-                        Statistics::Fermionic => value.re,
-                        Statistics::Bosonic => value.im,
-                    }
+                -1 => match S::STATISTICS {
+                    Statistics::Fermionic => value.re,
+                    Statistics::Bosonic => value.im,
                 },
                 0 => {
                     // For symm = 0, use real part for both statistics
                     value.re
-                },
+                }
                 _ => panic!("Cannot detect parity for symm = {}", parity),
             };
-            
+
             // Debug: print values for constant polynomial
             if n == 0 || n == 1 || n == 2 {
                 println!("n={}, value={}, result={}", n, value, result);
             }
-            
+
             result
         }
     }
-    
+
     /// Default grid for sign change detection (same as C++ DEFAULT_GRID)
     fn default_grid() -> Vec<i64> {
         // This should match the C++ DEFAULT_GRID
         // Use a smaller range for testing
         (-100..=100).collect()
     }
-    
+
     /// Find all roots using the same algorithm as the poly module
-    fn find_all_roots<F>(f: &F, xgrid: &[i64]) -> Vec<i64> 
-    where 
+    fn find_all_roots<F>(f: &F, xgrid: &[i64]) -> Vec<i64>
+    where
         F: Fn(i64) -> f64,
     {
         if xgrid.is_empty() {
             return Vec::new();
         }
-        
+
         // Evaluate function at all grid points
         let fx: Vec<f64> = xgrid.iter().map(|&x| f(x)).collect();
-        
+
         // Find exact zeros (direct hits)
         let mut x_hit = Vec::new();
         for i in 0..fx.len() {
@@ -325,7 +316,7 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
                 x_hit.push(xgrid[i]);
             }
         }
-        
+
         // Find sign changes
         let mut sign_change = Vec::new();
         for i in 0..fx.len() - 1 {
@@ -334,18 +325,18 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
             let both_nonzero = fx[i].abs() > 1e-12 && fx[i + 1].abs() > 1e-12;
             sign_change.push(has_sign_change && not_hit && both_nonzero);
         }
-        
+
         // If no sign changes, return only direct hits
         if sign_change.iter().all(|&sc| !sc) {
             x_hit.sort();
             return x_hit;
         }
-        
+
         // Find intervals with sign changes
         let mut a_intervals = Vec::new();
         let mut b_intervals = Vec::new();
         let mut fa_values = Vec::new();
-        
+
         for i in 0..sign_change.len() {
             if sign_change[i] {
                 a_intervals.push(xgrid[i]);
@@ -353,35 +344,35 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
                 fa_values.push(fx[i]);
             }
         }
-        
+
         // Use bisection for each interval with sign change
         for i in 0..a_intervals.len() {
             let root = Self::bisect(&f, a_intervals[i], b_intervals[i], fa_values[i]);
             x_hit.push(root);
         }
-        
+
         // Sort and return
         x_hit.sort();
         x_hit
     }
-    
+
     /// Bisection method for integer grid
-    fn bisect<F>(f: &F, a: i64, b: i64, fa: f64) -> i64 
-    where 
+    fn bisect<F>(f: &F, a: i64, b: i64, fa: f64) -> i64
+    where
         F: Fn(i64) -> f64,
     {
         let mut a = a;
         let mut b = b;
         let mut fa = fa;
-        
+
         loop {
             if (b - a).abs() <= 1 {
                 return a;
             }
-            
+
             let mid = (a + b) / 2;
             let fmid = f(mid);
-            
+
             if fa.signum() != fmid.signum() {
                 b = mid;
             } else {
@@ -390,25 +381,25 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
             }
         }
     }
-    
+
     /// Find discrete extrema
-    fn discrete_extrema<F>(f: &F, xgrid: &[i64]) -> Vec<i64> 
-    where 
+    fn discrete_extrema<F>(f: &F, xgrid: &[i64]) -> Vec<i64>
+    where
         F: Fn(i64) -> f64,
     {
         if xgrid.len() < 3 {
             return Vec::new();
         }
-        
+
         let fx: Vec<f64> = xgrid.iter().map(|&x| f(x)).collect();
         let mut extrema = Vec::new();
-        
+
         // Check for extrema (local maxima or minima)
         for i in 1..fx.len() - 1 {
             let prev = fx[i - 1];
             let curr = fx[i];
             let next = fx[i + 1];
-            
+
             // Local maximum
             if curr > prev && curr > next {
                 extrema.push(xgrid[i]);
@@ -418,41 +409,41 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
                 extrema.push(xgrid[i]);
             }
         }
-        
+
         extrema
     }
-    
+
     /// Symmetrize Matsubara indices (remove zero if present and add negatives)
     fn symmetrize_matsubara_inplace(xs: &mut Vec<i64>) {
         // Remove zero if present
         xs.retain(|&x| x != 0);
-        
+
         // Sort in ascending order
         xs.sort();
-        
+
         // Create negative counterparts
         let negatives: Vec<i64> = xs.iter().rev().map(|&x| -x).collect();
-        
+
         // Combine negatives with originals
         xs.splice(0..0, negatives);
     }
-    
+
     /// Get T_nl coefficient (special function)
-    /// 
+    ///
     /// This implements the T_nl function which is related to spherical Bessel functions:
     /// T_nl(w) = 2 * i^l * j_l(|w|) * (w < 0 ? conj : identity)
     /// where j_l is the spherical Bessel function of the first kind.
     pub fn get_tnl(l: i32, w: f64) -> Complex64 {
         let abs_w = w.abs();
-        
+
         // Use the high-precision spherical Bessel function from special_functions
         let sph_bessel = spherical_bessel_j(l, abs_w);
-        
+
         // Compute 2 * i^l
         let im_unit = Complex64::new(0.0, 1.0);
         let im_power = im_unit.powi(l);
         let result = 2.0 * im_power * sph_bessel;
-        
+
         // Apply conjugation for negative w
         if w < 0.0 {
             result.conj()
@@ -460,7 +451,6 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
             result
         }
     }
-    
 }
 
 /// Vector of PiecewiseLegendreFT polynomials
@@ -482,7 +472,7 @@ impl<S: StatisticsType> PiecewiseLegendreFTVector<S> {
             _phantom: std::marker::PhantomData,
         }
     }
-    
+
     /// Create from a vector of PiecewiseLegendreFT
     pub fn from_vector(polyvec: Vec<PiecewiseLegendreFT<S>>) -> Self {
         Self {
@@ -490,7 +480,7 @@ impl<S: StatisticsType> PiecewiseLegendreFTVector<S> {
             _phantom: std::marker::PhantomData,
         }
     }
-    
+
     /// Create from PiecewiseLegendrePolyVector and statistics
     pub fn from_poly_vector(
         polys: &PiecewiseLegendrePolyVector,
@@ -498,34 +488,34 @@ impl<S: StatisticsType> PiecewiseLegendreFTVector<S> {
         n_asymp: Option<f64>,
     ) -> Self {
         let mut polyvec = Vec::with_capacity(polys.size());
-        
+
         for i in 0..polys.size() {
             let poly = polys.get(i).unwrap().clone();
             let ft_poly = PiecewiseLegendreFT::new(poly, _stat, n_asymp);
             polyvec.push(ft_poly);
         }
-        
+
         Self {
             polyvec,
             _phantom: std::marker::PhantomData,
         }
     }
-    
+
     /// Get the size of the vector
     pub fn size(&self) -> usize {
         self.polyvec.len()
     }
-    
+
     /// Get element by index (immutable)
     pub fn get(&self, index: usize) -> Option<&PiecewiseLegendreFT<S>> {
         self.polyvec.get(index)
     }
-    
+
     /// Get element by index (mutable)
     pub fn get_mut(&mut self, index: usize) -> Option<&mut PiecewiseLegendreFT<S>> {
         self.polyvec.get_mut(index)
     }
-    
+
     /// Set element at index
     pub fn set(&mut self, index: usize, poly: PiecewiseLegendreFT<S>) -> Result<(), String> {
         if index >= self.polyvec.len() {
@@ -534,22 +524,25 @@ impl<S: StatisticsType> PiecewiseLegendreFTVector<S> {
         self.polyvec[index] = poly;
         Ok(())
     }
-    
+
     /// Create a similar empty vector
     pub fn similar(&self) -> Self {
         Self::new()
     }
-    
+
     /// Get n_asymp from the first element (if any)
     pub fn n_asymp(&self) -> f64 {
         self.polyvec.first().map_or(f64::INFINITY, |p| p.n_asymp)
     }
-    
+
     /// Evaluate all polynomials at a Matsubara frequency
     pub fn evaluate_at(&self, omega: &MatsubaraFreq<S>) -> Vec<Complex64> {
-        self.polyvec.iter().map(|poly| poly.evaluate(omega)).collect()
+        self.polyvec
+            .iter()
+            .map(|poly| poly.evaluate(omega))
+            .collect()
     }
-    
+
     /// Evaluate all polynomials at multiple Matsubara frequencies
     pub fn evaluate_at_many(&self, omegas: &[MatsubaraFreq<S>]) -> Vec<Vec<Complex64>> {
         omegas.iter().map(|omega| self.evaluate_at(omega)).collect()
@@ -559,7 +552,7 @@ impl<S: StatisticsType> PiecewiseLegendreFTVector<S> {
 // Indexing operators
 impl<S: StatisticsType> std::ops::Index<usize> for PiecewiseLegendreFTVector<S> {
     type Output = PiecewiseLegendreFT<S>;
-    
+
     fn index(&self, index: usize) -> &Self::Output {
         &self.polyvec[index]
     }
@@ -577,4 +570,3 @@ impl<S: StatisticsType> Default for PiecewiseLegendreFTVector<S> {
         Self::new()
     }
 }
-

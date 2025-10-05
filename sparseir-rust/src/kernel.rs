@@ -14,16 +14,15 @@
 //! where ρ'(y) = w(y) ρ(y). The weight function w(y) transforms the original spectral
 //! function ρ(y) into the scaled version ρ'(y) used in the integral equation.
 
-use twofloat::TwoFloat;
-use crate::traits::{StatisticsType, Statistics, Fermionic, Bosonic};
 use crate::gauss::Rule;
 use crate::numeric::CustomNumeric;
+use crate::traits::{Bosonic, Fermionic, Statistics, StatisticsType};
 use ndarray::Array2;
-use std::fmt::Debug;
 use num_traits::ToPrimitive;
-use std::ops::{Index, IndexMut, Sub};
 use rayon::prelude::*;
-
+use std::fmt::Debug;
+use std::ops::{Index, IndexMut, Sub};
+use twofloat::TwoFloat;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SymmetryType {
@@ -41,7 +40,7 @@ impl SymmetryType {
 }
 
 /// Trait for SVE (Singular Value Expansion) hints
-/// 
+///
 /// Provides discretization hints for singular value expansion of a given kernel.
 /// This includes segment information and numerical parameters for efficient computation.
 pub trait SVEHints<T>: Debug + Send + Sync
@@ -49,22 +48,22 @@ where
     T: Copy + Debug + Send + Sync,
 {
     /// Get the x-axis segments for discretization
-    /// 
+    ///
     /// Returns only positive values (x >= 0) including the endpoints.
-    /// The returned vector contains segments from [0, xmax] where xmax is the 
+    /// The returned vector contains segments from [0, xmax] where xmax is the
     /// upper bound of the x domain.
     fn segments_x(&self) -> Vec<T>;
-    
+
     /// Get the y-axis segments for discretization
-    /// 
+    ///
     /// Returns only positive values (y >= 0) including the endpoints.
-    /// The returned vector contains segments from [0, ymax] where ymax is the 
+    /// The returned vector contains segments from [0, ymax] where ymax is the
     /// upper bound of the y domain.
     fn segments_y(&self) -> Vec<T>;
-    
+
     /// Get the number of singular values hint
     fn nsvals(&self) -> usize;
-    
+
     /// Get the number of Gauss points for quadrature
     fn ngauss(&self) -> usize;
 }
@@ -76,46 +75,46 @@ pub trait KernelProperties {
     where
         T: Copy + Debug + Send + Sync + CustomNumeric + 'static;
     /// Power with which the y coordinate scales.
-    /// 
+    ///
     /// For most kernels, this is 0 (no scaling).
     /// For RegularizedBoseKernel, this is 1 (linear scaling).
     fn ypower(&self) -> i32;
-    
+
     /// Get the upper bound of the x domain
     fn xmax(&self) -> f64;
-    
+
     /// Get the upper bound of the y domain
     fn ymin(&self) -> f64;
-    
+
     /// Weight function for given statistics.
-    /// 
+    ///
     /// The kernel is applied to a scaled spectral function ρ'(y) as:
     ///     ∫ K(x, y) ρ'(y) dy,
     /// where ρ'(y) = w(y) ρ(y).
-    /// 
+    ///
     /// This function returns w(beta, omega) that transforms the original spectral
     /// function ρ(y) into the scaled version ρ'(y) used in the integral equation.
-    /// 
+    ///
     /// @param beta Inverse temperature
     /// @param omega Frequency
     /// @return The weight value w(beta, omega)
     fn weight<S: StatisticsType + 'static>(&self, beta: f64, omega: f64) -> f64;
-    
+
     /// Inverse weight function to avoid division by zero.
-    /// 
+    ///
     /// This is a safer API that returns the inverse weight.
-    /// 
+    ///
     /// @param beta Inverse temperature  
     /// @param omega Frequency
     /// @return The inverse weight value
     fn inv_weight<S: StatisticsType + 'static>(&self, beta: f64, omega: f64) -> f64;
-    
+
     /// Create SVE hints for this kernel type.
-    /// 
+    ///
     /// Provides discretization hints for singular value expansion computation.
     /// The hints include segment information and numerical parameters optimized
     /// for the specific kernel type.
-    /// 
+    ///
     /// @param epsilon Target accuracy for the SVE computation
     /// @return SVE hints specific to this kernel type
     fn sve_hints<T>(&self, epsilon: f64) -> Self::SVEHintsType<T>
@@ -124,7 +123,7 @@ pub trait KernelProperties {
 }
 
 /// Trait for centrosymmetric kernels
-/// 
+///
 /// Centrosymmetric kernels satisfy K(x, y) = K(-x, -y) and can be decomposed
 /// into even and odd components for efficient computation.
 pub trait CentrosymmKernel: Send + Sync {
@@ -132,16 +131,21 @@ pub trait CentrosymmKernel: Send + Sync {
     fn compute<T: CustomNumeric + Copy + Debug>(&self, x: T, y: T) -> T;
 
     /// Compute the reduced kernel value
-    /// 
+    ///
     /// K_red(x, y) = K(x, y) + sign * K(x, -y)
     /// where sign = 1 for even symmetry and sign = -1 for odd symmetry
-    fn compute_reduced<T: CustomNumeric + Copy + Debug>(&self, x: T, y: T, symmetry: SymmetryType) -> T;
-    
+    fn compute_reduced<T: CustomNumeric + Copy + Debug>(
+        &self,
+        x: T,
+        y: T,
+        symmetry: SymmetryType,
+    ) -> T;
+
     /// Get the cutoff parameter Λ (lambda)
     fn lambda(&self) -> f64;
-    
+
     /// Convergence radius of the Matsubara basis asymptotic model.
-    /// 
+    ///
     /// For improved relative numerical accuracy, the IR basis functions on the
     /// Matsubara axis can be evaluated from an asymptotic expression for
     /// abs(n) > conv_radius. If conv_radius is infinity, then the asymptotics
@@ -150,7 +154,7 @@ pub trait CentrosymmKernel: Send + Sync {
 }
 
 /// Logistic kernel for fermionic analytical continuation
-/// 
+///
 /// This kernel implements K(x, y) = exp(-Λy(x + 1)/2)/(1 + exp(-Λy))
 /// where x ∈ [-1, 1] and y ∈ [-1, 1]
 #[derive(Debug, Clone, Copy)]
@@ -163,7 +167,7 @@ impl LogisticKernel {
     pub fn new(lambda: f64) -> Self {
         Self { lambda }
     }
-    
+
     /// Get the cutoff parameter
     pub fn lambda(&self) -> f64 {
         self.lambda
@@ -171,16 +175,21 @@ impl LogisticKernel {
 }
 
 impl KernelProperties for LogisticKernel {
-    type SVEHintsType<T> = LogisticSVEHints<T>
+    type SVEHintsType<T>
+        = LogisticSVEHints<T>
     where
         T: Copy + Debug + Send + Sync + CustomNumeric + 'static;
     fn ypower(&self) -> i32 {
         0 // No y-power scaling for LogisticKernel
     }
-    
-    fn xmax(&self) -> f64 { 1.0 }
-    fn ymin(&self) -> f64 { 1.0 }
-    
+
+    fn xmax(&self) -> f64 {
+        1.0
+    }
+    fn ymin(&self) -> f64 {
+        1.0
+    }
+
     fn weight<S: StatisticsType + 'static>(&self, beta: f64, omega: f64) -> f64 {
         match S::STATISTICS {
             Statistics::Fermionic => {
@@ -196,7 +205,7 @@ impl KernelProperties for LogisticKernel {
             }
         }
     }
-    
+
     fn inv_weight<S: StatisticsType + 'static>(&self, beta: f64, omega: f64) -> f64 {
         match S::STATISTICS {
             Statistics::Fermionic => {
@@ -210,7 +219,7 @@ impl KernelProperties for LogisticKernel {
             }
         }
     }
-    
+
     fn sve_hints<T>(&self, epsilon: f64) -> Self::SVEHintsType<T>
     where
         T: Copy + Debug + Send + Sync + CustomNumeric + 'static,
@@ -258,15 +267,22 @@ impl CentrosymmKernel for LogisticKernel {
         compute_logistic_kernel(self.lambda, x, y)
     }
 
-    fn compute_reduced<T: CustomNumeric + Copy + Debug>(&self, x: T, y: T, symmetry: SymmetryType) -> T {
+    fn compute_reduced<T: CustomNumeric + Copy + Debug>(
+        &self,
+        x: T,
+        y: T,
+        symmetry: SymmetryType,
+    ) -> T {
         match symmetry {
             SymmetryType::Even => self.compute(x, y) + self.compute(x, -y),
             SymmetryType::Odd => compute_logistic_kernel_reduced_odd(self.lambda, x, y),
         }
     }
-    
-    fn lambda(&self) -> f64 { self.lambda }
-    
+
+    fn lambda(&self) -> f64 {
+        self.lambda
+    }
+
     fn conv_radius(&self) -> f64 {
         40.0 * self.lambda // For LogisticKernel, conv_radius = 40 * Λ
     }
@@ -301,15 +317,13 @@ where
         // Simplified implementation - in practice, this would use the full algorithm
         // from the C++ implementation with cosh calculations
         // TOAI: Implement exactly the same logic in the C++ code, return only >= 0
-        
+
         // Returns only positive values (x >= 0) including endpoints [0, xmax]
         // where xmax is the upper bound of the x domain (typically 1.0)
-        let nzeros = std::cmp::max(
-            (15.0 * self.kernel.lambda().log10()).round() as usize, 1
-        );
-        
+        let nzeros = std::cmp::max((15.0 * self.kernel.lambda().log10()).round() as usize, 1);
+
         let mut segments = Vec::with_capacity(nzeros);
-        
+
         // Create segments from 0 to xmax (positive domain only)
         for i in 0..=nzeros {
             let pos = <T as CustomNumeric>::from_f64(0.1 * i as f64);
@@ -319,71 +333,73 @@ where
                 segments.push(pos);
             }
         }
-        
+
         // Ensure segments are sorted in ascending order [0, ..., xmax]
-        segments.sort_by(|a, b| a.to_f64().partial_cmp(&b.to_f64()).unwrap_or(std::cmp::Ordering::Equal));
+        segments.sort_by(|a, b| {
+            a.to_f64()
+                .partial_cmp(&b.to_f64())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         segments
     }
-    
+
     fn segments_y(&self) -> Vec<T> {
         // C++ equivalent implementation from SVEHintsLogistic::segments_y
         // TOAI: Implement exactly the same logic in the C++ code, return only >= 0
-        
+
         // Returns only positive values (y >= 0) including endpoints [0, ymax]
         // where ymax is the upper bound of the y domain (typically 1.0)
-        let nzeros = std::cmp::max(
-            (20.0 * self.kernel.lambda().log10()).round() as usize, 2
-        );
-        
+        let nzeros = std::cmp::max((20.0 * self.kernel.lambda().log10()).round() as usize, 2);
+
         // Initial differences (from C++ implementation)
         let mut diffs = vec![
-            0.01523, 0.03314, 0.04848, 0.05987, 0.06703,
-            0.07028, 0.07030, 0.06791, 0.06391, 0.05896,
-            0.05358, 0.04814, 0.04288, 0.03795, 0.03342,
-            0.02932, 0.02565, 0.02239, 0.01951, 0.01699
+            0.01523, 0.03314, 0.04848, 0.05987, 0.06703, 0.07028, 0.07030, 0.06791, 0.06391,
+            0.05896, 0.05358, 0.04814, 0.04288, 0.03795, 0.03342, 0.02932, 0.02565, 0.02239,
+            0.01951, 0.01699,
         ];
-        
+
         // Truncate diffs if necessary
         if nzeros < diffs.len() {
             diffs.truncate(nzeros);
         }
-        
+
         // Calculate trailing differences
         for i in 20..nzeros {
             let x = 0.141 * i as f64;
             diffs.push(0.25 * (-x).exp());
         }
-        
+
         // Calculate cumulative sum of diffs
         let mut zeros = Vec::with_capacity(nzeros);
         zeros.push(diffs[0]);
         for i in 1..nzeros {
             zeros.push(zeros[i - 1] + diffs[i]);
         }
-        
+
         // Normalize zeros
         let last_zero = zeros[nzeros - 1];
         for i in 0..nzeros {
             zeros[i] /= last_zero;
         }
         zeros.pop(); // Remove last element
-        
+
         // Updated nzeros
         let nzeros = zeros.len();
-        
+
         // Adjust zeros
         for i in 0..nzeros {
             zeros[i] -= 1.0;
         }
-        
+
         // Create the full symmetric segments vector first (includes negative values)
         let mut full_segments = vec![<T as CustomNumeric>::from_f64(0.0); 2 * nzeros + 3];
-        
+
         for i in 0..nzeros {
             full_segments[1 + i] = <T as CustomNumeric>::from_f64(zeros[i]);
-            full_segments[1 + nzeros + 1 + i] = <T as CustomNumeric>::from_f64(-zeros[nzeros - i - 1]);
+            full_segments[1 + nzeros + 1 + i] =
+                <T as CustomNumeric>::from_f64(-zeros[nzeros - i - 1]);
         }
-        
+
         full_segments[0] = <T as CustomNumeric>::from_f64(-1.0);
         full_segments[1 + nzeros] = <T as CustomNumeric>::from_f64(0.0);
         full_segments[2 * nzeros + 2] = <T as CustomNumeric>::from_f64(1.0);
@@ -391,45 +407,53 @@ where
         // Extract only positive values (y >= 0) including endpoints [0, ymax]
         symm_segments(&full_segments)
     }
-    
+
     fn nsvals(&self) -> usize {
         let log10_lambda = self.kernel.lambda().log10().max(1.0);
         ((25.0 + log10_lambda) * log10_lambda).round() as usize
     }
-    
+
     fn ngauss(&self) -> usize {
-        if self.epsilon >= 1e-8 { 10 } else { 16 }
+        if self.epsilon >= 1e-8 {
+            10
+        } else {
+            16
+        }
     }
 }
 
-
 /// Function to validate symmetry and extract the positive half of segments
 /// This is equivalent to C++ symm_segments function
-/// 
+///
 /// Extracts only positive values (>= 0) including endpoints from a symmetric segment array.
 /// The input segments should be symmetric around 0, and this function returns only
 /// the positive half [0, ..., max] where max is the upper bound of the domain.
 fn symm_segments<T: CustomNumeric + Copy + Debug + Send + Sync>(segments: &[T]) -> Vec<T> {
     let n = segments.len();
-    
+
     // Check if the vector is symmetric
     for i in 0..n / 2 {
         let left = segments[i].to_f64();
         let right = segments[n - i - 1].to_f64();
         if (left + right).abs() > f64::EPSILON {
-            panic!("segments must be symmetric: segments[{}] = {}, segments[{}] = {}", 
-                   i, left, n - i - 1, right);
+            panic!(
+                "segments must be symmetric: segments[{}] = {}, segments[{}] = {}",
+                i,
+                left,
+                n - i - 1,
+                right
+            );
         }
     }
-    
+
     // Extract the second half of the vector starting from the middle
     let mid = n / 2;
     let mut xpos: Vec<T> = segments[mid..].to_vec();
-    
+
     // Ensure the first element of xpos is zero; if not, prepend zero
     if xpos.is_empty() || xpos[0].to_f64().abs() > f64::EPSILON {
         xpos.insert(0, <T as CustomNumeric>::from_f64(0.0));
     }
-    
+
     xpos
 }

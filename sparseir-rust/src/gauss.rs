@@ -9,9 +9,9 @@
 //! where we generally have superexponential convergence for smooth f(x)
 //! with the number of quadrature points.
 
+use crate::numeric::CustomNumeric;
 use ndarray::Array1;
 use std::fmt::Debug;
-use crate::numeric::CustomNumeric;
 
 /// Quadrature rule for numerical integration.
 ///
@@ -21,7 +21,7 @@ use crate::numeric::CustomNumeric;
 #[derive(Debug, Clone)]
 pub struct Rule<T> {
     /// Quadrature points
-    pub x: Array1<T>,//COMMENT: ADD CHECK CODE TO MAKE SURE x is in non-decreasing order
+    pub x: Array1<T>, //COMMENT: ADD CHECK CODE TO MAKE SURE x is in non-decreasing order
     /// Quadrature weights
     pub w: Array1<T>,
     /// Distance from left endpoint: x - a
@@ -50,10 +50,10 @@ where
     /// Panics if x and w have different lengths.
     pub fn new(x: Array1<T>, w: Array1<T>, a: T, b: T) -> Self {
         assert_eq!(x.len(), w.len(), "x and w must have the same length");
-        
+
         let x_forward = x.mapv(|xi| xi - a);
         let x_backward = x.mapv(|xi| b - xi);
-        
+
         Self {
             x,
             w,
@@ -63,12 +63,12 @@ where
             b,
         }
     }
-    
+
     /// Create a new quadrature rule from vectors.
     pub fn from_vectors(x: Vec<T>, w: Vec<T>, a: T, b: T) -> Self {
         Self::new(Array1::from(x), Array1::from(w), a, b)
     }
-    
+
     /// Create a default rule with empty arrays.
     pub fn empty() -> Self {
         Self {
@@ -80,7 +80,7 @@ where
             b: <T as CustomNumeric>::from_f64(1.0),
         }
     }
-    
+
     /// Reseat the rule to a new interval [a, b].
     ///
     /// Scales and translates the quadrature points and weights to the new interval.
@@ -88,13 +88,15 @@ where
         let scaling = (b - a) / (self.b - self.a);
         let midpoint_old = (self.b + self.a) * <T as CustomNumeric>::from_f64(0.5);
         let midpoint_new = (b + a) * <T as CustomNumeric>::from_f64(0.5);
-        
+
         // Transform x: scaling * (xi - midpoint_old) + midpoint_new
-        let new_x = self.x.mapv(|xi| scaling * (xi - midpoint_old) + midpoint_new);
+        let new_x = self
+            .x
+            .mapv(|xi| scaling * (xi - midpoint_old) + midpoint_new);
         let new_w = self.w.mapv(|wi| wi * scaling);
         let new_x_forward = self.x_forward.mapv(|xi| xi * scaling);
         let new_x_backward = self.x_backward.mapv(|xi| xi * scaling);
-        
+
         Self {
             x: new_x,
             w: new_w,
@@ -104,7 +106,7 @@ where
             b,
         }
     }
-    
+
     /// Scale the weights by a factor.
     pub fn scale(&self, factor: T) -> Self {
         Self {
@@ -116,7 +118,7 @@ where
             b: self.b,
         }
     }
-    
+
     /// Create a piecewise rule over multiple segments.
     ///
     /// # Arguments
@@ -128,23 +130,23 @@ where
         if edges.len() < 2 {
             panic!("edges must have at least 2 elements");
         }
-        
+
         // Check if edges are sorted
         for i in 1..edges.len() {
-            if edges[i] <= edges[i-1] {
+            if edges[i] <= edges[i - 1] {
                 panic!("edges must be sorted in ascending order");
             }
         }
-        
+
         let mut rules = Vec::new();
         for i in 0..edges.len() - 1 {
             let rule = self.reseat(edges[i], edges[i + 1]);
             rules.push(rule);
         }
-        
+
         Self::join(&rules)
     }
-    
+
     /// Join multiple rules into a single rule.
     ///
     /// # Arguments
@@ -156,50 +158,50 @@ where
         if rules.is_empty() {
             return Self::empty();
         }
-        
+
         let a = rules[0].a;
         let b = rules[rules.len() - 1].b;
-        
+
         // Check that rules are contiguous
         for i in 1..rules.len() {
-            if (rules[i].a - rules[i-1].b).abs() > T::epsilon() {
+            if (rules[i].a - rules[i - 1].b).abs() > T::epsilon() {
                 panic!("rules must be contiguous");
             }
         }
-        
+
         // Concatenate all arrays
         let mut x_vec = Vec::new();
         let mut w_vec = Vec::new();
         let mut x_forward_vec = Vec::new();
         let mut x_backward_vec = Vec::new();
-        
+
         for rule in rules {
             // Adjust x_forward and x_backward for global coordinates
             let x_forward_adj = rule.x_forward.mapv(|xi| xi + (rule.a - a));
             let x_backward_adj = rule.x_backward.mapv(|xi| xi + (b - rule.b));
-            
+
             x_vec.extend(rule.x.iter().cloned());
             w_vec.extend(rule.w.iter().cloned());
             x_forward_vec.extend(x_forward_adj.iter().cloned());
             x_backward_vec.extend(x_backward_adj.iter().cloned());
         }
-        
+
         // Sort by x values to maintain order
         let mut indices: Vec<usize> = (0..x_vec.len()).collect();
         indices.sort_by(|&a, &b| x_vec[a].partial_cmp(&x_vec[b]).unwrap());
-        
+
         let sorted_x: Vec<T> = indices.iter().map(|&i| x_vec[i]).collect();
         let sorted_w: Vec<T> = indices.iter().map(|&i| w_vec[i]).collect();
-        
+
         // Recalculate x_forward and x_backward after sorting
         let sorted_x_forward: Vec<T> = sorted_x.iter().map(|&xi| xi - a).collect();
         let sorted_x_backward: Vec<T> = sorted_x.iter().map(|&xi| b - xi).collect();
-        
+
         let x = Array1::from(sorted_x);
         let w = Array1::from(sorted_w);
         let x_forward = Array1::from(sorted_x_forward);
         let x_backward = Array1::from(sorted_x_backward);
-        
+
         Self {
             x,
             w,
@@ -209,19 +211,35 @@ where
             b,
         }
     }
-    
+
     /// Convert the rule to a different numeric type.
     pub fn convert<U>(&self) -> Rule<U>
     where
         U: CustomNumeric + Copy + Debug + std::fmt::Display,
     {
-        let x: Array1<U> = self.x.iter().map(|&xi| <U as CustomNumeric>::from_f64(xi.to_f64())).collect();
-        let w: Array1<U> = self.w.iter().map(|&wi| <U as CustomNumeric>::from_f64(wi.to_f64())).collect();
-        let x_forward: Array1<U> = self.x_forward.iter().map(|&xi| <U as CustomNumeric>::from_f64(xi.to_f64())).collect();
-        let x_backward: Array1<U> = self.x_backward.iter().map(|&xi| <U as CustomNumeric>::from_f64(xi.to_f64())).collect();
+        let x: Array1<U> = self
+            .x
+            .iter()
+            .map(|&xi| <U as CustomNumeric>::from_f64(xi.to_f64()))
+            .collect();
+        let w: Array1<U> = self
+            .w
+            .iter()
+            .map(|&wi| <U as CustomNumeric>::from_f64(wi.to_f64()))
+            .collect();
+        let x_forward: Array1<U> = self
+            .x_forward
+            .iter()
+            .map(|&xi| <U as CustomNumeric>::from_f64(xi.to_f64()))
+            .collect();
+        let x_backward: Array1<U> = self
+            .x_backward
+            .iter()
+            .map(|&xi| <U as CustomNumeric>::from_f64(xi.to_f64()))
+            .collect();
         let a = <U as CustomNumeric>::from_f64(self.a.to_f64());
         let b = <U as CustomNumeric>::from_f64(self.b.to_f64());
-        
+
         Rule {
             x,
             w,
@@ -231,7 +249,7 @@ where
             b,
         }
     }
-    
+
     /// Validate the rule for consistency.
     ///
     /// # Returns
@@ -241,35 +259,35 @@ where
         if self.a >= self.b {
             return false;
         }
-        
+
         // Check array lengths
         if self.x.len() != self.w.len() {
             return false;
         }
-        
+
         if self.x.len() != self.x_forward.len() || self.x.len() != self.x_backward.len() {
             return false;
         }
-        
+
         // Check that all points are within [a, b]
         for &xi in self.x.iter() {
             if xi < self.a || xi > self.b {
                 return false;
             }
         }
-        
+
         // Check that points are sorted
         for i in 1..self.x.len() {
-            if self.x[i] <= self.x[i-1] {
+            if self.x[i] <= self.x[i - 1] {
                 return false;
             }
         }
-        
+
         // Check x_forward and x_backward consistency
         for i in 0..self.x.len() {
             let expected_forward = self.x[i] - self.a;
             let expected_backward = self.b - self.x[i];
-            
+
             if (self.x_forward[i] - expected_forward).abs() > T::epsilon() {
                 return false;
             }
@@ -277,7 +295,7 @@ where
                 return false;
             }
         }
-        
+
         true
     }
 }
@@ -290,10 +308,10 @@ where
     /// Create a new quadrature rule from points and weights (CustomNumeric version).
     pub fn new_custom(x: Array1<T>, w: Array1<T>, a: T, b: T) -> Self {
         assert_eq!(x.len(), w.len(), "x and w must have the same length");
-        
+
         let x_forward = x.mapv(|xi| xi - a);
         let x_backward = x.mapv(|xi| b - xi);
-        
+
         Self {
             x,
             w,
@@ -303,24 +321,26 @@ where
             b,
         }
     }
-    
+
     /// Create a new quadrature rule from vectors (CustomNumeric version).
     pub fn from_vectors_custom(x: Vec<T>, w: Vec<T>, a: T, b: T) -> Self {
         Self::new_custom(Array1::from(x), Array1::from(w), a, b)
     }
-    
+
     /// Reseat the rule to a new interval [a, b] (CustomNumeric version).
     pub fn reseat_custom(&self, a: T, b: T) -> Self {
         let scaling = (b - a) / (self.b - self.a);
         let midpoint_old = (self.b + self.a) * <T as CustomNumeric>::from_f64(0.5);
         let midpoint_new = (b + a) * <T as CustomNumeric>::from_f64(0.5);
-        
+
         // Transform x: scaling * (xi - midpoint_old) + midpoint_new
-        let new_x = self.x.mapv(|xi| scaling * (xi - midpoint_old) + midpoint_new);
+        let new_x = self
+            .x
+            .mapv(|xi| scaling * (xi - midpoint_old) + midpoint_new);
         let new_w = self.w.mapv(|wi| wi * scaling);
         let new_x_forward = self.x_forward.mapv(|xi| xi * scaling);
         let new_x_backward = self.x_backward.mapv(|xi| xi * scaling);
-        
+
         Self {
             x: new_x,
             w: new_w,
@@ -330,7 +350,7 @@ where
             b,
         }
     }
-    
+
     /// Scale the weights by a factor (CustomNumeric version).
     pub fn scale_custom(&self, factor: T) -> Self {
         Self {
@@ -342,42 +362,42 @@ where
             b: self.b,
         }
     }
-    
+
     /// Validate the rule for consistency (CustomNumeric version).
     pub fn validate_custom(&self) -> bool {
         // Check interval validity
         if self.a >= self.b {
             return false;
         }
-        
+
         // Check array lengths
         if self.x.len() != self.w.len() {
             return false;
         }
-        
+
         if self.x.len() != self.x_forward.len() || self.x.len() != self.x_backward.len() {
             return false;
         }
-        
+
         // Check that all points are within [a, b]
         for &xi in self.x.iter() {
             if xi < self.a || xi > self.b {
                 return false;
             }
         }
-        
+
         // Check that points are sorted
         for i in 1..self.x.len() {
-            if self.x[i] <= self.x[i-1] {
+            if self.x[i] <= self.x[i - 1] {
                 return false;
             }
         }
-        
+
         // Check x_forward and x_backward consistency
         for i in 0..self.x.len() {
             let expected_forward = self.x[i] - self.a;
             let expected_backward = self.b - self.x[i];
-            
+
             if (self.x_forward[i] - expected_forward).abs() > T::epsilon() {
                 return false;
             }
@@ -385,7 +405,7 @@ where
                 return false;
             }
         }
-        
+
         true
     }
 }
@@ -393,12 +413,17 @@ where
 /// TwoFloat-specific implementation without ScalarOperand requirement
 impl Rule<twofloat::TwoFloat> {
     /// Create a new quadrature rule from points and weights (TwoFloat version).
-    pub fn new_twofloat(x: Array1<twofloat::TwoFloat>, w: Array1<twofloat::TwoFloat>, a: twofloat::TwoFloat, b: twofloat::TwoFloat) -> Self {
+    pub fn new_twofloat(
+        x: Array1<twofloat::TwoFloat>,
+        w: Array1<twofloat::TwoFloat>,
+        a: twofloat::TwoFloat,
+        b: twofloat::TwoFloat,
+    ) -> Self {
         assert_eq!(x.len(), w.len(), "x and w must have the same length");
-        
+
         let x_forward = x.mapv(|xi| xi - a);
         let x_backward = x.mapv(|xi| b - xi);
-        
+
         Self {
             x,
             w,
@@ -408,24 +433,31 @@ impl Rule<twofloat::TwoFloat> {
             b,
         }
     }
-    
+
     /// Create a new quadrature rule from vectors (TwoFloat version).
-    pub fn from_vectors_twofloat(x: Vec<twofloat::TwoFloat>, w: Vec<twofloat::TwoFloat>, a: twofloat::TwoFloat, b: twofloat::TwoFloat) -> Self {
+    pub fn from_vectors_twofloat(
+        x: Vec<twofloat::TwoFloat>,
+        w: Vec<twofloat::TwoFloat>,
+        a: twofloat::TwoFloat,
+        b: twofloat::TwoFloat,
+    ) -> Self {
         Self::new_twofloat(Array1::from(x), Array1::from(w), a, b)
     }
-    
+
     /// Reseat the rule to a new interval [a, b] (TwoFloat version).
     pub fn reseat_twofloat(&self, a: twofloat::TwoFloat, b: twofloat::TwoFloat) -> Self {
         let scaling = (b - a) / (self.b - self.a);
         let midpoint_old = (self.b + self.a) * <twofloat::TwoFloat as CustomNumeric>::from_f64(0.5);
         let midpoint_new = (b + a) * <twofloat::TwoFloat as CustomNumeric>::from_f64(0.5);
-        
+
         // Transform x: scaling * (xi - midpoint_old) + midpoint_new
-        let new_x = self.x.mapv(|xi| scaling * (xi - midpoint_old) + midpoint_new);
+        let new_x = self
+            .x
+            .mapv(|xi| scaling * (xi - midpoint_old) + midpoint_new);
         let new_w = self.w.mapv(|wi| wi * scaling);
         let new_x_forward = self.x_forward.mapv(|xi| xi * scaling);
         let new_x_backward = self.x_backward.mapv(|xi| xi * scaling);
-        
+
         Self {
             x: new_x,
             w: new_w,
@@ -435,7 +467,7 @@ impl Rule<twofloat::TwoFloat> {
             b,
         }
     }
-    
+
     /// Scale the weights by a factor (TwoFloat version).
     pub fn scale_twofloat(&self, factor: twofloat::TwoFloat) -> Self {
         Self {
@@ -447,42 +479,42 @@ impl Rule<twofloat::TwoFloat> {
             b: self.b,
         }
     }
-    
+
     /// Validate the rule for consistency (TwoFloat version).
     pub fn validate_twofloat(&self) -> bool {
         // Check interval validity
         if self.a >= self.b {
             return false;
         }
-        
+
         // Check array lengths
         if self.x.len() != self.w.len() {
             return false;
         }
-        
+
         if self.x.len() != self.x_forward.len() || self.x.len() != self.x_backward.len() {
             return false;
         }
-        
+
         // Check that all points are within [a, b]
         for &xi in self.x.iter() {
             if xi < self.a || xi > self.b {
                 return false;
             }
         }
-        
+
         // Check that points are sorted
         for i in 1..self.x.len() {
-            if self.x[i] <= self.x[i-1] {
+            if self.x[i] <= self.x[i - 1] {
                 return false;
             }
         }
-        
+
         // Check x_forward and x_backward consistency
         for i in 0..self.x.len() {
             let expected_forward = self.x[i] - self.a;
             let expected_backward = self.b - self.x[i];
-            
+
             if (self.x_forward[i] - expected_forward).abs() > twofloat::TwoFloat::epsilon() {
                 return false;
             }
@@ -490,7 +522,7 @@ impl Rule<twofloat::TwoFloat> {
                 return false;
             }
         }
-        
+
         true
     }
 }
@@ -506,30 +538,33 @@ where
     if n == 0 {
         return (Vec::new(), Vec::new());
     }
-    
+
     if n == 1 {
-        return (vec![<T as CustomNumeric>::from_f64(0.0)], vec![<T as CustomNumeric>::from_f64(2.0)]);
+        return (
+            vec![<T as CustomNumeric>::from_f64(0.0)],
+            vec![<T as CustomNumeric>::from_f64(2.0)],
+        );
     }
-    
+
     let mut x = Vec::with_capacity(n);
     let mut w = Vec::with_capacity(n);
-    
+
     // Use Newton's method to find roots of Legendre polynomial
     let m = (n + 1) / 2;
-    
+
     // Use high-precision constants via CustomNumeric trait
     let pi = T::pi();
-    
+
     for i in 0..m {
         // Convert integers directly to avoid f64 intermediate
         let i_val = <T as CustomNumeric>::from_f64(i as f64);
         let n_val = <T as CustomNumeric>::from_f64(n as f64);
         let three_quarters = <T as CustomNumeric>::from_f64(0.75);
         let half = <T as CustomNumeric>::from_f64(0.5);
-        
+
         // Initial guess using Chebyshev nodes
         let mut z = (pi * (i_val + three_quarters) / (n_val + half)).cos();
-        
+
         // Newton's method to refine the root
         for _ in 0..10 {
             let (p0, p1) = legendre_polynomial_and_derivative(n, z);
@@ -538,29 +573,29 @@ where
             }
             z = z - p0 / p1;
         }
-        
+
         // Compute weight using high-precision constants
         let two = <T as CustomNumeric>::from_f64(2.0);
         let one = <T as CustomNumeric>::from_f64(1.0);
         let (_, p1) = legendre_polynomial_and_derivative(n, z);
         let weight = two / ((one - z * z) * p1 * p1);
-        
+
         x.push(-z);
         w.push(weight);
-        
+
         if i != n - 1 - i {
             x.push(z);
             w.push(weight);
         }
     }
-    
+
     // Sort by x values
     let mut indices: Vec<usize> = (0..n).collect();
     indices.sort_by(|&a, &b| x[a].partial_cmp(&x[b]).unwrap());
-    
+
     let sorted_x: Vec<T> = indices.iter().map(|&i| x[i]).collect();
     let sorted_w: Vec<T> = indices.iter().map(|&i| w[i]).collect();
-    
+
     (sorted_x, sorted_w)
 }
 
@@ -570,32 +605,44 @@ where
     T: CustomNumeric + Copy + Debug + std::fmt::Display + 'static,
 {
     if n == 0 {
-        return (<T as CustomNumeric>::from_f64(1.0), <T as CustomNumeric>::from_f64(0.0));
+        return (
+            <T as CustomNumeric>::from_f64(1.0),
+            <T as CustomNumeric>::from_f64(0.0),
+        );
     }
-    
+
     if n == 1 {
         return (x, <T as CustomNumeric>::from_f64(1.0));
     }
-    
+
     let mut p0 = <T as CustomNumeric>::from_f64(1.0);
     let mut p1 = x;
     let mut dp0 = <T as CustomNumeric>::from_f64(0.0);
     let mut dp1 = <T as CustomNumeric>::from_f64(1.0);
-    
+
     for k in 2..=n {
         let k_f = <T as CustomNumeric>::from_f64(k as f64);
         let k1_f = <T as CustomNumeric>::from_f64((k - 1) as f64);
         let _k2_f = <T as CustomNumeric>::from_f64((k - 2) as f64);
-        
-        let p2 = ((<T as CustomNumeric>::from_f64(2.0) * k1_f + <T as CustomNumeric>::from_f64(1.0)) * x * p1 - k1_f * p0) / k_f;
-        let dp2 = ((<T as CustomNumeric>::from_f64(2.0) * k1_f + <T as CustomNumeric>::from_f64(1.0)) * (p1 + x * dp1) - k1_f * dp0) / k_f;
-        
+
+        let p2 = ((<T as CustomNumeric>::from_f64(2.0) * k1_f
+            + <T as CustomNumeric>::from_f64(1.0))
+            * x
+            * p1
+            - k1_f * p0)
+            / k_f;
+        let dp2 = ((<T as CustomNumeric>::from_f64(2.0) * k1_f
+            + <T as CustomNumeric>::from_f64(1.0))
+            * (p1 + x * dp1)
+            - k1_f * dp0)
+            / k_f;
+
         p0 = p1;
         p1 = p2;
         dp0 = dp1;
         dp1 = dp2;
     }
-    
+
     (p1, dp1)
 }
 
@@ -613,10 +660,15 @@ where
     if n == 0 {
         return Rule::empty();
     }
-    
+
     let (x, w) = gauss_legendre_nodes_weights(n);
-    
-    Rule::from_vectors(x, w, <T as CustomNumeric>::from_f64(-1.0), <T as CustomNumeric>::from_f64(1.0))
+
+    Rule::from_vectors(
+        x,
+        w,
+        <T as CustomNumeric>::from_f64(-1.0),
+        <T as CustomNumeric>::from_f64(1.0),
+    )
 }
 
 /// Compute Gauss-Legendre quadrature nodes and weights using CustomNumeric
@@ -627,22 +679,27 @@ where
     if n == 0 {
         return (Vec::new(), Vec::new());
     }
-    
+
     if n == 1 {
-        return (vec![<T as CustomNumeric>::from_f64(0.0)], vec![<T as CustomNumeric>::from_f64(2.0)]);
+        return (
+            vec![<T as CustomNumeric>::from_f64(0.0)],
+            vec![<T as CustomNumeric>::from_f64(2.0)],
+        );
     }
-    
+
     let mut x = Vec::with_capacity(n);
     let mut w = Vec::with_capacity(n);
-    
+
     // Use Newton's method to find roots of Legendre polynomial
     let m = (n + 1) / 2;
     let pi = <T as CustomNumeric>::from_f64(std::f64::consts::PI);
-    
+
     for i in 0..m {
         // Initial guess using Chebyshev nodes
-        let mut z = (pi * <T as CustomNumeric>::from_f64(i as f64 + 0.75) / <T as CustomNumeric>::from_f64(n as f64 + 0.5)).cos();
-        
+        let mut z = (pi * <T as CustomNumeric>::from_f64(i as f64 + 0.75)
+            / <T as CustomNumeric>::from_f64(n as f64 + 0.5))
+        .cos();
+
         // Newton's method to refine the root
         for _ in 0..10 {
             let (p0, p1) = legendre_polynomial_and_derivative_custom(n, z);
@@ -651,27 +708,28 @@ where
             }
             z = z - p0 / p1;
         }
-        
+
         // Compute weight
         let (_, p1) = legendre_polynomial_and_derivative_custom(n, z);
-        let weight = <T as CustomNumeric>::from_f64(2.0) / ((<T as CustomNumeric>::from_f64(1.0) - z * z) * p1 * p1);
-        
+        let weight = <T as CustomNumeric>::from_f64(2.0)
+            / ((<T as CustomNumeric>::from_f64(1.0) - z * z) * p1 * p1);
+
         x.push(-z);
         w.push(weight);
-        
+
         if i != n - 1 - i {
             x.push(z);
             w.push(weight);
         }
     }
-    
+
     // Sort by x values
     let mut indices: Vec<usize> = (0..n).collect();
     indices.sort_by(|&a, &b| x[a].partial_cmp(&x[b]).unwrap());
-    
+
     let sorted_x: Vec<T> = indices.iter().map(|&i| x[i]).collect();
     let sorted_w: Vec<T> = indices.iter().map(|&i| w[i]).collect();
-    
+
     (sorted_x, sorted_w)
 }
 
@@ -681,35 +739,38 @@ where
     T: CustomNumeric,
 {
     if n == 0 {
-        return (<T as CustomNumeric>::from_f64(1.0), <T as CustomNumeric>::from_f64(0.0));
+        return (
+            <T as CustomNumeric>::from_f64(1.0),
+            <T as CustomNumeric>::from_f64(0.0),
+        );
     }
-    
+
     if n == 1 {
         return (x, <T as CustomNumeric>::from_f64(1.0));
     }
-    
+
     let mut p0 = <T as CustomNumeric>::from_f64(1.0);
     let mut p1 = x;
     let mut dp0 = <T as CustomNumeric>::from_f64(0.0);
     let mut dp1 = <T as CustomNumeric>::from_f64(1.0);
-    
+
     for k in 2..=n {
         let k_f = <T as CustomNumeric>::from_f64(k as f64);
         let k1_f = <T as CustomNumeric>::from_f64((k - 1) as f64);
         let _k2_f = <T as CustomNumeric>::from_f64((k - 2) as f64);
-        
+
         let two = <T as CustomNumeric>::from_f64(2.0);
         let one = <T as CustomNumeric>::from_f64(1.0);
-        
+
         let p2 = ((two * k1_f + one) * x * p1 - k1_f * p0) / k_f;
         let dp2 = ((two * k1_f + one) * (p1 + x * dp1) - k1_f * dp0) / k_f;
-        
+
         p0 = p1;
         p1 = p2;
         dp0 = dp1;
         dp1 = dp2;
     }
-    
+
     (p1, dp1)
 }
 
@@ -719,28 +780,41 @@ where
     T: CustomNumeric,
 {
     if n == 0 {
-        return Rule::new_custom(Array1::from(vec![]), Array1::from(vec![]), <T as CustomNumeric>::from_f64(-1.0), <T as CustomNumeric>::from_f64(1.0));
+        return Rule::new_custom(
+            Array1::from(vec![]),
+            Array1::from(vec![]),
+            <T as CustomNumeric>::from_f64(-1.0),
+            <T as CustomNumeric>::from_f64(1.0),
+        );
     }
-    
+
     let (x, w) = gauss_legendre_nodes_weights_custom(n);
-    
-    Rule::from_vectors_custom(x, w, <T as CustomNumeric>::from_f64(-1.0), <T as CustomNumeric>::from_f64(1.0))
+
+    Rule::from_vectors_custom(
+        x,
+        w,
+        <T as CustomNumeric>::from_f64(-1.0),
+        <T as CustomNumeric>::from_f64(1.0),
+    )
 }
 
 /// Create a Gauss-Legendre quadrature rule with n points on [-1, 1] (TwoFloat version).
 pub fn legendre_twofloat(n: usize) -> Rule<twofloat::TwoFloat> {
     if n == 0 {
         return Rule::new_twofloat(
-            Array1::from(vec![]), 
-            Array1::from(vec![]), 
-            <twofloat::TwoFloat as CustomNumeric>::from_f64(-1.0), 
-            <twofloat::TwoFloat as CustomNumeric>::from_f64(1.0)
+            Array1::from(vec![]),
+            Array1::from(vec![]),
+            <twofloat::TwoFloat as CustomNumeric>::from_f64(-1.0),
+            <twofloat::TwoFloat as CustomNumeric>::from_f64(1.0),
         );
     }
-    
+
     let (x, w) = gauss_legendre_nodes_weights_custom::<twofloat::TwoFloat>(n);
-    
-    Rule::from_vectors_twofloat(x, w, <twofloat::TwoFloat as CustomNumeric>::from_f64(-1.0), <twofloat::TwoFloat as CustomNumeric>::from_f64(1.0))
+
+    Rule::from_vectors_twofloat(
+        x,
+        w,
+        <twofloat::TwoFloat as CustomNumeric>::from_f64(-1.0),
+        <twofloat::TwoFloat as CustomNumeric>::from_f64(1.0),
+    )
 }
-
-
