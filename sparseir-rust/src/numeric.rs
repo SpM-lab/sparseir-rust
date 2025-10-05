@@ -42,6 +42,9 @@ pub trait CustomNumeric:
     
     /// Check if value is finite
     fn is_finite(self) -> bool;
+    
+    /// Get high-precision PI constant
+    fn pi() -> Self;
 }
 
 /// f64 implementation of CustomNumeric
@@ -77,6 +80,10 @@ impl CustomNumeric for f64 {
     fn is_finite(self) -> bool {
         self.is_finite()
     }
+    
+    fn pi() -> Self {
+        std::f64::consts::PI
+    }
 }
 
 
@@ -92,7 +99,7 @@ impl CustomNumeric for TwoFloat {
     }
     
     fn epsilon() -> Self {
-        TwoFloat::from(f64::EPSILON)
+        TwoFloat::from(9.63e-35) // real 128bit epsilon
     }
     
     fn abs(self) -> Self {
@@ -113,6 +120,10 @@ impl CustomNumeric for TwoFloat {
     
     fn is_finite(self) -> bool {
         self.is_valid()
+    }
+    
+    fn pi() -> Self {
+        twofloat::consts::PI
     }
 }
 

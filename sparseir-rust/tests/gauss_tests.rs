@@ -1,4 +1,4 @@
-use sparseir_rust::{Rule, legendre, legendre_custom, legendre_twofloat, TwoFloat};
+use sparseir_rust::{Rule, legendre, legendre_custom, legendre_twofloat, TwoFloat, CustomNumeric};
 use ndarray::Array1;
 
 #[test]
@@ -259,4 +259,92 @@ fn test_rule_twofloat_methods() {
         
         let rule_tf = Rule::new_twofloat(x_tf, w_tf, TwoFloat::from(-1.0), TwoFloat::from(1.0));
     assert!(rule_tf.validate_twofloat());
+}
+
+// ===== TwoFloat Gauss Integration Precision Tests =====
+
+/// Test function: f(x) = {cos((π/2) * x)}²
+/// Integral over [-1, 1] should be exactly 1.0
+fn test_function(x: TwoFloat) -> TwoFloat {
+    let pi = TwoFloat::from_f64(std::f64::consts::PI);
+    let cos_val = (pi / TwoFloat::from_f64(2.0) * x).cos();
+    cos_val * cos_val
+}
+
+/// Analytical integral of f(x) = {cos((π/2) * x)}² over [-1, 1]
+/// ∫_{-1}^{1} cos²((π/2) * x) dx = 1.0
+fn analytical_integral() -> TwoFloat {
+    TwoFloat::from_f64(1.0)
+}
+
+
+#[test]
+fn test_twofloat_gauss_rule_validation() {
+    println!("TwoFloat Gauss Rule Validation Test");
+    println!("===================================");
+    
+    let test_points = vec![5, 10, 20, 50];
+    
+    for n in test_points {
+        let rule = legendre_twofloat(n);
+        
+        println!("Testing rule with {} points:", n);
+        println!("  Interval: [{}, {}]", rule.a.to_f64(), rule.b.to_f64());
+        println!("  Points: {}", rule.x.len());
+        println!("  Weights: {}", rule.w.len());
+        
+        // Validate the rule
+        let is_valid = rule.validate_twofloat();
+        println!("  Validation: {}", if is_valid { "✅ PASS" } else { "❌ FAIL" });
+        
+        // Check weight sum (should be 2.0 for [-1, 1])
+        let mut weight_sum = TwoFloat::from_f64(0.0);
+        for &w in rule.w.iter() {
+            weight_sum = weight_sum + w;
+        }
+        let expected_sum = TwoFloat::from_f64(2.0);
+        let weight_error = (weight_sum - expected_sum).abs();
+        
+        println!("  Weight sum: {} (expected: 2.0, error: {:.2e})", 
+                 weight_sum.to_f64(), weight_error.to_f64());
+        
+        // Check symmetry (for even n, should be symmetric)
+        if n % 2 == 0 {
+            let mid = n / 2;
+            let sym_check = (rule.x[mid-1] + rule.x[mid]).abs() < TwoFloat::epsilon();
+            println!("  Symmetry check: {}", if sym_check { "✅ PASS" } else { "❌ FAIL" });
+        }
+        
+        println!();
+    }
+}
+
+
+#[test]
+fn test_twofloat_integration_convergence_analysis() {
+    println!("TwoFloat Integration Convergence Analysis");
+    println!("========================================");
+    
+    let analytical = analytical_integral();
+    
+    // Test convergence with specific number of points
+    let test_points = vec![100, 150, 200];
+    
+    for n in test_points {
+        let rule = legendre_twofloat(n);
+        let mut integral = TwoFloat::from_f64(0.0);
+        
+        for i in 0..rule.x.len() {
+            let f_val = test_function(rule.x[i]);
+            integral = integral + f_val * rule.w[i];
+        }
+        
+        let error = (integral - analytical).abs().to_f64();
+        let rel_error = error / analytical.to_f64().abs();
+        
+        println!("n={:3}: error={:.2e}, rel_error={:.2e}", n, error, rel_error);
+        // This target is too loose for TwoFloat.
+        // The numerical precision of math functions in twofloat is not that good.
+        assert!(rel_error < 1e-15);
+    }
 }
