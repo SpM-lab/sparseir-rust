@@ -33,4 +33,9 @@ rayon = "1.7"
 [dev-dependencies]
 approx = "0.5"
 proptest = "1.0"
+# Pure Rust high-precision arithmetic with mathematical functions
+dashu-float = "0.4"
+dashu-base = "0.4"
+# Math functions
+libm = "0.2"
 
