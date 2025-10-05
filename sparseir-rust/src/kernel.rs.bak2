@@ -24,6 +24,12 @@ use num_traits::ToPrimitive;
 use std::ops::{Index, IndexMut, Sub};
 use rayon::prelude::*;
 
+
+enum Parity {
+    Even = 1,
+    Odd = -1
+}
+
 /// Trait for SVE (Singular Value Expansion) hints
 /// 
 /// Provides discretization hints for singular value expansion of a given kernel.
@@ -108,9 +114,9 @@ pub trait CentrosymmKernel: Send + Sync {
 
     /// Compute the reduced kernel value
     // K_red(x, y) = K(x, y) + sign * K(x, -y)
-    fn compute_reduced(&self, x: TwoFloat, y: TwoFloat, sign: i32) -> TwoFloat;
+    fn compute_reduced(&self, x: TwoFloat, y: TwoFloat, sign: Parity) -> TwoFloat;
 
-    fn compute_reduced_f64(&self, x: f64, y: f64, sign: i32) -> f64;
+    fn compute_reduced_f64(&self, x: f64, y: f64, sign: Parity) -> f64;
     
     /// Get the cutoff parameter Λ (lambda)
     fn lambda(&self) -> f64;
@@ -194,26 +200,61 @@ impl KernelProperties for LogisticKernel {
     }
 }
 
+fn compute_logistic_kernel<T: CustomNumeric>(lambda: f64, x: T, y: T) {
+    let x_plus: T = 1.0 + x;
+    let x_minus: T = 1.0 - x;
+
+    let u_plus: T = 0.5 * x_plus;
+    let u_minus: T = 0.5 * x_minus;
+    let v: T = lambda * y;
+
+    let mabs_v: T = -v.abs();
+    let numerator: T = if (v >= 0) {
+        numerator = (u_plus * mabs_v).exp();
+    } else {
+        numerator = (u_minus * mabs_v).exp();
+    };
+    let denominator: T = 1.0 + (mabs_v).exp();
+    return numerator / denominator;
+}
+
+fn compute_logistic_kernel_reduced_odd<T: CustomNumeric>(lambda: f64, x: T, y: T) {
+    // For x * y around 0, antisymmetrization introduces cancellation, which
+    // reduces the relative precision. To combat this, we replace the
+    // values with the explicit form
+    let v_half: T = lambda * 0.5 * y;
+    let xy_small: bool = x * v_half < 1;
+    let cosh_finite: bool = v_half < 85;
+    if (xy_small && cosh_finite) {
+        return -sinh(v_half * x) / cosh(v_half);
+    } else {
+        let k_plus = compute_logistic_kernel(lambda, x, y);
+        let k_minus = compute_logistic_kernel(lambda, x, -y);
+        return k_plus - k_minus;
+    }
+}
+
 impl CentrosymmKernel for LogisticKernel {
     fn compute(&self, x: TwoFloat, y: TwoFloat) -> TwoFloat {
-        // K(x, y) = exp(-Λy(x + 1)/2)/(1 + exp(-Λy))
-        let lambda = TwoFloat::from(self.lambda);
-        let exp_term = (-lambda * y * (x + TwoFloat::from(1.0)) / TwoFloat::from(2.0)).exp();
-        exp_term / (TwoFloat::from(1.0) + (-lambda * y).exp())
+        return compute_logistic_kernel(lambda, x, y);
     }
 
-    // TODO: implement faster algorithm in f64
     fn compute_f64(&self, x: f64, y: f64) -> f64 {
-        return self.compute(TwoFloat::from_f64(x), TwoFloat::from_f64(y)).into();
+        return compute_logistic_kernel(lambda, x, y);
     }
 
-    fn compute_reduced(&self, x: TwoFloat, y: TwoFloat, sign: i32) -> TwoFloat {
-        return self.compute(x, y) + TwoFloat::from(sign) * self.compute(x, -y);
+    fn compute_reduced(&self, x: TwoFloat, y: TwoFloat, sign: Parity) -> TwoFloat {
+        match sign {
+            Parity::Even => self.compute(x, y) + self.compute(x, -y),
+            Parity::Odd => compute_logistic_kernel_reduced_odd(self.lambda, x, y),
+        }
     }
 
-    fn compute_reduced_f64(&self, x: f64, y: f64, sign: i32) -> f64 {
-        let sign_f = sign.to_f64().expect("sign must be +/- 1!");
-        return self.compute_f64(x, y) + sign_f * self.compute_f64(x, -y);
+    fn compute_reduced_f64(&self, x: f64, y: f64, sign: Parity) -> f64 {
+        match sign {
+            Parity::Even => self.compute_f64(x, y) + self.compute_f64(x, -y),
+            Parity::Odd => compute_logistic_kernel_reduced_odd(self.lambda, x, y),
+        }
     }
     
     fn lambda(&self) -> f64 { self.lambda }
