@@ -78,7 +78,7 @@ pub trait KernelProperties {
     fn xmax(&self) -> f64;
 
     /// Get the upper bound of the y domain
-    fn ymin(&self) -> f64;
+    fn ymax(&self) -> f64;
 
     /// Weight function for given statistics.
     ///
@@ -180,7 +180,7 @@ impl KernelProperties for LogisticKernel {
     fn xmax(&self) -> f64 {
         1.0
     }
-    fn ymin(&self) -> f64 {
+    fn ymax(&self) -> f64 {
         1.0
     }
 

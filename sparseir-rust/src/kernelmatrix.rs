@@ -4,7 +4,7 @@
 //! rules and store them as matrices for numerical computation.
 
 use crate::gauss::Rule;
-use crate::kernel::{CentrosymmKernel, SymmetryType};
+use crate::kernel::{CentrosymmKernel, KernelProperties, SymmetryType};
 use crate::numeric::CustomNumeric;
 use ndarray::Array2;
 use num_traits::ToPrimitive;
@@ -101,12 +101,35 @@ impl<T: CustomNumeric + Clone> DiscretizedKernel<T> {
 /// 
 /// This function evaluates the kernel at all combinations of Gauss points
 /// and returns a DiscretizedKernel containing the matrix and quadrature rules.
-pub fn matrix_from_gauss<T: CustomNumeric + ToPrimitive + num_traits::Zero + Clone, K: CentrosymmKernel>(
+pub fn matrix_from_gauss<T: CustomNumeric + ToPrimitive + num_traits::Zero + Clone, K: CentrosymmKernel + KernelProperties>(
     kernel: &K,
     gauss_x: &Rule<T>,
     gauss_y: &Rule<T>,
     symmetry: SymmetryType,
 ) -> DiscretizedKernel<T> {
+    // Check that Gauss points are within [0, xmax] and [0, ymax]
+    let kernel_xmax = kernel.xmax();
+    let kernel_ymax = kernel.ymax();
+    let tolerance = 1e-12;
+    
+    // Check x points are in [0, xmax]
+    for &x in &gauss_x.x {
+        let x_f64 = x.to_f64();
+        assert!(
+            x_f64 >= -tolerance && x_f64 <= kernel_xmax + tolerance,
+            "Gauss x point {} is outside [0, {}]", x_f64, kernel_xmax
+        );
+    }
+    
+    // Check y points are in [0, ymax]
+    for &y in &gauss_y.x {
+        let y_f64 = y.to_f64();
+        assert!(
+            y_f64 >= -tolerance && y_f64 <= kernel_ymax + tolerance,
+            "Gauss y point {} is outside [0, {}]", y_f64, kernel_ymax
+        );
+    }
+    
     let n = gauss_x.x.len();
     let m = gauss_y.x.len();
     let mut result = Array2::zeros((n, m));
@@ -118,6 +141,7 @@ pub fn matrix_from_gauss<T: CustomNumeric + ToPrimitive + num_traits::Zero + Clo
             let y = gauss_y.x[j];
             
             // Use T type directly for kernel computation
+            // Note: gauss_x and gauss_y should already be scaled to [0, 1] interval
             result[[i, j]] = kernel.compute_reduced(x, y, symmetry);
         }
     }
