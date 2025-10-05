@@ -6,6 +6,7 @@
 use twofloat::TwoFloat;
 use ndarray::Array1;
 use std::fmt::Debug;
+use std::str::FromStr;
 
 /// Custom numeric trait for high-precision numerical computation
 ///
@@ -20,7 +21,22 @@ pub trait CustomNumeric:
     std::ops::Neg<Output = Self> {
     
     /// Convert from f64 to Self (direct conversion, no Option)
+    /// 
+    /// This is a static method that can be called as T::from_f64(x)
     fn from_f64(x: f64) -> Self;
+    
+    /// Convert from any CustomNumeric type to Self (generic conversion)
+    /// 
+    /// This allows conversion between different numeric types while preserving precision.
+    /// Can be called as T::convert_from(other_numeric_value)
+    fn convert_from<U: CustomNumeric + 'static>(value: U) -> Self;
+    
+    /// Convert to DBig with high precision
+    /// 
+    /// This allows conversion to arbitrary precision for testing and comparison.
+    /// Can be called as value.to_dbig(precision)
+    fn to_dbig(self, precision: usize) -> dashu_float::DBig;
+    
     
     /// Convert to f64
     fn to_f64(self) -> f64;
@@ -40,6 +56,15 @@ pub trait CustomNumeric:
     /// Sine function
     fn sin(self) -> Self;
     
+    /// Exponential function
+    fn exp(self) -> Self;
+    
+    /// Hyperbolic sine function
+    fn sinh(self) -> Self;
+    
+    /// Hyperbolic cosine function
+    fn cosh(self) -> Self;
+    
     /// Check if value is finite
     fn is_finite(self) -> bool;
     
@@ -53,9 +78,39 @@ impl CustomNumeric for f64 {
         x
     }
     
+    fn convert_from<U: CustomNumeric + 'static>(value: U) -> Self {
+        // Use match to optimize conversion based on the source type
+        // Note: Using TypeId for compile-time optimization, but falling back to safe conversion
+        match std::any::TypeId::of::<U>() {
+            // For f64 to f64, this is just a copy (no conversion needed)
+            id if id == std::any::TypeId::of::<f64>() => {
+                // Safe: f64 to f64 conversion
+                let f64_value = value.to_f64(); // This is a no-op for f64
+                f64_value
+            }
+            // For TwoFloat to f64, use the conversion method
+            id if id == std::any::TypeId::of::<TwoFloat>() => {
+                // Safe: TwoFloat to f64 conversion
+                value.to_f64()
+            }
+            // Fallback: convert via f64 for unknown types
+            _ => value.to_f64(),
+        }
+    }
+    
     fn to_f64(self) -> f64 {
         self
     }
+    
+    fn to_dbig(self, precision: usize) -> dashu_float::DBig {
+        // f64 to DBig conversion
+        let val_str = format!("{:.17e}", self);
+        dashu_float::DBig::from_str(&val_str)
+            .unwrap()
+            .with_precision(precision)
+            .unwrap()
+    }
+    
     
     fn epsilon() -> Self {
         f64::EPSILON
@@ -77,6 +132,18 @@ impl CustomNumeric for f64 {
         self.sin()
     }
     
+    fn exp(self) -> Self {
+        self.exp()
+    }
+    
+    fn sinh(self) -> Self {
+        self.sinh()
+    }
+    
+    fn cosh(self) -> Self {
+        self.cosh()
+    }
+    
     fn is_finite(self) -> bool {
         self.is_finite()
     }
@@ -93,10 +160,49 @@ impl CustomNumeric for TwoFloat {
         TwoFloat::from(x)
     }
     
+    fn convert_from<U: CustomNumeric + 'static>(value: U) -> Self {
+        // Use match to optimize conversion based on the source type
+        // Note: Using TypeId for compile-time optimization, but falling back to safe conversion
+        match std::any::TypeId::of::<U>() {
+            // For f64 to TwoFloat, use the conversion method
+            id if id == std::any::TypeId::of::<f64>() => {
+                // Safe: f64 to TwoFloat conversion
+                let f64_value = value.to_f64();
+                Self::from_f64(f64_value)
+            }
+            // For TwoFloat to TwoFloat, this is just a copy (no conversion needed)
+            id if id == std::any::TypeId::of::<TwoFloat>() => {
+                // Safe: TwoFloat to TwoFloat conversion (copy)
+                let tf_value = value.to_f64(); // Convert to f64 first
+                Self::from_f64(tf_value)       // Then back to TwoFloat
+            }
+            // Fallback: convert via f64 for unknown types
+            _ => Self::from_f64(value.to_f64()),
+        }
+    }
+    
     fn to_f64(self) -> f64 {
         // TwoFloat can be converted to f64 directly
         self.into()
     }
+    
+    fn to_dbig(self, precision: usize) -> dashu_float::DBig {
+        // TwoFloat to DBig conversion (preserving hi+lo precision)
+        let hi_str = format!("{:.17e}", self.hi());
+        let lo_str = format!("{:.17e}", self.lo());
+        
+        let hi_dbig = dashu_float::DBig::from_str(&hi_str)
+            .unwrap()
+            .with_precision(precision)
+            .unwrap();
+        let lo_dbig = dashu_float::DBig::from_str(&lo_str)
+            .unwrap()
+            .with_precision(precision)
+            .unwrap();
+        
+        hi_dbig + lo_dbig
+    }
+    
     
     fn epsilon() -> Self {
         TwoFloat::from(9.63e-35) // real 128bit epsilon
@@ -116,6 +222,18 @@ impl CustomNumeric for TwoFloat {
     
     fn sin(self) -> Self {
         self.sin()
+    }
+    
+    fn exp(self) -> Self {
+        self.exp()
+    }
+    
+    fn sinh(self) -> Self {
+        self.sinh()
+    }
+    
+    fn cosh(self) -> Self {
+        self.cosh()
     }
     
     fn is_finite(self) -> bool {

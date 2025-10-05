@@ -17,6 +17,10 @@ twofloat = "0.2"
 num-traits = "0.2"
 num-complex = "0.4"
 
+# High-precision arithmetic
+dashu-float = "0.4"
+dashu-base = "0.4"
+
 # Special functions
 special = "0.2"
 statrs = "0.16"
@@ -33,9 +37,6 @@ rayon = "1.7"
 [dev-dependencies]
 approx = "0.5"
 proptest = "1.0"
-# Pure Rust high-precision arithmetic with mathematical functions
-dashu-float = "0.4"
-dashu-base = "0.4"
 # Math functions
 libm = "0.2"
 

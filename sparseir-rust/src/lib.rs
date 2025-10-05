@@ -5,7 +5,7 @@
 //! functionality for quantum many-body physics calculations.
 
 pub mod traits;
-//pub mod kernel;
+pub mod kernel;
 pub mod poly;
 pub mod gauss;
 pub mod numeric;
@@ -16,7 +16,7 @@ pub mod special_functions;
 
 // Re-export commonly used types and traits
 pub use traits::{Statistics, StatisticsType, Fermionic, Bosonic, StatisticsMarker};
-//pub use kernel::{CentrosymmKernel, LogisticKernel, KernelProperties, SVEHints, LogisticSVEHints};
+pub use kernel::{CentrosymmKernel, LogisticKernel, KernelProperties, SVEHints, LogisticSVEHints, SymmetryType, compute_logistic_kernel};
 pub use poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
 pub use gauss::{Rule, legendre, legendre_custom, legendre_twofloat};
 pub use numeric::{CustomNumeric, TwoFloatArrayOps};

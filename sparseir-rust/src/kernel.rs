@@ -25,9 +25,19 @@ use std::ops::{Index, IndexMut, Sub};
 use rayon::prelude::*;
 
 
-enum Parity {
-    Even = 1,
-    Odd = -1
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SymmetryType {
+    Even,
+    Odd,
+}
+
+impl SymmetryType {
+    pub fn sign(self) -> i32 {
+        match self {
+            SymmetryType::Even => 1,
+            SymmetryType::Odd => -1,
+        }
+    }
 }
 
 /// Trait for SVE (Singular Value Expansion) hints
@@ -39,9 +49,17 @@ where
     T: Copy + Debug + Send + Sync,
 {
     /// Get the x-axis segments for discretization
+    /// 
+    /// Returns only positive values (x >= 0) including the endpoints.
+    /// The returned vector contains segments from [0, xmax] where xmax is the 
+    /// upper bound of the x domain.
     fn segments_x(&self) -> Vec<T>;
     
     /// Get the y-axis segments for discretization
+    /// 
+    /// Returns only positive values (y >= 0) including the endpoints.
+    /// The returned vector contains segments from [0, ymax] where ymax is the 
+    /// upper bound of the y domain.
     fn segments_y(&self) -> Vec<T>;
     
     /// Get the number of singular values hint
@@ -105,18 +123,19 @@ pub trait KernelProperties {
         T: Copy + Debug + Send + Sync + CustomNumeric + 'static;
 }
 
-/// trait for centrosymmetric kernerl
+/// Trait for centrosymmetric kernels
+/// 
+/// Centrosymmetric kernels satisfy K(x, y) = K(-x, -y) and can be decomposed
+/// into even and odd components for efficient computation.
 pub trait CentrosymmKernel: Send + Sync {
     /// Compute the kernel value K(x, y) with high precision
-    fn compute(&self, x: TwoFloat, y: TwoFloat) -> TwoFloat;
-
-    fn compute_f64(&self, x: f64, y: f64) -> f64;
+    fn compute<T: CustomNumeric + Copy + Debug>(&self, x: T, y: T) -> T;
 
     /// Compute the reduced kernel value
-    // K_red(x, y) = K(x, y) + sign * K(x, -y)
-    fn compute_reduced(&self, x: TwoFloat, y: TwoFloat, sign: Parity) -> TwoFloat;
-
-    fn compute_reduced_f64(&self, x: f64, y: f64, sign: Parity) -> f64;
+    /// 
+    /// K_red(x, y) = K(x, y) + sign * K(x, -y)
+    /// where sign = 1 for even symmetry and sign = -1 for odd symmetry
+    fn compute_reduced<T: CustomNumeric + Copy + Debug>(&self, x: T, y: T, symmetry: SymmetryType) -> T;
     
     /// Get the cutoff parameter Λ (lambda)
     fn lambda(&self) -> f64;
@@ -200,33 +219,33 @@ impl KernelProperties for LogisticKernel {
     }
 }
 
-fn compute_logistic_kernel<T: CustomNumeric>(lambda: f64, x: T, y: T) {
-    let x_plus: T = 1.0 + x;
-    let x_minus: T = 1.0 - x;
+pub fn compute_logistic_kernel<T: CustomNumeric>(lambda: f64, x: T, y: T) -> T {
+    let x_plus: T = T::from_f64(1.0) + x;
+    let x_minus: T = T::from_f64(1.0) - x;
 
-    let u_plus: T = 0.5 * x_plus;
-    let u_minus: T = 0.5 * x_minus;
-    let v: T = lambda * y;
+    let u_plus: T = T::from_f64(0.5) * x_plus;
+    let u_minus: T = T::from_f64(0.5) * x_minus;
+    let v: T = T::from_f64(lambda) * y;
 
     let mabs_v: T = -v.abs();
-    let numerator: T = if (v >= 0) {
-        numerator = (u_plus * mabs_v).exp();
+    let numerator: T = if v >= T::from_f64(0.0) {
+        (u_plus * mabs_v).exp()
     } else {
-        numerator = (u_minus * mabs_v).exp();
+        (u_minus * mabs_v).exp()
     };
-    let denominator: T = 1.0 + (mabs_v).exp();
-    return numerator / denominator;
+    let denominator: T = T::from_f64(1.0) + mabs_v.exp();
+    numerator / denominator
 }
 
-fn compute_logistic_kernel_reduced_odd<T: CustomNumeric>(lambda: f64, x: T, y: T) {
+fn compute_logistic_kernel_reduced_odd<T: CustomNumeric>(lambda: f64, x: T, y: T) -> T {
     // For x * y around 0, antisymmetrization introduces cancellation, which
     // reduces the relative precision. To combat this, we replace the
     // values with the explicit form
-    let v_half: T = lambda * 0.5 * y;
-    let xy_small: bool = x * v_half < 1;
-    let cosh_finite: bool = v_half < 85;
-    if (xy_small && cosh_finite) {
-        return -sinh(v_half * x) / cosh(v_half);
+    let v_half: T = T::from_f64(lambda * 0.5) * y;
+    let xy_small: bool = (x * v_half).to_f64() < 1.0;
+    let cosh_finite: bool = v_half.to_f64() < 85.0;
+    if xy_small && cosh_finite {
+        return -(v_half * x).sinh() / v_half.cosh();
     } else {
         let k_plus = compute_logistic_kernel(lambda, x, y);
         let k_minus = compute_logistic_kernel(lambda, x, -y);
@@ -235,25 +254,14 @@ fn compute_logistic_kernel_reduced_odd<T: CustomNumeric>(lambda: f64, x: T, y: T
 }
 
 impl CentrosymmKernel for LogisticKernel {
-    fn compute(&self, x: TwoFloat, y: TwoFloat) -> TwoFloat {
-        return compute_logistic_kernel(lambda, x, y);
+    fn compute<T: CustomNumeric + Copy + Debug>(&self, x: T, y: T) -> T {
+        compute_logistic_kernel(self.lambda, x, y)
     }
 
-    fn compute_f64(&self, x: f64, y: f64) -> f64 {
-        return compute_logistic_kernel(lambda, x, y);
-    }
-
-    fn compute_reduced(&self, x: TwoFloat, y: TwoFloat, sign: Parity) -> TwoFloat {
-        match sign {
-            Parity::Even => self.compute(x, y) + self.compute(x, -y),
-            Parity::Odd => compute_logistic_kernel_reduced_odd(self.lambda, x, y),
-        }
-    }
-
-    fn compute_reduced_f64(&self, x: f64, y: f64, sign: Parity) -> f64 {
-        match sign {
-            Parity::Even => self.compute_f64(x, y) + self.compute_f64(x, -y),
-            Parity::Odd => compute_logistic_kernel_reduced_odd(self.lambda, x, y),
+    fn compute_reduced<T: CustomNumeric + Copy + Debug>(&self, x: T, y: T, symmetry: SymmetryType) -> T {
+        match symmetry {
+            SymmetryType::Even => self.compute(x, y) + self.compute(x, -y),
+            SymmetryType::Odd => compute_logistic_kernel_reduced_odd(self.lambda, x, y),
         }
     }
     
@@ -293,22 +301,26 @@ where
         // Simplified implementation - in practice, this would use the full algorithm
         // from the C++ implementation with cosh calculations
         // TOAI: Implement exactly the same logic in the C++ code, return only >= 0
+        
+        // Returns only positive values (x >= 0) including endpoints [0, xmax]
+        // where xmax is the upper bound of the x domain (typically 1.0)
         let nzeros = std::cmp::max(
             (15.0 * self.kernel.lambda().log10()).round() as usize, 1
         );
         
         let mut segments = Vec::with_capacity(nzeros);
         
-        // Create symmetric segments around 0
+        // Create segments from 0 to xmax (positive domain only)
         for i in 0..=nzeros {
             let pos = <T as CustomNumeric>::from_f64(0.1 * i as f64);
             if i == 0 {
-                segments.push(<T as CustomNumeric>::from_f64(0.0));
+                segments.push(<T as CustomNumeric>::from_f64(0.0)); // Include endpoint 0
             } else {
                 segments.push(pos);
             }
         }
         
+        // Ensure segments are sorted in ascending order [0, ..., xmax]
         segments.sort_by(|a, b| a.to_f64().partial_cmp(&b.to_f64()).unwrap_or(std::cmp::Ordering::Equal));
         segments
     }
@@ -316,6 +328,9 @@ where
     fn segments_y(&self) -> Vec<T> {
         // C++ equivalent implementation from SVEHintsLogistic::segments_y
         // TOAI: Implement exactly the same logic in the C++ code, return only >= 0
+        
+        // Returns only positive values (y >= 0) including endpoints [0, ymax]
+        // where ymax is the upper bound of the y domain (typically 1.0)
         let nzeros = std::cmp::max(
             (20.0 * self.kernel.lambda().log10()).round() as usize, 2
         );
@@ -361,19 +376,20 @@ where
             zeros[i] -= 1.0;
         }
         
-        // Create the final segments vector (2 * nzeros + 3 elements)
-        let mut segments = vec![<T as CustomNumeric>::from_f64(0.0); 2 * nzeros + 3];
+        // Create the full symmetric segments vector first (includes negative values)
+        let mut full_segments = vec![<T as CustomNumeric>::from_f64(0.0); 2 * nzeros + 3];
         
         for i in 0..nzeros {
-            segments[1 + i] = <T as CustomNumeric>::from_f64(zeros[i]);
-            segments[1 + nzeros + 1 + i] = <T as CustomNumeric>::from_f64(-zeros[nzeros - i - 1]);
+            full_segments[1 + i] = <T as CustomNumeric>::from_f64(zeros[i]);
+            full_segments[1 + nzeros + 1 + i] = <T as CustomNumeric>::from_f64(-zeros[nzeros - i - 1]);
         }
         
-        segments[0] = <T as CustomNumeric>::from_f64(-1.0);
-        segments[1 + nzeros] = <T as CustomNumeric>::from_f64(0.0);
-        segments[2 * nzeros + 2] = <T as CustomNumeric>::from_f64(1.0);
+        full_segments[0] = <T as CustomNumeric>::from_f64(-1.0);
+        full_segments[1 + nzeros] = <T as CustomNumeric>::from_f64(0.0);
+        full_segments[2 * nzeros + 2] = <T as CustomNumeric>::from_f64(1.0);
 
-        symm_segments(&segments)
+        // Extract only positive values (y >= 0) including endpoints [0, ymax]
+        symm_segments(&full_segments)
     }
     
     fn nsvals(&self) -> usize {
@@ -389,6 +405,10 @@ where
 
 /// Function to validate symmetry and extract the positive half of segments
 /// This is equivalent to C++ symm_segments function
+/// 
+/// Extracts only positive values (>= 0) including endpoints from a symmetric segment array.
+/// The input segments should be symmetric around 0, and this function returns only
+/// the positive half [0, ..., max] where max is the upper bound of the domain.
 fn symm_segments<T: CustomNumeric + Copy + Debug + Send + Sync>(segments: &[T]) -> Vec<T> {
     let n = segments.len();
     
