@@ -7,6 +7,7 @@
 pub mod freq;
 pub mod gauss;
 pub mod kernel;
+pub mod kernelmatrix;
 pub mod numeric;
 pub mod poly;
 pub mod polyfourier;
@@ -31,7 +32,7 @@ pub use polyfourier::{
     FermionicPiecewiseLegendreFTVector, PiecewiseLegendreFT, PiecewiseLegendreFTVector, PowerModel,
 };
 pub use traits::{Bosonic, Fermionic, Statistics, StatisticsMarker, StatisticsType};
-//pub use kernel::{matrix_from_gauss, matrix_from_gauss_parallel, DiscretizedKernel};
+pub use kernelmatrix::{DiscretizedKernel, matrix_from_gauss};
 //pub use sve::{SVEResult, TworkType, SVDStrategy, SamplingSVE, CentrosymmSVE, SVEStrategy, compute_sve, compute_svd, truncate};
 
 // Re-export external dependencies for convenience

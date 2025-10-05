@@ -14,15 +14,9 @@
 //! where ρ'(y) = w(y) ρ(y). The weight function w(y) transforms the original spectral
 //! function ρ(y) into the scaled version ρ'(y) used in the integral equation.
 
-use crate::gauss::Rule;
 use crate::numeric::CustomNumeric;
-use crate::traits::{Bosonic, Fermionic, Statistics, StatisticsType};
-use ndarray::Array2;
-use num_traits::ToPrimitive;
-use rayon::prelude::*;
+use crate::traits::{Statistics, StatisticsType};
 use std::fmt::Debug;
-use std::ops::{Index, IndexMut, Sub};
-use twofloat::TwoFloat;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SymmetryType {
