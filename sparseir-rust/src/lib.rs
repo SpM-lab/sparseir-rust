@@ -36,7 +36,7 @@ pub use polyfourier::{
 pub use traits::{Bosonic, Fermionic, Statistics, StatisticsMarker, StatisticsType};
 pub use interpolation1d::Interpolate1D;
 pub use interpolation2d::Interpolate2D;
-pub use kernelmatrix::{DiscretizedKernel, matrix_from_gauss};
+pub use kernelmatrix::{DiscretizedKernel, InterpolatedKernel, matrix_from_gauss, matrix_from_gauss_with_segments};
 //pub use sve::{SVEResult, TworkType, SVDStrategy, SamplingSVE, CentrosymmSVE, SVEStrategy, compute_sve, compute_svd, truncate};
 
 // Re-export external dependencies for convenience
