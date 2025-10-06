@@ -696,6 +696,9 @@ where
 
     for i in 0..m {
         // Initial guess using Chebyshev nodes
+        // Note: TwoFloat's cos() has only f64-level precision (~15-16 digits), not the full
+        // theoretical 30-digit precision. This limits TwoFloat interpolation accuracy to ~1e-16,
+        // not the 1e-30 that might be theoretically possible with perfect double-double arithmetic.
         let mut z = (pi * <T as CustomNumeric>::from_f64(i as f64 + 0.75)
             / <T as CustomNumeric>::from_f64(n as f64 + 0.5))
         .cos();
