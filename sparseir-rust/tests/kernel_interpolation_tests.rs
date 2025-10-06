@@ -120,6 +120,7 @@ fn test_kernel_interpolation_precision_generic<T: CustomNumeric + Clone + 'stati
     assert!(total_tests > 0, "Should have at least some test points");
 }
 
+
 /// Test kernel interpolation precision with f64
 #[test]
 fn test_kernel_interpolation_precision_f64_lambda_100() {

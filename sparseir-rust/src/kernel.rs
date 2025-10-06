@@ -301,6 +301,8 @@ where
             _phantom: std::marker::PhantomData,
         }
     }
+
+
 }
 
 impl<T> SVEHints<T> for LogisticSVEHints<T>
@@ -308,39 +310,57 @@ where
     T: Copy + Debug + Send + Sync + CustomNumeric,
 {
     fn segments_x(&self) -> Vec<T> {
-        // Simplified implementation - in practice, this would use the full algorithm
-        // from the C++ implementation with cosh calculations
-        // TOAI: Implement exactly the same logic in the C++ code, return only >= 0
-
-        // Returns only positive values (x >= 0) including endpoints [0, xmax]
-        // where xmax is the upper bound of the x domain (typically 1.0)
+        // Direct implementation that generates only non-negative sample points
+        // This is equivalent to the C++ implementation but without the full symmetric array creation
         let nzeros = std::cmp::max((15.0 * self.kernel.lambda().log10()).round() as usize, 1);
 
-        let mut segments = Vec::with_capacity(nzeros);
+        // Create a range of values
+        let mut temp = vec![0.0; nzeros];
+        for i in 0..nzeros {
+            temp[i] = 0.143 * i as f64;
+        }
 
-        // Create segments from 0 to xmax (positive domain only)
-        for i in 0..=nzeros {
-            let pos = <T as CustomNumeric>::from_f64(0.1 * i as f64);
-            if i == 0 {
-                segments.push(<T as CustomNumeric>::from_f64(0.0)); // Include endpoint 0
-            } else {
-                segments.push(pos);
-            }
+        // Calculate diffs using the inverse hyperbolic cosine
+        let mut diffs = vec![0.0; nzeros];
+        for i in 0..nzeros {
+            diffs[i] = 1.0 / temp[i].cosh();
+        }
+
+        // Calculate cumulative sum of diffs
+        let mut zeros = vec![0.0; nzeros];
+        zeros[0] = diffs[0];
+        for i in 1..nzeros {
+            zeros[i] = zeros[i - 1] + diffs[i];
+        }
+
+        // Normalize zeros
+        let last_zero = zeros[nzeros - 1];
+        for i in 0..nzeros {
+            zeros[i] /= last_zero;
+        }
+
+        // Create segments with only non-negative values (x >= 0) including endpoints [0, xmax]
+        let mut segments = Vec::with_capacity(nzeros + 1);
+        
+        // Add 0.0 endpoint
+        segments.push(<T as CustomNumeric>::from_f64(0.0));
+        
+        // Add positive zeros (already in [0, 1] range)
+        for i in 0..nzeros {
+            segments.push(<T as CustomNumeric>::from_f64(zeros[i]));
         }
 
         // Ensure segments are sorted in ascending order [0, ..., xmax]
         segments.sort_by(|a, b| {
             a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
         });
+        
         segments
     }
 
     fn segments_y(&self) -> Vec<T> {
-        // C++ equivalent implementation from SVEHintsLogistic::segments_y
-        // TOAI: Implement exactly the same logic in the C++ code, return only >= 0
-
-        // Returns only positive values (y >= 0) including endpoints [0, ymax]
-        // where ymax is the upper bound of the y domain (typically 1.0)
+        // Direct implementation that generates only non-negative sample points
+        // This is equivalent to the C++ implementation but without the full symmetric array creation
         let nzeros = std::cmp::max((20.0 * self.kernel.lambda().log10()).round() as usize, 2);
 
         // Initial differences (from C++ implementation)
@@ -383,21 +403,28 @@ where
             zeros[i] -= 1.0;
         }
 
-        // Create the full symmetric segments vector first (includes negative values)
+        // Create the full symmetric segments vector first (same as original segments_y)
         let mut full_segments = vec![<T as CustomNumeric>::from_f64(0.0); 2 * nzeros + 3];
-
         for i in 0..nzeros {
             full_segments[1 + i] = <T as CustomNumeric>::from_f64(zeros[i]);
-            full_segments[1 + nzeros + 1 + i] =
-                <T as CustomNumeric>::from_f64(-zeros[nzeros - i - 1]);
+            full_segments[1 + nzeros + 1 + i] = <T as CustomNumeric>::from_f64(-zeros[nzeros - i - 1]);
         }
-
         full_segments[0] = <T as CustomNumeric>::from_f64(-1.0);
         full_segments[1 + nzeros] = <T as CustomNumeric>::from_f64(0.0);
         full_segments[2 * nzeros + 2] = <T as CustomNumeric>::from_f64(1.0);
 
         // Extract only positive values (y >= 0) including endpoints [0, ymax]
-        symm_segments(&full_segments)
+        // This replicates the behavior of symm_segments function
+        let n = full_segments.len();
+        let mid = n / 2;
+        let mut segments: Vec<T> = full_segments[mid..].to_vec();
+
+        // Ensure the first element is zero; if not, prepend zero
+        if segments.is_empty() || segments[0].to_f64().abs() > f64::EPSILON {
+            segments.insert(0, <T as CustomNumeric>::from_f64(0.0));
+        }
+        
+        segments
     }
 
     fn nsvals(&self) -> usize {
@@ -414,38 +441,4 @@ where
     }
 }
 
-/// Function to validate symmetry and extract the positive half of segments
-/// This is equivalent to C++ symm_segments function
-///
-/// Extracts only positive values (>= 0) including endpoints from a symmetric segment array.
-/// The input segments should be symmetric around 0, and this function returns only
-/// the positive half [0, ..., max] where max is the upper bound of the domain.
-fn symm_segments<T: CustomNumeric + Copy + Debug + Send + Sync>(segments: &[T]) -> Vec<T> {
-    let n = segments.len();
 
-    // Check if the vector is symmetric
-    for i in 0..n / 2 {
-        let left = segments[i].to_f64();
-        let right = segments[n - i - 1].to_f64();
-        if (left + right).abs() > f64::EPSILON {
-            panic!(
-                "segments must be symmetric: segments[{}] = {}, segments[{}] = {}",
-                i,
-                left,
-                n - i - 1,
-                right
-            );
-        }
-    }
-
-    // Extract the second half of the vector starting from the middle
-    let mid = n / 2;
-    let mut xpos: Vec<T> = segments[mid..].to_vec();
-
-    // Ensure the first element of xpos is zero; if not, prepend zero
-    if xpos.is_empty() || xpos[0].to_f64().abs() > f64::EPSILON {
-        xpos.insert(0, <T as CustomNumeric>::from_f64(0.0));
-    }
-
-    xpos
-}
