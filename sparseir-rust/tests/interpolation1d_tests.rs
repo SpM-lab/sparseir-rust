@@ -1,0 +1,189 @@
+use ndarray::{Array1, Array2};
+use sparseir_rust::{legendre, legendre_custom, legendre_twofloat, CustomNumeric, Rule, TwoFloat, Interpolate1D};
+use sparseir_rust::gauss::{legendre_vandermonde, legendre_generic};
+use sparseir_rust::interpolation1d::{legendre_collocation_matrix, interpolate_1d_legendre, evaluate_interpolated_polynomial};
+
+/// Test that the collocation matrix is approximately the inverse of the Vandermonde matrix
+#[test]
+fn test_legendre_collocation_matrix_inverse() {
+    // Test with different sizes
+    for n in [2, 3, 5, 10] {
+        let gauss_rule = legendre_generic::<f64>(n).reseat(-1.0, 1.0);
+        
+        // Create Vandermonde matrix
+        let vandermonde = legendre_vandermonde(&gauss_rule.x.to_vec(), n - 1);
+        
+        // Create collocation matrix
+        let collocation = legendre_collocation_matrix(&gauss_rule);
+        
+        // Compute V * C and check if it's approximately the identity matrix
+        let mut product = Array2::zeros((n, n));
+        for i in 0..n {
+            for j in 0..n {
+                for k in 0..n {
+                    product[[i, j]] += vandermonde[[i, k]] * collocation[[k, j]];
+                }
+            }
+        }
+        
+        // Check that V * C ≈ I
+        let identity: Array2<f64> = Array2::eye(n);
+        let error = (&product - &identity).mapv(|x: f64| x.abs()).sum() / (n * n) as f64;
+        
+        println!("n={}, error={}", n, error);
+        assert!(error < 1e-10, 
+            "Collocation matrix is not inverse of Vandermonde matrix for n={}: error={}", n, error);
+    }
+}
+
+/// Test the interpolation method with various functions
+#[test]
+fn test_interpolate_1d_legendre_functions() {
+    // Test with different sizes and functions
+    for n in [2, 3, 5] {
+        let gauss_rule = legendre_generic::<f64>(n).reseat(-1.0, 1.0);
+        
+        // Test different functions
+        let test_functions = vec![
+            |x: f64| x,                    // Linear
+            |x: f64| x * x,                // Quadratic
+            |x: f64| x * x * x,            // Cubic
+            |x: f64| x.sin(),              // Sine
+        ];
+        
+        for (func_idx, func) in test_functions.iter().enumerate() {
+            // Sample function at Gauss points
+            let values: Vec<f64> = gauss_rule.x.iter().map(|&x| func(x)).collect();
+            
+            // Get coefficients using the fast method
+            let coeffs = interpolate_1d_legendre(&values, &gauss_rule);
+            
+            // Test interpolation at grid points (should be exact)
+            for (_i, &x_grid) in gauss_rule.x.iter().enumerate() {
+                let expected = func(x_grid);
+                let interpolated = evaluate_interpolated_polynomial(x_grid, &coeffs);
+                let error = (interpolated - expected).abs();
+                
+                assert!(error < 1e-12,
+                    "Interpolation failed for n={}, func={}, point={}: expected {}, got {}, error={}", 
+                    n, func_idx, x_grid, expected, interpolated, error);
+            }
+            
+            println!("n={}, func={}: interpolation successful", n, func_idx);
+        }
+    }
+}
+
+/// Test Interpolate1D struct functionality
+#[test]
+fn test_interpolate1d_struct() {
+    // Test with f64
+    test_interpolate1d_struct_generic::<f64>();
+    
+    // Test with TwoFloat
+    test_interpolate1d_struct_generic::<TwoFloat>();
+}
+
+/// Generic test for Interpolate1D struct
+fn test_interpolate1d_struct_generic<T: CustomNumeric + 'static>() {
+    let n = 10;
+    let rule = legendre_generic::<T>(n).reseat(T::from_f64(-1.0), T::from_f64(1.0));
+    
+    // Create test function values (sin(x))
+    let values: Vec<T> = rule.x.iter()
+        .map(|&x| x.sin())
+        .collect();
+    
+    // Create interpolator
+    let interp = Interpolate1D::new(&values, &rule);
+    
+    // Test domain
+    let (x_min, x_max) = interp.domain();
+    assert_eq!(x_min, T::from_f64(-1.0));
+    assert_eq!(x_max, T::from_f64(1.0));
+    assert_eq!(interp.n_points(), n);
+    
+    // Test evaluation at Gauss points (should be exact)
+    for i in 0..n {
+        let x = rule.x[i];
+        let expected = values[i];
+        let computed = interp.evaluate(x);
+        let error = (computed - expected).abs();
+        
+        // Should be very close at Gauss points
+        assert!(error < T::from_f64(1e-14), 
+                "Interpolation error at Gauss point {}: {} > 1e-14", i, error);
+    }
+    
+    // Test evaluation at intermediate points
+    let test_points = vec![
+        T::from_f64(-0.5),
+        T::from_f64(0.0),
+        T::from_f64(0.3),
+        T::from_f64(0.7),
+    ];
+    
+    for &x in &test_points {
+        let expected = x.sin();
+        let computed = interp.evaluate(x);
+        let error = (computed - expected).abs();
+        
+        // Should have reasonable accuracy
+        assert!(error < T::from_f64(1e-10), 
+                "Interpolation error at {}: {} > 1e-10", x, error);
+    }
+}
+
+/// Test Interpolate1D with sin(x) function for high precision
+#[test]
+fn test_interpolate1d_sin_precision() {
+    // Test f64 precision
+    test_interpolate1d_sin_generic::<f64>(
+        100,  // n_points
+        1e-12,  // tolerance
+    );
+    
+    // Test TwoFloat precision
+    // Note: Precision limited by TwoFloat sin() function (~15 digits)
+    test_interpolate1d_sin_generic::<TwoFloat>(
+        200,  // n_points
+        1e-14,  // tolerance (limited by TwoFloat trigonometric precision)
+    );
+}
+
+/// Generic test for Interpolate1D with sin(x) function
+fn test_interpolate1d_sin_generic<T: CustomNumeric + 'static>(
+    n_points: usize,
+    tolerance: f64,
+) {
+    let rule = legendre_generic::<T>(n_points).reseat(T::from_f64(-1.0), T::from_f64(1.0));
+    
+    // Create sin(x) values
+    let values: Vec<T> = rule.x.iter()
+        .map(|&x| x.sin())
+        .collect();
+    
+    // Create interpolator
+    let interp = Interpolate1D::new(&values, &rule);
+    
+    // Test points
+    let test_points = vec![
+        T::from_f64(-0.8),
+        T::from_f64(-0.5),
+        T::from_f64(-0.2),
+        T::from_f64(0.1),
+        T::from_f64(0.4),
+        T::from_f64(0.7),
+        T::from_f64(0.9),
+    ];
+    
+    for &x in &test_points {
+        let expected = x.sin();
+        let computed = interp.evaluate(x);
+        let error = (computed - expected).abs();
+        
+        assert!(error < T::from_f64(tolerance), 
+                "High-precision interpolation failed at point {}: expected {}, got {}, error={} > tolerance={}", 
+                x, expected, computed, error, tolerance);
+    }
+}

@@ -6,6 +6,8 @@
 
 pub mod freq;
 pub mod gauss;
+pub mod interpolation1d;
+pub mod interpolation2d;
 pub mod kernel;
 pub mod kernelmatrix;
 pub mod numeric;
@@ -32,6 +34,8 @@ pub use polyfourier::{
     FermionicPiecewiseLegendreFTVector, PiecewiseLegendreFT, PiecewiseLegendreFTVector, PowerModel,
 };
 pub use traits::{Bosonic, Fermionic, Statistics, StatisticsMarker, StatisticsType};
+pub use interpolation1d::Interpolate1D;
+pub use interpolation2d::Interpolate2D;
 pub use kernelmatrix::{DiscretizedKernel, matrix_from_gauss};
 //pub use sve::{SVEResult, TworkType, SVDStrategy, SamplingSVE, CentrosymmSVE, SVEStrategy, compute_sve, compute_svd, truncate};
 

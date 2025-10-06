@@ -10,7 +10,7 @@
 //! with the number of quadrature points.
 
 use crate::numeric::CustomNumeric;
-use ndarray::Array1;
+use ndarray::{Array1, Array2};
 use std::fmt::Debug;
 
 /// Quadrature rule for numerical integration.
@@ -817,4 +817,67 @@ pub fn legendre_twofloat(n: usize) -> Rule<twofloat::TwoFloat> {
         <twofloat::TwoFloat as CustomNumeric>::from_f64(-1.0),
         <twofloat::TwoFloat as CustomNumeric>::from_f64(1.0),
     )
+}
+
+/// Create Legendre Vandermonde matrix for polynomial interpolation
+///
+/// # Arguments
+/// * `x` - Points where polynomials are evaluated
+/// * `degree` - Maximum degree of Legendre polynomials
+///
+/// # Returns
+/// Matrix V where V[i,j] = P_j(x_i), with P_j being the j-th Legendre polynomial
+pub fn legendre_vandermonde<T: CustomNumeric>(x: &[T], degree: usize) -> Array2<T> {
+    let n = x.len();
+    let mut v = Array2::from_elem((n, degree + 1), T::zero());
+    
+    // First column is all ones (P_0(x) = 1)
+    for i in 0..n {
+        v[[i, 0]] = T::from_f64(1.0);
+    }
+    
+    // Second column is x (P_1(x) = x)
+    if degree > 0 {
+        for i in 0..n {
+            v[[i, 1]] = x[i];
+        }
+    }
+    
+    // Recurrence relation: P_n(x) = ((2n-1)x*P_{n-1}(x) - (n-1)*P_{n-2}(x)) / n
+    for j in 2..=degree {
+        for i in 0..n {
+            let n_f64 = j as f64;
+            let term1 = T::from_f64(2.0 * n_f64 - 1.0) * x[i] * v[[i, j-1]];
+            let term2 = T::from_f64(n_f64 - 1.0) * v[[i, j-2]];
+            v[[i, j]] = (term1 - term2) / T::from_f64(n_f64);
+        }
+    }
+    
+    v
+}
+
+
+
+
+/// Generic Legendre Gauss quadrature rule for CustomNumeric types
+pub fn legendre_generic<T: CustomNumeric + 'static>(n: usize) -> Rule<T> {
+    if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
+        // For f64, use the existing legendre function
+        let rule_f64 = legendre::<f64>(n);
+        Rule::new(
+            rule_f64.x.mapv(|x| T::from_f64(x)),
+            rule_f64.w.mapv(|w| T::from_f64(w)),
+            T::from_f64(rule_f64.a),
+            T::from_f64(rule_f64.b),
+        )
+    } else {
+        // For TwoFloat, use legendre_twofloat
+        let rule_tf = legendre_twofloat(n);
+        Rule::new(
+            rule_tf.x.mapv(|x| T::convert_from(x)),
+            rule_tf.w.mapv(|w| T::convert_from(w)),
+            T::from_f64(rule_tf.a.into()),
+            T::from_f64(rule_tf.b.into()),
+        )
+    }
 }
