@@ -402,27 +402,24 @@ where
         for i in 0..nzeros {
             zeros[i] -= 1.0;
         }
+        
+        // Generate segments directly from negative zeros
+        let mut segments: Vec<T> = Vec::new();
+        
+        segments.push(<T as CustomNumeric>::from_f64(1.0));
 
-        // Create the full symmetric segments vector first (same as original segments_y)
-        let mut full_segments = vec![<T as CustomNumeric>::from_f64(0.0); 2 * nzeros + 3];
+        // Add absolute values of negative zeros
         for i in 0..nzeros {
-            full_segments[1 + i] = <T as CustomNumeric>::from_f64(zeros[i]);
-            full_segments[1 + nzeros + 1 + i] = <T as CustomNumeric>::from_f64(-zeros[nzeros - i - 1]);
+            let abs_val = -zeros[i];
+            segments.push(<T as CustomNumeric>::from_f64(abs_val));
         }
-        full_segments[0] = <T as CustomNumeric>::from_f64(-1.0);
-        full_segments[1 + nzeros] = <T as CustomNumeric>::from_f64(0.0);
-        full_segments[2 * nzeros + 2] = <T as CustomNumeric>::from_f64(1.0);
 
-        // Extract only positive values (y >= 0) including endpoints [0, ymax]
-        // This replicates the behavior of symm_segments function
-        let n = full_segments.len();
-        let mid = n / 2;
-        let mut segments: Vec<T> = full_segments[mid..].to_vec();
-
-        // Ensure the first element is zero; if not, prepend zero
-        if segments.is_empty() || segments[0].to_f64().abs() > f64::EPSILON {
-            segments.insert(0, <T as CustomNumeric>::from_f64(0.0));
+        if segments[segments.len() - 1].abs() > T::epsilon() {
+            segments.push(<T as CustomNumeric>::from_f64(0.0));
         }
+
+        // Sort in ascending order
+        segments.sort_by(|a, b| a.partial_cmp(b).unwrap());
         
         segments
     }
