@@ -34,8 +34,8 @@ impl<T: CustomNumeric + Debug + 'static> Interpolate2D<T> {
     ///
     /// # Arguments
     /// * `values` - Function values at grid points
-    /// * `gauss_x` - x-direction grid points
-    /// * `gauss_y` - y-direction grid points
+    /// * `gauss_x` - x-direction grid points (can be in any range)
+    /// * `gauss_y` - y-direction grid points (can be in any range)
     ///
     /// # Panics
     /// Panics if dimensions don't match or if grid is empty
@@ -48,7 +48,12 @@ impl<T: CustomNumeric + Debug + 'static> Interpolate2D<T> {
         assert_eq!(values.nrows(), gauss_x.x.len(), "Values height must match gauss_x length");
         assert_eq!(values.ncols(), gauss_y.x.len(), "Values width must match gauss_y length");
         
-        let coeffs = interpolate_2d_legendre(values, gauss_x, gauss_y);
+        // Create normalized Gauss rules for coefficient computation
+        // interpolate_2d_legendre expects Gauss points in [-1, 1] range
+        let normalized_gauss_x = gauss_x.reseat(T::from_f64(-1.0), T::from_f64(1.0));
+        let normalized_gauss_y = gauss_y.reseat(T::from_f64(-1.0), T::from_f64(1.0));
+        
+        let coeffs = interpolate_2d_legendre(values, &normalized_gauss_x, &normalized_gauss_y);
         
         Self {
             x_min: gauss_x.a,
@@ -165,15 +170,19 @@ pub fn evaluate_2d_legendre_polynomial<T: CustomNumeric>(
     x: T,
     y: T,
     coeffs: &Array2<T>,
-    _gauss_x: &Rule<T>,
-    _gauss_y: &Rule<T>,
+    gauss_x: &Rule<T>,
+    gauss_y: &Rule<T>,
 ) -> T {
     let n_x = coeffs.nrows();
     let n_y = coeffs.ncols();
     
-    // Evaluate Legendre polynomials at x and y
-    let p_x = evaluate_legendre_basis(x, n_x);
-    let p_y = evaluate_legendre_basis(y, n_y);
+    // Normalize coordinates from [a,b] to [-1,1] where [a,b] is the cell domain
+    let x_norm = T::from_f64(2.0) * (x - gauss_x.a) / (gauss_x.b - gauss_x.a) - T::from_f64(1.0);
+    let y_norm = T::from_f64(2.0) * (y - gauss_y.a) / (gauss_y.b - gauss_y.a) - T::from_f64(1.0);
+    
+    // Evaluate Legendre polynomials at normalized coordinates
+    let p_x = evaluate_legendre_basis(x_norm, n_x);
+    let p_y = evaluate_legendre_basis(y_norm, n_y);
     
     // Compute tensor product sum: sum_{i,j} coeffs[i,j] * P_i(x) * P_j(y)
     let mut result = <T as CustomNumeric>::zero();

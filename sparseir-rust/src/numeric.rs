@@ -75,6 +75,9 @@ pub trait CustomNumeric:
 
     /// Get high-precision PI constant
     fn pi() -> Self;
+
+    /// Maximum of two values
+    fn max(self, other: Self) -> Self;
 }
 
 /// f64 implementation of CustomNumeric
@@ -158,6 +161,10 @@ impl CustomNumeric for f64 {
 
     fn pi() -> Self {
         std::f64::consts::PI
+    }
+
+    fn max(self, other: Self) -> Self {
+        self.max(other)
     }
 }
 
@@ -252,6 +259,14 @@ impl CustomNumeric for TwoFloat {
 
     fn pi() -> Self {
         twofloat::consts::PI
+    }
+
+    fn max(self, other: Self) -> Self {
+        if self > other {
+            self
+        } else {
+            other
+        }
     }
 }
 

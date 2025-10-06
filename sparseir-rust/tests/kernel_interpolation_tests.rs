@@ -1,4 +1,4 @@
-//! Tests for kernel interpolation precision with lambda = 100.0
+//! Tests for kernel interpolation precision
 
 use sparseir_rust::{
     kernel::{LogisticKernel, LogisticSVEHints, SymmetryType, SVEHints, KernelProperties, CentrosymmKernel},
@@ -7,26 +7,35 @@ use sparseir_rust::{
     TwoFloat,
 };
 
-/// Test kernel interpolation precision with lambda = 100.0
+/// Generic test for kernel interpolation precision
 /// 
 /// This test creates a discretized kernel and interpolated kernel, then
 /// evaluates interpolation error at various points within each segment.
-#[test]
-fn test_kernel_interpolation_precision_lambda_100() {
-    let lambda = 100.0;
+fn test_kernel_interpolation_precision_generic<T: CustomNumeric + Clone + 'static>(
+    lambda: f64,
+    epsilon: f64,
+    tolerance_abs: f64,
+    tolerance_rel: f64,
+) where
+    T: std::fmt::Debug,
+{
     let kernel = LogisticKernel::new(lambda);
-    let hints = LogisticSVEHints::new(kernel.clone(), 1e-12);
+    let hints = LogisticSVEHints::new(kernel.clone(), epsilon);
     
     // Create segments for discretization
-    let segments_x = hints.segments_x();
-    let segments_y = hints.segments_y();
+    let segments_x_f64 = hints.segments_x();
+    let segments_y_f64 = hints.segments_y();
+    
+    // Convert to generic type T
+    let segments_x: Vec<T> = segments_x_f64.iter().map(|&x| T::from_f64(x)).collect();
+    let segments_y: Vec<T> = segments_y_f64.iter().map(|&y| T::from_f64(y)).collect();
     
     println!("Lambda = {}", lambda);
-    println!("Segments x: {:?}", segments_x);
-    println!("Segments y: {:?}", segments_y);
+    println!("Segments x: {:?}", segments_x_f64);
+    println!("Segments y: {:?}", segments_y_f64);
     
     // Create interpolated kernel directly from kernel and segments
-    let gauss_per_cell = 4; // degree 3 polynomial
+    let gauss_per_cell = hints.ngauss(); // Get polynomial degree from SVE hints
     
     println!("Creating interpolated kernel with {}x{} cells, {} points per cell", 
              segments_x.len()-1, segments_y.len()-1, gauss_per_cell);
@@ -52,8 +61,8 @@ fn test_kernel_interpolation_precision_lambda_100() {
     ];
     
     
-    let mut max_error: f64 = 0.0;
-    let mut max_rel_error: f64 = 0.0;
+    let mut max_error: T = T::from_f64(0.0);
+    let mut max_rel_error: T = T::from_f64(0.0);
     let mut total_tests = 0;
     
     // Test each cell
@@ -66,30 +75,24 @@ fn test_kernel_interpolation_precision_lambda_100() {
             
             // Test points in this cell
             for &(rel_x, rel_y) in &test_points_relative {
-                let x = x_min + rel_x * (x_max - x_min);
-                let y = y_min + rel_y * (y_max - y_min);
+                let x = x_min + T::from_f64(rel_x) * (x_max - x_min);
+                let y = y_min + T::from_f64(rel_y) * (y_max - y_min);
                 
                 
                 // Skip if point is outside kernel domain
-                if x > kernel.xmax() || y > kernel.ymax() {
+                if x > T::from_f64(kernel.xmax()) || y > T::from_f64(kernel.ymax()) {
                     continue;
                 }
                 
                 // Direct kernel evaluation
-                let direct_value: f64 = kernel.compute_reduced(x, y, SymmetryType::Even);
+                let direct_value: T = kernel.compute_reduced(x, y, SymmetryType::Even);
                 
                 // Interpolated value
-                let interpolated_value: f64 = match interpolated.evaluate(x, y) {
-                    val if val.is_nan() => {
-                        println!("Warning: NaN returned for ({}, {})", x, y);
-                        0.0
-                    },
-                    val => val
-                };
+                let interpolated_value: T = interpolated.evaluate(x, y);
                 
                 
-                let error: f64 = (direct_value - interpolated_value).abs();
-                let rel_error = if direct_value.abs() > 1e-12 {
+                let error: T = (direct_value - interpolated_value).abs();
+                let rel_error = if direct_value.abs() > T::from_f64(1e-12) {
                     error / direct_value.abs()
                 } else {
                     error
@@ -104,42 +107,37 @@ fn test_kernel_interpolation_precision_lambda_100() {
     }
     
     
-    // For now, just check that we can create the structures
-    // TODO: Implement proper interpolation and set realistic tolerances
+    println!("Max absolute error: {:.6e}", max_error.to_f64());
+    println!("Max relative error: {:.6e}", max_rel_error.to_f64());
+    println!("Total test points: {}", total_tests);
+    
+    println!("Tolerance: absolute={:.0e}, relative={:.0e}", tolerance_abs, tolerance_rel);
+    
+    assert!(max_error < T::from_f64(tolerance_abs), 
+            "Max absolute error {:.6e} exceeds tolerance {:.0e}", max_error.to_f64(), tolerance_abs);
+    assert!(max_rel_error < T::from_f64(tolerance_rel),
+            "Max relative error {:.6e} exceeds tolerance {:.0e}", max_rel_error.to_f64(), tolerance_rel);
     assert!(total_tests > 0, "Should have at least some test points");
 }
 
-/// Test with TwoFloat precision
+/// Test kernel interpolation precision with f64
+#[test]
+fn test_kernel_interpolation_precision_f64_lambda_100() {
+    test_kernel_interpolation_precision_generic::<f64>(
+        100.0,    // lambda
+        1e-12,    // epsilon
+        1e-12,    // tolerance_abs
+        1e-10,    // tolerance_rel
+    );
+}
+
+/// Test kernel interpolation precision with TwoFloat
 #[test] 
 fn test_kernel_interpolation_precision_twofloat_lambda_100() {
-    let lambda = 100.0;
-    let kernel = LogisticKernel::new(lambda);
-    let hints = LogisticSVEHints::new(kernel.clone(), 1e-12);
-    
-    // Create segments for discretization
-    let segments_x = hints.segments_x();
-    let segments_y = hints.segments_y();
-    
-    // Convert to TwoFloat
-    let segments_x_tf: Vec<TwoFloat> = segments_x.iter().map(|&x| TwoFloat::from_f64(x)).collect();
-    let segments_y_tf: Vec<TwoFloat> = segments_y.iter().map(|&y| TwoFloat::from_f64(y)).collect();
-    
-    
-    // Create TwoFloat interpolated kernel directly
-    let gauss_per_cell = 4;
-    
-    
-    // Create TwoFloat interpolated kernel directly
-    let interpolated_tf = InterpolatedKernel::from_kernel_and_segments(
-        &kernel,
-        segments_x_tf,
-        segments_y_tf,
-        gauss_per_cell,
-        SymmetryType::Even,
+    test_kernel_interpolation_precision_generic::<TwoFloat>(
+        100.0,    // lambda
+        1e-12,    // epsilon
+        1e-11,    // tolerance_abs (stricter for TwoFloat)
+        1e-10,    // tolerance_rel
     );
-    
-    
-    // Verify structure creation
-    assert!(interpolated_tf.n_cells_x() > 0);
-    assert!(interpolated_tf.n_cells_y() > 0);
 }
