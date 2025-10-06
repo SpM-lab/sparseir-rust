@@ -330,9 +330,7 @@ where
 
         // Ensure segments are sorted in ascending order [0, ..., xmax]
         segments.sort_by(|a, b| {
-            a.to_f64()
-                .partial_cmp(&b.to_f64())
-                .unwrap_or(std::cmp::Ordering::Equal)
+            a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
         });
         segments
     }

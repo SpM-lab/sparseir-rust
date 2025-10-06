@@ -78,6 +78,9 @@ pub trait CustomNumeric:
 
     /// Maximum of two values
     fn max(self, other: Self) -> Self;
+
+    /// Check if the value is valid (not NaN/infinite)
+    fn is_valid(&self) -> bool;
 }
 
 /// f64 implementation of CustomNumeric
@@ -165,6 +168,10 @@ impl CustomNumeric for f64 {
 
     fn max(self, other: Self) -> Self {
         self.max(other)
+    }
+
+    fn is_valid(&self) -> bool {
+        self.is_finite()
     }
 }
 
@@ -267,6 +274,10 @@ impl CustomNumeric for TwoFloat {
         } else {
             other
         }
+    }
+
+    fn is_valid(&self) -> bool {
+        self.is_valid()
     }
 }
 
