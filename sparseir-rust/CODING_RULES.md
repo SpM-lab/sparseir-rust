@@ -91,6 +91,13 @@ When using TwoFloat, always add comments explaining precision limitations:
 - Include debug prints showing actual error values during development
 - Remove debug prints before committing (unless they provide ongoing value)
 
+### 5. Commit Message Guidelines
+- **Focus on what was implemented**, not what was removed or fixed
+- Avoid mentioning intermediate mistakes, wrong approaches, or cleanup activities
+- Write commit messages from the perspective of the final result
+- Example: ✅ "Add symmetry type parameter to kernel interpolation tests"
+- Example: ❌ "Remove unnecessary Parity enum, use existing SymmetryType instead"
+
 ## API Design Principles
 
 ### 1. Configuration via Hints

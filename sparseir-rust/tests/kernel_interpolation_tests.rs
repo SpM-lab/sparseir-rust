@@ -7,6 +7,7 @@ use sparseir_rust::{
     TwoFloat,
 };
 
+
 /// Generic test for kernel interpolation precision
 /// 
 /// This test creates a discretized kernel and interpolated kernel, then
@@ -16,6 +17,7 @@ fn test_kernel_interpolation_precision_generic<T: CustomNumeric + Clone + 'stati
     epsilon: f64,
     tolerance_abs: f64,
     tolerance_rel: f64,
+    symmetry_type: SymmetryType,
 ) where
     T: std::fmt::Debug,
 {
@@ -46,7 +48,7 @@ fn test_kernel_interpolation_precision_generic<T: CustomNumeric + Clone + 'stati
         segments_x.clone(),
         segments_y.clone(),
         gauss_per_cell,
-        SymmetryType::Even,
+        symmetry_type,
     );
     
     println!("Interpolated kernel created with {}x{} cells", 
@@ -84,8 +86,8 @@ fn test_kernel_interpolation_precision_generic<T: CustomNumeric + Clone + 'stati
                     continue;
                 }
                 
-                // Direct kernel evaluation
-                let direct_value: T = kernel.compute_reduced(x, y, SymmetryType::Even);
+                // Direct kernel evaluation with specified symmetry type
+                let direct_value: T = kernel.compute_reduced(x, y, symmetry_type);
                 
                 // Interpolated value
                 let interpolated_value: T = interpolated.evaluate(x, y);
@@ -124,21 +126,43 @@ fn test_kernel_interpolation_precision_generic<T: CustomNumeric + Clone + 'stati
 /// Test kernel interpolation precision with f64
 #[test]
 fn test_kernel_interpolation_precision_f64_lambda_100() {
+    println!("Testing f64 with Even symmetry");
     test_kernel_interpolation_precision_generic::<f64>(
         100.0,    // lambda
         1e-12,    // epsilon
         1e-12,    // tolerance_abs
         1e-10,    // tolerance_rel
+        SymmetryType::Even,
+    );
+    
+    println!("Testing f64 with Odd symmetry");
+    test_kernel_interpolation_precision_generic::<f64>(
+        100.0,    // lambda
+        1e-12,    // epsilon
+        1e-12,    // tolerance_abs
+        1e-10,    // tolerance_rel
+        SymmetryType::Odd,
     );
 }
 
 /// Test kernel interpolation precision with TwoFloat
 #[test] 
 fn test_kernel_interpolation_precision_twofloat_lambda_100() {
+    println!("Testing TwoFloat with Even symmetry");
     test_kernel_interpolation_precision_generic::<TwoFloat>(
         100.0,    // lambda
         1e-12,    // epsilon
-        1e-11,    // tolerance_abs (stricter for TwoFloat)
+        1e-11,    // tolerance_abs 
         1e-10,    // tolerance_rel
+        SymmetryType::Even,
+    );
+    
+    println!("Testing TwoFloat with Odd symmetry");
+    test_kernel_interpolation_precision_generic::<TwoFloat>(
+        100.0,    // lambda
+        1e-12,    // epsilon
+        1e-11,    // tolerance_abs 
+        1e-10,    // tolerance_rel
+        SymmetryType::Odd,
     );
 }
