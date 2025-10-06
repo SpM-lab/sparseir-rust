@@ -1,5 +1,7 @@
-use ndarray::Array1;
+use ndarray::{Array1, Array2};
 use sparseir_rust::{legendre, legendre_custom, legendre_twofloat, CustomNumeric, Rule, TwoFloat};
+use sparseir_rust::gauss::{legendre_vandermonde, legendre_generic};
+use sparseir_rust::interpolation1d::{legendre_collocation_matrix, interpolate_1d_legendre, evaluate_interpolated_polynomial};
 
 #[test]
 fn test_rule_constructor() {
@@ -357,3 +359,198 @@ fn test_twofloat_integration_convergence_analysis() {
         assert!(rel_error < 1e-15);
     }
 }
+
+/// Evaluate Legendre polynomial P_n(x) at point x
+fn evaluate_legendre_polynomial<T: CustomNumeric>(x: T, n: usize) -> T {
+    if n == 0 {
+        T::from_f64(1.0)
+    } else if n == 1 {
+        x
+    } else {
+        let mut p_prev2 = T::from_f64(1.0);
+        let mut p_prev1 = x;
+        
+        for i in 2..=n {
+            let i_f64 = i as f64;
+            let p_curr = ((T::from_f64(2.0 * i_f64 - 1.0) * x * p_prev1) - (T::from_f64(i_f64 - 1.0) * p_prev2)) / T::from_f64(i_f64);
+            p_prev2 = p_prev1;
+            p_prev1 = p_curr;
+        }
+        
+        p_prev1
+    }
+}
+
+
+#[test]
+fn test_legendre_vandermonde_basic() {
+    // Test with simple 3-point grid
+    let x = vec![-1.0, 0.0, 1.0];
+    let v = legendre_vandermonde(&x, 2);
+    
+    // Check dimensions
+    assert_eq!(v.nrows(), 3);
+    assert_eq!(v.ncols(), 3);
+    
+    // Check first column (P_0 = 1)
+    for i in 0..3 {
+        assert!((v[[i, 0]] - 1.0).abs() < 1e-12);
+    }
+    
+    // Check second column (P_1 = x)
+    for i in 0..3 {
+        assert!((v[[i, 1]] - x[i]).abs() < 1e-12);
+    }
+    
+    // Check third column (P_2 = (3x^2 - 1)/2)
+    for i in 0..3 {
+        let expected = (3.0 * x[i] * x[i] - 1.0) / 2.0;
+        assert!((v[[i, 2]] - expected).abs() < 1e-12);
+    }
+}
+
+/// Generic test function for 1D Legendre interpolation of sin(x) - MOVED TO interpolation1d_tests.rs
+fn test_interpolate_1d_legendre_sin_generic<T: CustomNumeric + 'static>(
+    n_points: usize,
+    tolerance: T,
+    test_points: Vec<T>,
+) where
+    T: std::fmt::Display,
+{
+    // Create Gauss rule using generic function
+    let gauss_rule = legendre_generic::<T>(n_points).reseat(
+        T::from_f64(-1.0),
+        T::from_f64(1.0),
+    );
+    
+    // Sample sin(x) at Gauss points
+    let values: Vec<T> = gauss_rule.x.iter().map(|&x| x.sin()).collect();
+    
+    // Get interpolation coefficients
+    let coeffs = interpolate_1d_legendre(&values, &gauss_rule);
+    
+    // Test interpolation at grid points (should be exact)
+    for &x_grid in &gauss_rule.x {
+        let expected = x_grid.sin();
+        let interpolated = evaluate_interpolated_polynomial(x_grid, &coeffs);
+        assert!((interpolated - expected).abs() < T::from_f64(1e-12),
+            "Interpolation failed at grid point {}: expected {}, got {}", 
+            x_grid, expected, interpolated);
+    }
+    
+    // Test interpolation at interior points
+    for &x_test in &test_points {
+        let expected = x_test.sin();
+        let interpolated = evaluate_interpolated_polynomial(x_test, &coeffs);
+        let error = (interpolated - expected).abs();
+        assert!(error < tolerance,
+            "High-precision interpolation failed at point {}: expected {}, got {}, error={} > tolerance={}", 
+            x_test, expected, interpolated, error, tolerance);
+    }
+}
+
+
+#[test]
+#[ignore] // MOVED TO interpolation1d_tests.rs
+fn _test_interpolate_1d_legendre_sin_f64_high_precision() {
+    // Test high-precision interpolation of sin(x) with f64
+    test_interpolate_1d_legendre_sin_generic::<f64>(
+        100,  // n_points
+        f64::EPSILON * 100.0,  // tolerance: EPSILON * 100
+        vec![-0.8, -0.5, -0.2, 0.1, 0.4, 0.7, 0.9],  // test_points
+    );
+}
+
+#[test]
+#[ignore] // MOVED TO interpolation1d_tests.rs
+fn _test_interpolate_1d_legendre_sin_twofloat_ultra_high_precision() {
+    // Test ultra high-precision interpolation of sin(x) with TwoFloat
+    test_interpolate_1d_legendre_sin_generic::<TwoFloat>(
+        200,  // n_points (higher for better precision)
+        TwoFloat::from_f64(1e-19),  // tolerance: 1e-19 (achieved maximum precision)
+        vec![
+            TwoFloat::from_f64(-0.8),
+            TwoFloat::from_f64(-0.5),
+            TwoFloat::from_f64(-0.2),
+            TwoFloat::from_f64(0.1),
+            TwoFloat::from_f64(0.4),
+            TwoFloat::from_f64(0.7),
+            TwoFloat::from_f64(0.9),
+        ],  // test_points
+    );
+}
+
+
+/// Test that the collocation matrix is approximately the inverse of the Vandermonde matrix - MOVED TO interpolation1d_tests.rs
+#[test]
+#[ignore] // MOVED TO interpolation1d_tests.rs
+fn _test_legendre_collocation_matrix_inverse() {
+    // Test with different sizes
+    for n in [2, 3, 5, 10] {
+        let gauss_rule = legendre_generic::<f64>(n).reseat(-1.0, 1.0);
+        
+        // Create Vandermonde matrix
+        let vandermonde = legendre_vandermonde(&gauss_rule.x.to_vec(), n - 1);
+        
+        // Create collocation matrix
+        let collocation = legendre_collocation_matrix(&gauss_rule);
+        
+        // Compute V * C and check if it's approximately the identity matrix
+        let mut product = Array2::zeros((n, n));
+        for i in 0..n {
+            for j in 0..n {
+                for k in 0..n {
+                    product[[i, j]] += vandermonde[[i, k]] * collocation[[k, j]];
+                }
+            }
+        }
+        
+        // Check that V * C ≈ I
+        let identity: Array2<f64> = Array2::eye(n);
+        let error = (&product - &identity).mapv(|x: f64| x.abs()).sum() / (n * n) as f64;
+        
+        println!("n={}, error={}", n, error);
+        assert!(error < 1e-10, 
+            "Collocation matrix is not inverse of Vandermonde matrix for n={}: error={}", n, error);
+    }
+}
+
+/// Test the new fast interpolation method - MOVED TO interpolation1d_tests.rs
+#[test]
+#[ignore] // MOVED TO interpolation1d_tests.rs
+fn _test_interpolate_1d_legendre_fast() {
+    // Test with different sizes and functions
+    for n in [2, 3, 5] {
+        let gauss_rule = legendre_generic::<f64>(n).reseat(-1.0, 1.0);
+        
+        // Test different functions
+        let test_functions = vec![
+            |x: f64| x,                    // Linear
+            |x: f64| x * x,                // Quadratic
+            |x: f64| x * x * x,            // Cubic
+            |x: f64| x.sin(),              // Sine
+        ];
+        
+        for (func_idx, func) in test_functions.iter().enumerate() {
+            // Sample function at Gauss points
+            let values: Vec<f64> = gauss_rule.x.iter().map(|&x| func(x)).collect();
+            
+            // Get coefficients using the fast method
+            let coeffs = interpolate_1d_legendre(&values, &gauss_rule);
+            
+            // Test interpolation at grid points (should be exact)
+            for (i, &x_grid) in gauss_rule.x.iter().enumerate() {
+                let expected = func(x_grid);
+                let interpolated = evaluate_interpolated_polynomial(x_grid, &coeffs);
+                let error = (interpolated - expected).abs();
+                
+                assert!(error < 1e-12,
+                    "Interpolation failed for n={}, func={}, point={}: expected {}, got {}, error={}", 
+                    n, func_idx, x_grid, expected, interpolated, error);
+            }
+            
+            println!("n={}, func={}: interpolation successful", n, func_idx);
+        }
+    }
+}
+

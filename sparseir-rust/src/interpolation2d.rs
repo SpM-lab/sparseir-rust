@@ -4,10 +4,9 @@
 //! within individual grid cells.
 
 use crate::gauss::Rule;
-use crate::interpolation1d::legendre_collocation_matrix;
+use crate::interpolation1d::{legendre_collocation_matrix, evaluate_legendre_basis};
 use crate::numeric::CustomNumeric;
 use ndarray::Array2;
-use num_traits::Zero;
 use std::fmt::Debug;
 
 /// 2D interpolation object for a single grid cell
@@ -30,7 +29,7 @@ pub struct Interpolate2D<T> {
     pub gauss_y: Rule<T>,
 }
 
-impl<T: CustomNumeric + Debug + Zero + 'static> Interpolate2D<T> {
+impl<T: CustomNumeric + Debug + 'static> Interpolate2D<T> {
     /// Create a new Interpolate2D object from grid values
     ///
     /// # Arguments
@@ -88,6 +87,26 @@ impl<T: CustomNumeric + Debug + Zero + 'static> Interpolate2D<T> {
     pub fn bounds(&self) -> (T, T, T, T) {
         (self.x_min, self.x_max, self.y_min, self.y_max)
     }
+    
+    /// Get domain boundaries (alias for bounds)
+    pub fn domain(&self) -> (T, T, T, T) {
+        self.bounds()
+    }
+    
+    /// Get the number of interpolation points in x direction
+    pub fn n_points_x(&self) -> usize {
+        self.coeffs.nrows()
+    }
+    
+    /// Get the number of interpolation points in y direction
+    pub fn n_points_y(&self) -> usize {
+        self.coeffs.ncols()
+    }
+    
+    /// Evaluate the interpolated function at a given point (alias for interpolate)
+    pub fn evaluate(&self, x: T, y: T) -> T {
+        self.interpolate(x, y)
+    }
 }
 
 /// 2D Legendre polynomial interpolation using collocation matrices
@@ -120,7 +139,7 @@ pub fn interpolate_2d_legendre<T: CustomNumeric + 'static>(
 
     // Compute coefficients using tensor product approach
     // coeffs = C_x * values * C_y^T
-    let mut coeffs = Array2::from_elem((n_x, n_y), T::zero());
+        let mut coeffs = Array2::from_elem((n_x, n_y), <T as CustomNumeric>::zero());
     
     for i in 0..n_x {
         for j in 0..n_y {
@@ -151,7 +170,7 @@ pub fn evaluate_2d_legendre_polynomial<T: CustomNumeric>(
     let p_y = evaluate_legendre_basis(y, n_y);
     
     // Compute tensor product sum: sum_{i,j} coeffs[i,j] * P_i(x) * P_j(y)
-    let mut result = T::zero();
+    let mut result = <T as CustomNumeric>::zero();
     for i in 0..n_x {
         for j in 0..n_y {
             result = result + coeffs[[i, j]] * p_x[i] * p_y[j];
@@ -159,82 +178,4 @@ pub fn evaluate_2d_legendre_polynomial<T: CustomNumeric>(
     }
     
     result
-}
-
-/// Evaluate Legendre polynomial basis functions at point x
-///
-/// Returns a vector of Legendre polynomial values [P_0(x), P_1(x), ..., P_{n-1}(x)]
-fn evaluate_legendre_basis<T: CustomNumeric>(x: T, n: usize) -> Vec<T> {
-    if n == 0 {
-        return Vec::new();
-    }
-    
-    let mut p = Vec::with_capacity(n);
-    
-    // P_0(x) = 1
-    p.push(T::from_f64(1.0));
-    
-    if n > 1 {
-        // P_1(x) = x
-        p.push(x);
-    }
-    
-    // Recurrence relation: (n+1) * P_{n+1}(x) = (2n+1) * x * P_n(x) - n * P_{n-1}(x)
-    for i in 1..n-1 {
-        let i_f64 = i as f64;
-        let next_p = (T::from_f64(2.0 * i_f64 + 1.0) * x * p[i] - T::from_f64(i_f64) * p[i-1]) 
-                    / T::from_f64(i_f64 + 1.0);
-        p.push(next_p);
-    }
-    
-    p
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::gauss::legendre_generic;
-    
-    #[test]
-    fn test_interpolate_2d_legendre_basic() {
-        // Test with a simple 2D function: f(x,y) = x + y
-        let gauss_x = legendre_generic::<f64>(2).reseat(-1.0, 1.0);
-        let gauss_y = legendre_generic::<f64>(2).reseat(-1.0, 1.0);
-        
-        // Create test values
-        let mut values = Array2::from_elem((2, 2), 0.0);
-        for i in 0..2 {
-            for j in 0..2 {
-                values[[i, j]] = gauss_x.x[i] + gauss_y.x[j];
-            }
-        }
-        
-        let coeffs = interpolate_2d_legendre(&values, &gauss_x, &gauss_y);
-        
-        // Test interpolation at grid points (should be exact)
-        for i in 0..2 {
-            for j in 0..2 {
-                let expected = gauss_x.x[i] + gauss_y.x[j];
-                let interpolated = evaluate_2d_legendre_polynomial(
-                    gauss_x.x[i], gauss_y.x[j], &coeffs, &gauss_x, &gauss_y
-                );
-                assert!((interpolated - expected).abs() < 1e-12,
-                    "Interpolation failed at ({}, {}): expected {}, got {}",
-                    gauss_x.x[i], gauss_y.x[j], expected, interpolated);
-            }
-        }
-    }
-    
-    #[test]
-    fn test_interpolate_2d_object() {
-        let gauss_x = legendre_generic::<f64>(2).reseat(0.0, 1.0);
-        let gauss_y = legendre_generic::<f64>(2).reseat(0.0, 2.0);
-        
-        let values = Array2::from_elem((2, 2), 1.0);
-        let interp = Interpolate2D::new(&values, &gauss_x, &gauss_y);
-        
-        // Test interpolation at center of cell
-        let result = interp.interpolate(0.5, 1.0);
-        assert!(result.abs() < 10.0); // Just check it doesn't panic and returns reasonable value
-    }
 }

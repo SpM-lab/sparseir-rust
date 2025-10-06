@@ -170,22 +170,35 @@ pub fn evaluate_interpolated_polynomial<T: CustomNumeric>(x: T, coeffs: &Array1<
 /// # Returns
 /// P_n(x)
 fn evaluate_legendre_polynomial<T: CustomNumeric>(x: T, n: usize) -> T {
+    evaluate_legendre_basis(x, n + 1)[n]
+}
+
+/// Evaluate Legendre polynomial basis functions at point x
+///
+/// Returns a vector of Legendre polynomial values [P_0(x), P_1(x), ..., P_{n-1}(x)]
+pub fn evaluate_legendre_basis<T: CustomNumeric>(x: T, n: usize) -> Vec<T> {
     if n == 0 {
-        T::from_f64(1.0)
-    } else if n == 1 {
-        x
-    } else {
-        let mut p_prev2 = T::from_f64(1.0);
-        let mut p_prev1 = x;
-        
-        for i in 2..=n {
-            let i_f64 = i as f64;
-            let p_curr = ((T::from_f64(2.0 * i_f64 - 1.0) * x * p_prev1) - (T::from_f64(i_f64 - 1.0) * p_prev2)) / T::from_f64(i_f64);
-            p_prev2 = p_prev1;
-            p_prev1 = p_curr;
-        }
-        
-        p_prev1
+        return Vec::new();
     }
+    
+    let mut p = Vec::with_capacity(n);
+    
+    // P_0(x) = 1
+    p.push(T::from_f64(1.0));
+    
+    if n > 1 {
+        // P_1(x) = x
+        p.push(x);
+    }
+    
+    // Recurrence relation: (n+1) * P_{n+1}(x) = (2n+1) * x * P_n(x) - n * P_{n-1}(x)
+    for i in 1..n-1 {
+        let i_f64 = i as f64;
+        let next_p = (T::from_f64(2.0 * i_f64 + 1.0) * x * p[i] - T::from_f64(i_f64) * p[i-1]) 
+                    / T::from_f64(i_f64 + 1.0);
+        p.push(next_p);
+    }
+    
+    p
 }
 

@@ -45,6 +45,9 @@ pub trait CustomNumeric:
 
     /// Get machine epsilon
     fn epsilon() -> Self;
+    
+    /// Get zero value
+    fn zero() -> Self;
 
     /// Absolute value
     fn abs(self) -> Self;
@@ -115,6 +118,10 @@ impl CustomNumeric for f64 {
 
     fn epsilon() -> Self {
         f64::EPSILON
+    }
+    
+    fn zero() -> Self {
+        0.0
     }
 
     fn abs(self) -> Self {
@@ -205,6 +212,10 @@ impl CustomNumeric for TwoFloat {
 
     fn epsilon() -> Self {
         TwoFloat::from(9.63e-35) // real 128bit epsilon
+    }
+    
+    fn zero() -> Self {
+        TwoFloat::from(0.0)
     }
 
     fn abs(self) -> Self {
