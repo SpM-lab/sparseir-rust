@@ -139,14 +139,20 @@ pub fn interpolate_2d_legendre<T: CustomNumeric + 'static>(
 
     // Compute coefficients using tensor product approach
     // coeffs = C_x * values * C_y^T
-        let mut coeffs = Array2::from_elem((n_x, n_y), <T as CustomNumeric>::zero());
-    
+    let mut temp = Array2::from_elem((n_x, n_y), <T as CustomNumeric>::zero());
     for i in 0..n_x {
         for j in 0..n_y {
             for k in 0..n_x {
-                for l in 0..n_y {
-                    coeffs[[i, j]] = coeffs[[i, j]] + collocation_x[[i, k]] * values[[k, l]] * collocation_y[[j, l]];
-                }
+                temp[[i, j]] = temp[[i, j]] + collocation_x[[i, k]] * values[[k, j]];
+            }
+        }
+    }
+    
+    let mut coeffs = Array2::from_elem((n_x, n_y), <T as CustomNumeric>::zero());
+    for i in 0..n_x {
+        for j in 0..n_y {
+            for k in 0..n_y {
+                coeffs[[i, j]] = coeffs[[i, j]] + temp[[i, k]] * collocation_y[[j, k]];
             }
         }
     }

@@ -4,7 +4,7 @@
 //! rules and store them as matrices for numerical computation.
 
 use crate::gauss::Rule;
-use crate::kernel::{CentrosymmKernel, KernelProperties, SymmetryType, SVEHints};
+use crate::kernel::{CentrosymmKernel, KernelProperties, SymmetryType};
 use crate::numeric::CustomNumeric;
 use crate::interpolation2d::Interpolate2D;
 use ndarray::Array2;
@@ -249,45 +249,70 @@ pub struct InterpolatedKernel<T> {
 }
 
 impl<T: CustomNumeric + Debug + Clone + 'static> InterpolatedKernel<T> {
-    /// Create InterpolatedKernel from DiscretizedKernel
+    /// Create InterpolatedKernel from kernel and segments
     ///
     /// This function creates a grid of Interpolate2D objects, one for each
-    /// cell defined by the segments, using the discretized kernel matrix.
+    /// cell defined by the segments. Each cell uses independent Gauss rules
+    /// and kernel evaluation for optimal interpolation.
     ///
     /// # Arguments
-    /// * `discretized` - DiscretizedKernel with matrix and segments
+    /// * `kernel` - Kernel to interpolate
+    /// * `segments_x` - X-axis segment boundaries
+    /// * `segments_y` - Y-axis segment boundaries
     /// * `gauss_per_cell` - Number of Gauss points per cell (e.g., 4 for degree 3)
+    /// * `symmetry` - Symmetry type for kernel evaluation
     ///
     /// # Returns
     /// New InterpolatedKernel instance
-    pub fn from_discretized(
-        discretized: &DiscretizedKernel<T>,
+    pub fn from_kernel_and_segments<K: CentrosymmKernel + KernelProperties>(
+        kernel: &K,
+        segments_x: Vec<T>,
+        segments_y: Vec<T>,
         gauss_per_cell: usize,
+        symmetry: SymmetryType,
     ) -> Self {
-        let segments_x = discretized.segments_x.clone();
-        let segments_y = discretized.segments_y.clone();
-        
         let n_cells_x = segments_x.len() - 1;
         let n_cells_y = segments_y.len() - 1;
         
         // Create interpolators for each cell
-        let interpolators = Array2::from_elem((n_cells_x, n_cells_y), 
-            Interpolate2D::new(
-                &Array2::from_elem((gauss_per_cell, gauss_per_cell), T::zero()),
-                &Rule::empty(),
-                &Rule::empty(),
-            )
-        );
+        let mut interpolators = Vec::new();
         
-        // For now, create placeholder interpolators
-        // TODO: Implement proper cell-wise interpolation from discretized matrix
+        // Create interpolator for each cell independently
+        for i in 0..n_cells_x {
+            for j in 0..n_cells_y {
+                // Create Gauss rules for this cell
+                let cell_gauss_x = crate::gauss::legendre_generic::<T>(gauss_per_cell)
+                    .reseat(segments_x[i], segments_x[i+1]);
+                let cell_gauss_y = crate::gauss::legendre_generic::<T>(gauss_per_cell)
+                    .reseat(segments_y[j], segments_y[j+1]);
+                
+                // Evaluate kernel at Gauss points in this cell
+                let mut cell_values = Array2::from_elem((gauss_per_cell, gauss_per_cell), T::zero());
+                for k in 0..gauss_per_cell {
+                    for l in 0..gauss_per_cell {
+                        let x = cell_gauss_x.x[k];
+                        let y = cell_gauss_y.x[l];
+                        let kernel_val = kernel.compute_reduced(x, y, symmetry);
+                        cell_values[[k, l]] = kernel_val;
+                        
+                    }
+                }
+                
+                // Create Interpolate2D for this cell
+                interpolators.push(Interpolate2D::new(&cell_values, &cell_gauss_x, &cell_gauss_y));
+            }
+        }
+        
+        // Convert Vec to Array2
+        let interpolators_array = Array2::from_shape_vec((n_cells_x, n_cells_y), interpolators)
+            .expect("Failed to create interpolators array");
         
         Self {
             segments_x: segments_x.clone(),
             segments_y: segments_y.clone(),
             domain_x: (segments_x[0], segments_x[segments_x.len()-1]),
             domain_y: (segments_y[0], segments_y[segments_y.len()-1]),
-            interpolators,
+            interpolators: interpolators_array,
             n_cells_x,
             n_cells_y,
         }
