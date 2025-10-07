@@ -89,7 +89,7 @@ pub fn extend_to_full_domain(
         .map(|i| if i % 2 == 0 { 1.0 } else { -1.0 })
         .collect();
     
-    polys.into_iter().enumerate().map(|(poly_idx, poly)| {
+    polys.into_iter().map(|poly| {
         // Create full segments from this polynomial's knots: [-xmax, ..., 0, ..., xmax]
         let knots_pos = &poly.knots;
         let mut full_segments = Vec::new();
@@ -224,6 +224,61 @@ pub fn svd_to_polynomials<T: CustomNumeric>(
 // Note: legendre_collocation_matrix is imported from interpolation1d module
 // Note: legendre_vandermonde is available in gauss module
 
+/// Canonicalize singular function signs
+/// 
+/// Fix the gauge freedom in SVD by demanding u[l](xmax) > 0.
+/// This ensures consistent signs across different implementations.
+/// 
+/// # Arguments
+/// 
+/// * `u_polys` - Left singular functions
+/// * `v_polys` - Right singular functions
+/// * `xmax` - Maximum value to evaluate at (typically 1.0)
+fn canonicalize_signs(
+    u_polys: PiecewiseLegendrePolyVector,
+    v_polys: PiecewiseLegendrePolyVector,
+    xmax: f64,
+) -> (PiecewiseLegendrePolyVector, PiecewiseLegendrePolyVector) {
+    let u_vec = u_polys.get_polys();
+    let v_vec = v_polys.get_polys();
+    
+    let mut new_u_vec = Vec::new();
+    let mut new_v_vec = Vec::new();
+    
+    for i in 0..u_vec.len().min(v_vec.len()) {
+        // Evaluate u[i] at xmax
+        let u_at_xmax = u_vec[i].evaluate(xmax);
+        
+        if u_at_xmax < 0.0 {
+            // Flip sign of both u and v
+            let u_data_flipped = u_vec[i].data.mapv(|x| -x);
+            let v_data_flipped = v_vec[i].data.mapv(|x| -x);
+            
+            new_u_vec.push(PiecewiseLegendrePoly::new(
+                u_data_flipped,
+                u_vec[i].knots.clone(),
+                u_vec[i].l,
+                Some(u_vec[i].delta_x.clone()),
+                u_vec[i].symm,
+            ));
+            new_v_vec.push(PiecewiseLegendrePoly::new(
+                v_data_flipped,
+                v_vec[i].knots.clone(),
+                v_vec[i].l,
+                Some(v_vec[i].delta_x.clone()),
+                v_vec[i].symm,
+            ));
+        } else {
+            // Keep as is
+            new_u_vec.push(u_vec[i].clone());
+            new_v_vec.push(v_vec[i].clone());
+        }
+    }
+    
+    (PiecewiseLegendrePolyVector::new(new_u_vec), 
+     PiecewiseLegendrePolyVector::new(new_v_vec))
+}
+
 /// Merge even and odd SVE results
 /// 
 /// # Arguments
@@ -279,12 +334,14 @@ pub fn merge_results(
         }
     }
     
-    SVEResult::new(
+    // Canonicalize signs: ensure u[l](1) > 0
+    let (canonical_u, canonical_v) = canonicalize_signs(
         PiecewiseLegendrePolyVector::new(u_polys),
-        Array1::from(s_sorted),
         PiecewiseLegendrePolyVector::new(v_polys),
-        epsilon,
-    )
+        1.0,
+    );
+    
+    SVEResult::new(canonical_u, Array1::from(s_sorted), canonical_v, epsilon)
 }
 
 #[cfg(test)]
