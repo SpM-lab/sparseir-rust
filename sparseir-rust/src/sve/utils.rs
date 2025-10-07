@@ -76,6 +76,7 @@ pub fn extend_to_full_domain(
     _xmax: f64,
 ) -> Vec<PiecewiseLegendrePoly> {
     let sign = symmetry.sign() as f64;
+    let symm = symmetry.sign();  // Preserve symmetry: +1 for even, -1 for odd
     
     // Create poly_flip_x: alternating signs for Legendre polynomials
     // This accounts for P_n(-x) = (-1)^n P_n(x)
@@ -118,12 +119,13 @@ pub fn extend_to_full_domain(
         let combined_data = ndarray::concatenate![ndarray::Axis(1), neg_data, pos_data];
         
         // Create complete polynomial with full segments
+        // Preserve symmetry from even/odd decomposition
         PiecewiseLegendrePoly::new(
             combined_data,
             full_segments,
             poly.l,
             None,  // delta_x will be computed automatically
-            0,     // no symmetry
+            symm,  // Preserve symmetry: +1 for even, -1 for odd
         )
     }).collect()
 }
