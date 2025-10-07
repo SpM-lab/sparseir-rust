@@ -139,74 +139,50 @@ fn test_sve_singular_functions_lambda_5() {
     println!("Comparing first {} singular functions", n_funcs);
     
     // Compare u functions
-    // Note: SVD sign is arbitrary, so we allow for sign flip
-    println!("\nComparing u functions (allowing sign flip):");
+    println!("\nComparing u functions:");
     for i in 0..n_funcs {
         let mut max_error: f64 = 0.0;
-        let mut max_error_flipped: f64 = 0.0;
         
         for (j, &x) in x_test.iter().enumerate() {
             let u_rust = result.u.get_polys()[i].evaluate(x);
             let u_julia = u_ref[[j, i]];
             let abs_error = (u_rust - u_julia).abs();
-            let abs_error_flipped = (u_rust + u_julia).abs();
-            
             max_error = max_error.max(abs_error);
-            max_error_flipped = max_error_flipped.max(abs_error_flipped);
         }
         
-        let final_error = max_error.min(max_error_flipped);
-        let sign_matched = max_error < max_error_flipped;
-        
-        println!("  u[{}]: max_error={:.2e} (sign {})", 
-                 i, final_error, if sign_matched { "same" } else { "flipped" });
+        println!("  u[{}]: max_error={:.2e}", i, max_error);
         
         // Allow slightly larger error for higher-order singular functions
         let tolerance = if i < 5 { 1e-10 } else { 1e-9 };
         
         assert!(
-            final_error < tolerance,
+            max_error < tolerance,
             "u[{}] error too large: {:.2e} (tolerance: {:.2e})",
-            i, final_error, tolerance
+            i, max_error, tolerance
         );
     }
     
     // Compare v functions
-    println!("\nComparing v functions (allowing sign flip):");
+    println!("\nComparing v functions:");
     for i in 0..n_funcs {
-        println!("  v[{}]:", i);
         let mut max_error: f64 = 0.0;
-        let mut max_error_flipped: f64 = 0.0;
         
         for (j, &x) in x_test.iter().enumerate() {
             let v_rust = result.v.get_polys()[i].evaluate(x);
             let v_julia = v_ref[[j, i]];
             let abs_error = (v_rust - v_julia).abs();
-            let abs_error_flipped = (v_rust + v_julia).abs();
-            
-            if i == 0 {
-                let ratio = if v_julia.abs() > 1e-10 { v_rust / v_julia } else { 0.0 };
-                println!("    y={:5.2}: rust={:12.6e}, julia={:12.6e}, ratio={:6.3}, err={:.2e}, err_flip={:.2e}", 
-                         x, v_rust, v_julia, ratio, abs_error, abs_error_flipped);
-            }
-            
             max_error = max_error.max(abs_error);
-            max_error_flipped = max_error_flipped.max(abs_error_flipped);
         }
         
-        let final_error = max_error.min(max_error_flipped);
-        let sign_matched = max_error < max_error_flipped;
-        
-        println!("    max_error={:.2e} (sign {})", 
-                 final_error, if sign_matched { "same" } else { "flipped" });
+        println!("  v[{}]: max_error={:.2e}", i, max_error);
         
         // Allow slightly larger error for higher-order singular functions
         let tolerance = if i < 5 { 1e-10 } else { 1e-9 };
         
         assert!(
-            final_error < tolerance,
+            max_error < tolerance,
             "v[{}] error too large: {:.2e} (tolerance: {:.2e})",
-            i, final_error, tolerance
+            i, max_error, tolerance
         );
     }
     
