@@ -142,6 +142,22 @@ impl PiecewiseLegendrePoly {
             new_symm.unwrap_or(self.symm),
         )
     }
+    
+    /// Scale all data values by a constant factor
+    /// 
+    /// This is useful for normalizations, e.g., multiplying by √β for
+    /// Fourier transform preparations.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `factor` - Scaling factor to multiply all data by
+    /// 
+    /// # Returns
+    /// 
+    /// New polynomial with scaled data
+    pub fn scale_data(&self, factor: f64) -> Self {
+        Self::with_data(&self, self.data.mapv(|x| x * factor))
+    }
 
     /// Evaluate the polynomial at a given point
     pub fn evaluate(&self, x: f64) -> f64 {
@@ -585,6 +601,26 @@ impl PiecewiseLegendrePolyVector {
                 let symm = new_symm.as_ref().map(|s| s[i]);
                 poly.rescale_domain(new_knots.clone(), new_delta_x.clone(), symm)
             })
+            .collect();
+        
+        Self { polyvec }
+    }
+    
+    /// Scale all data values by a constant factor
+    /// 
+    /// Multiplies the data of all polynomials by the same factor.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `factor` - Scaling factor to multiply all data by
+    /// 
+    /// # Returns
+    /// 
+    /// New vector with scaled data
+    pub fn scale_data(&self, factor: f64) -> Self {
+        let polyvec = self.polyvec
+            .iter()
+            .map(|poly| poly.scale_data(factor))
             .collect();
         
         Self { polyvec }
