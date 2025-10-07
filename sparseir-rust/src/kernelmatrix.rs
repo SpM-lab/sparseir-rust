@@ -8,7 +8,6 @@ use crate::kernel::{CentrosymmKernel, KernelProperties, SymmetryType};
 use crate::numeric::CustomNumeric;
 use crate::interpolation2d::Interpolate2D;
 use ndarray::Array2;
-use num_traits::ToPrimitive;
 use std::fmt::Debug;
 
 /// This structure stores a discrete kernel matrix along with the corresponding
@@ -118,7 +117,7 @@ impl<T: CustomNumeric + Clone> DiscretizedKernel<T> {
 /// 
 /// This function evaluates the kernel at all combinations of Gauss points
 /// and returns a DiscretizedKernel containing the matrix, quadrature rules, and segments.
-pub fn matrix_from_gauss_with_segments<T: CustomNumeric + ToPrimitive + num_traits::Zero + Clone + Send + Sync, K: CentrosymmKernel + KernelProperties, H: crate::kernel::SVEHints<T>>(
+pub fn matrix_from_gauss_with_segments<T: CustomNumeric + Clone + Send + Sync, K: CentrosymmKernel + KernelProperties, H: crate::kernel::SVEHints<T>>(
     kernel: &K,
     gauss_x: &Rule<T>,
     gauss_y: &Rule<T>,
@@ -157,7 +156,7 @@ pub fn matrix_from_gauss_with_segments<T: CustomNumeric + ToPrimitive + num_trai
     
     let n = gauss_x.x.len();
     let m = gauss_y.x.len();
-    let mut result = Array2::zeros((n, m));
+    let mut result = Array2::from_elem((n, m), T::zero());
     
     // Evaluate kernel at all combinations of Gauss points
     for i in 0..n {
@@ -178,7 +177,7 @@ pub fn matrix_from_gauss_with_segments<T: CustomNumeric + ToPrimitive + num_trai
 /// 
 /// This function evaluates the kernel at all combinations of Gauss points
 /// and returns a DiscretizedKernel containing the matrix and quadrature rules.
-pub fn matrix_from_gauss<T: CustomNumeric + ToPrimitive + num_traits::Zero + Clone, K: CentrosymmKernel + KernelProperties>(
+pub fn matrix_from_gauss<T: CustomNumeric + Clone, K: CentrosymmKernel + KernelProperties>(
     kernel: &K,
     gauss_x: &Rule<T>,
     gauss_y: &Rule<T>,
@@ -209,7 +208,7 @@ pub fn matrix_from_gauss<T: CustomNumeric + ToPrimitive + num_traits::Zero + Clo
     
     let n = gauss_x.x.len();
     let m = gauss_y.x.len();
-    let mut result = Array2::zeros((n, m));
+    let mut result = Array2::from_elem((n, m), T::zero());
     
     // Evaluate kernel at all combinations of Gauss points
     for i in 0..n {

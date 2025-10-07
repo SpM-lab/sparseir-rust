@@ -1,0 +1,319 @@
+//! Utility functions for SVE computation
+
+use ndarray::{Array1, Array2, Array3};
+use crate::numeric::CustomNumeric;
+use crate::poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
+use crate::kernel::SymmetryType;
+use crate::gauss::Rule;
+use crate::interpolation1d::legendre_collocation_matrix;
+
+/// Remove Gauss weights from SVD matrix
+/// 
+/// This function removes the square root of Gauss quadrature weights that were
+/// applied before SVD computation. This is the inverse operation of
+/// `DiscretizedKernel::apply_weights_for_sve()`.
+/// 
+/// # Arguments
+/// 
+/// * `matrix` - SVD result matrix (U or V^T)
+/// * `weights` - Gauss quadrature weights
+/// * `is_row` - If true, remove from rows; if false, remove from columns
+/// 
+/// # Returns
+/// 
+/// Matrix with weights removed
+pub fn remove_weights<T: CustomNumeric>(
+    matrix: &Array2<T>,
+    weights: &[T],
+    is_row: bool,
+) -> Array2<T> {
+    let mut result = matrix.clone();
+    
+    if is_row {
+        // Remove weights from rows (for U matrix)
+        for i in 0..result.nrows() {
+            let sqrt_weight = weights[i].sqrt();
+            for j in 0..result.ncols() {
+                result[[i, j]] = result[[i, j]] / sqrt_weight;
+            }
+        }
+    } else {
+        // Remove weights from columns (for V matrix)
+        for j in 0..result.ncols() {
+            let sqrt_weight = weights[j].sqrt();
+            for i in 0..result.nrows() {
+                result[[i, j]] = result[[i, j]] / sqrt_weight;
+            }
+        }
+    }
+    
+    result
+}
+
+/// Extend polynomials from [0, xmax] to [-xmax, xmax] using symmetry
+/// 
+/// Following the C++ implementation logic from sve.rs.bak:856-888
+/// 
+/// # Arguments
+/// 
+/// * `polys` - Polynomials defined on [0, xmax]
+/// * `symmetry` - Even or Odd symmetry type
+/// * `xmax` - Maximum value of the domain
+/// 
+/// # Returns
+/// 
+/// Polynomials extended to full domain [-xmax, xmax]
+/// 
+/// # Mathematical Background
+/// 
+/// For Even symmetry (sign = +1): f(-x) = f(x)
+/// For Odd symmetry (sign = -1): f(-x) = -f(x)
+/// 
+/// Legendre polynomial parity: P_n(-x) = (-1)^n P_n(x)
+pub fn extend_to_full_domain(
+    polys: Vec<PiecewiseLegendrePoly>,
+    symmetry: SymmetryType,
+    _xmax: f64,
+) -> Vec<PiecewiseLegendrePoly> {
+    let sign = symmetry.sign() as f64;
+    
+    // Create poly_flip_x: alternating signs for Legendre polynomials
+    // This accounts for P_n(-x) = (-1)^n P_n(x)
+    let n_poly_coeffs = if !polys.is_empty() { 
+        polys[0].data.nrows() 
+    } else { 
+        return Vec::new(); 
+    };
+    
+    let poly_flip_x: Vec<f64> = (0..n_poly_coeffs)
+        .map(|i| if i % 2 == 0 { 1.0 } else { -1.0 })
+        .collect();
+    
+    polys.into_iter().map(|poly| {
+        // Create full segments from this polynomial's knots: [-xmax, ..., 0, ..., xmax]
+        let knots_pos = &poly.knots;
+        let mut full_segments = Vec::new();
+        for i in (0..knots_pos.len()).rev() {
+            full_segments.push(-knots_pos[i]);
+        }
+        for i in 1..knots_pos.len() {
+            full_segments.push(knots_pos[i]);
+        }
+        
+        // Normalize by 1/sqrt(2) and convert to f64
+        let pos_data = poly.data.mapv(|x| x / 2.0_f64.sqrt());
+        
+        // Create negative part by reversing columns and applying signs
+        let mut neg_data = pos_data.clone();
+        // Reverse columns: ..;-1 means reverse order
+        neg_data = neg_data.slice(ndarray::s![.., ..;-1]).to_owned();
+        
+        // Apply poly_flip_x and sign to negative part
+        for (i, &flip_sign) in poly_flip_x.iter().enumerate() {
+            let coeff_sign = flip_sign * sign;
+            neg_data.row_mut(i).mapv_inplace(|x| x * coeff_sign);
+        }
+        
+        // Combine negative and positive parts
+        let combined_data = ndarray::concatenate![ndarray::Axis(1), neg_data, pos_data];
+        
+        // Create complete polynomial with full segments
+        PiecewiseLegendrePoly::new(
+            combined_data,
+            full_segments,
+            poly.l,
+            None,  // delta_x will be computed automatically
+            0,     // no symmetry
+        )
+    }).collect()
+}
+
+/// Convert SVD matrix to piecewise Legendre polynomials
+/// 
+/// This function converts SVD results (U or V matrices) to piecewise Legendre
+/// polynomial representation.
+/// 
+/// # Arguments
+/// 
+/// * `u_or_v` - SVD result matrix (rows = Gauss points, cols = singular values)
+/// * `segments` - Segment boundaries
+/// * `gauss_rule` - Gauss quadrature rule
+/// * `n_gauss` - Number of Gauss points per segment
+/// 
+/// # Returns
+/// 
+/// Vector of piecewise Legendre polynomials
+pub fn svd_to_polynomials<T: CustomNumeric>(
+    u_or_v: &Array2<T>,
+    segments: &[T],
+    gauss_rule: &Rule<f64>,
+    n_gauss: usize,
+) -> Vec<PiecewiseLegendrePoly> {
+    let n_segments = segments.len() - 1;
+    let n_svals = u_or_v.ncols();
+    
+    // Reshape to 3D: (n_gauss, n_segments, n_svals)
+    let mut tensor_3d = Array3::<f64>::zeros((n_gauss, n_segments, n_svals));
+    for i in 0..n_gauss {
+        for j in 0..n_segments {
+            for k in 0..n_svals {
+                let row_idx = j * n_gauss + i;
+                tensor_3d[[i, j, k]] = u_or_v[[row_idx, k]].to_f64();
+            }
+        }
+    }
+    
+    // Create Legendre collocation matrix
+    let cmat = legendre_collocation_matrix(gauss_rule);
+    
+    // Transform to Legendre basis
+    let mut u_data = Array3::<f64>::zeros((cmat.nrows(), n_segments, n_svals));
+    for j in 0..n_segments {
+        for k in 0..n_svals {
+            for i in 0..cmat.nrows() {
+                let mut sum = 0.0;
+                for l in 0..n_gauss {
+                    sum += cmat[[i, l]] * tensor_3d[[l, j, k]];
+                }
+                u_data[[i, j, k]] = sum;
+            }
+        }
+    }
+    
+    // Apply segment length normalization: sqrt(0.5 * delta_segment)
+    let mut dsegs = Vec::new();
+    for i in 0..segments.len() - 1 {
+        dsegs.push(segments[i + 1].to_f64() - segments[i].to_f64());
+    }
+    
+    for j in 0..n_segments {
+        let norm = (0.5 * dsegs[j]).sqrt();
+        for i in 0..u_data.shape()[0] {
+            for k in 0..n_svals {
+                u_data[[i, j, k]] *= norm;
+            }
+        }
+    }
+    
+    // Create polynomials
+    let mut polys = Vec::new();
+    let knots: Vec<f64> = segments.iter().map(|&x| x.to_f64()).collect();
+    let delta_x: Vec<f64> = knots.windows(2).map(|w| w[1] - w[0]).collect();
+    
+    for k in 0..n_svals {
+        // Extract data for this singular value: (n_coeffs, n_segments)
+        let mut data = Array2::zeros((u_data.shape()[0], n_segments));
+        for i in 0..u_data.shape()[0] {
+            for j in 0..n_segments {
+                data[[i, j]] = u_data[[i, j, k]];
+            }
+        }
+        polys.push(PiecewiseLegendrePoly::new(
+            data, 
+            knots.clone(), 
+            k as i32, 
+            Some(delta_x.clone()), 
+            0  // no symmetry
+        ));
+    }
+    
+    polys
+}
+
+// Note: legendre_collocation_matrix is imported from interpolation1d module
+// Note: legendre_vandermonde is available in gauss module
+
+/// Merge even and odd SVE results
+/// 
+/// # Arguments
+/// 
+/// * `result_even` - (u, s, v) for even symmetry
+/// * `result_odd` - (u, s, v) for odd symmetry
+/// * `epsilon` - Accuracy parameter
+/// 
+/// # Returns
+/// 
+/// Merged SVEResult with singular values sorted in decreasing order
+pub fn merge_results(
+    result_even: (PiecewiseLegendrePolyVector, Array1<f64>, PiecewiseLegendrePolyVector),
+    result_odd: (PiecewiseLegendrePolyVector, Array1<f64>, PiecewiseLegendrePolyVector),
+    epsilon: f64,
+) -> crate::sve::SVEResult {
+    use crate::sve::SVEResult;
+    
+    let (u_even, s_even, v_even) = result_even;
+    let (u_odd, s_odd, v_odd) = result_odd;
+    
+    // Debug output
+    eprintln!("DEBUG merge_results:");
+    eprintln!("  Even singular values ({}):", s_even.len());
+    for (i, &s) in s_even.iter().enumerate() {
+        eprintln!("    even s[{}] = {:.6e}", i, s);
+    }
+    eprintln!("  Odd singular values ({}):", s_odd.len());
+    for (i, &s) in s_odd.iter().enumerate() {
+        eprintln!("    odd s[{}] = {:.6e}", i, s);
+    }
+    
+    // Create indices with symmetry info
+    let mut indices: Vec<(usize, bool)> = Vec::new();
+    for i in 0..s_even.len() {
+        indices.push((i, true));  // true = even
+    }
+    for i in 0..s_odd.len() {
+        indices.push((i, false));  // false = odd
+    }
+    
+    // Sort by singular values (descending)
+    indices.sort_by(|a, b| {
+        let s_a = if a.1 { s_even[a.0] } else { s_odd[a.0] };
+        let s_b = if b.1 { s_even[b.0] } else { s_odd[b.0] };
+        s_b.partial_cmp(&s_a).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    
+    // Build sorted arrays
+    let mut u_polys = Vec::new();
+    let mut v_polys = Vec::new();
+    let mut s_sorted = Vec::new();
+    
+    for (idx, is_even) in indices {
+        if is_even {
+            u_polys.push(u_even.get_polys()[idx].clone());
+            v_polys.push(v_even.get_polys()[idx].clone());
+            s_sorted.push(s_even[idx]);
+        } else {
+            u_polys.push(u_odd.get_polys()[idx].clone());
+            v_polys.push(v_odd.get_polys()[idx].clone());
+            s_sorted.push(s_odd[idx]);
+        }
+    }
+    
+    SVEResult::new(
+        PiecewiseLegendrePolyVector::new(u_polys),
+        Array1::from(s_sorted),
+        PiecewiseLegendrePolyVector::new(v_polys),
+        epsilon,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_remove_weights() {
+        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let weights = vec![1.0, 4.0];
+        
+        let result = remove_weights(&matrix, &weights, true);
+        
+        // Both U and V: remove from rows (Gauss points)
+        // First row: [1.0, 2.0] / sqrt(1.0) = [1.0, 2.0]
+        // Second row: [3.0, 4.0] / sqrt(4.0) = [1.5, 2.0]
+        assert!((result[[0, 0]] - 1.0).abs() < 1e-10);
+        assert!((result[[0, 1]] - 2.0).abs() < 1e-10);
+        assert!((result[[1, 0]] - 1.5).abs() < 1e-10);
+        assert!((result[[1, 1]] - 2.0).abs() < 1e-10);
+    }
+}
+
