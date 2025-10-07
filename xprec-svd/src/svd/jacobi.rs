@@ -270,7 +270,14 @@ pub fn jacobi_svd<T: Precision>(
     // Use Eigen3's convergence criteria
     let consider_as_zero = <T as From<f64>>::from(std::f64::MIN_POSITIVE);
     let precision = <T as From<f64>>::from(2.0) * <T as Precision>::epsilon();
-    let max_iter = 30; // Maximum number of sweeps
+    let max_iter = 1000; // Maximum number of sweeps
+    
+    // Convergence condition: All off-diagonal elements must be below threshold
+    // threshold = max(consider_as_zero, precision * max_diag_entry)
+    // where:
+    //   - consider_as_zero ≈ 2e-308 (smallest positive float)
+    //   - precision = 2 * machine_epsilon ≈ 4e-16 for f64
+    //   - max_diag_entry = max absolute value in the matrix
     
     // Track maximum diagonal entry for threshold calculation
     // Initialize with maximum absolute value in the matrix to handle non-diagonal matrices
@@ -283,12 +290,11 @@ pub fn jacobi_svd<T: Precision>(
         }
     }
     
-    let mut _iterations = 0;
     let diagsize = a_rows.min(a_cols); // For the working matrix after QR
+    let mut converged;
     
-    for iter in 0..max_iter {
-        let mut converged = true;
-        
+    for _iter in 0..max_iter {
+        converged = true;
         
         // One-sided Jacobi: eliminate off-diagonal elements
         // Use Eigen3's loop order: p from 1 to diagsize, q from 0 to p-1
@@ -303,7 +309,6 @@ pub fn jacobi_svd<T: Precision>(
                 }
                 
                 converged = false;
-                _iterations += 1;
                 
                 // Compute 2×2 Jacobi SVD of the 2×2 submatrix
                 let (left_rot, right_rot, (_s1, _s2)) = real_2x2_jacobi_svd(

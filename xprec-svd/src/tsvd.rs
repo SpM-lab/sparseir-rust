@@ -101,11 +101,18 @@ pub fn tsvd<T: Precision + 'static + std::fmt::Debug>(
     // U = Q_trunc * V_svd
     let u = q_trunc.dot(&svd_result.v);
     
-    // V = P * U_svd (where P is the permutation matrix)
+    // V = P^(-1) * U_svd (where P^(-1) is the inverse permutation matrix)
+    // First, compute inverse permutation
+    let mut inv_perm = vec![0; n];
+    for i in 0..n {
+        inv_perm[qr.jpvt[i]] = i;
+    }
+    
+    // Apply inverse permutation: V[i, j] = U_svd[inv_perm[i], j]
     let mut v = Array2::zeros((n, k));
-    for i in 0..k {
-        for j in 0..n {
-            v[[j, i]] = svd_result.u[[qr.jpvt[j], i]];
+    for i in 0..n {
+        for j in 0..k {
+            v[[i, j]] = svd_result.u[[inv_perm[i], j]];
         }
     }
     

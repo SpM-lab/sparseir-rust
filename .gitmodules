@@ -13,3 +13,6 @@
 [submodule "SparseIR.jl"]
 	path = SparseIR.jl
 	url = git@github.com:SpM-lab/SparseIR.jl.git
+[submodule "sparse-ir"]
+	path = sparse-ir
+	url = git@github.com:SpM-lab/sparse-ir.git
