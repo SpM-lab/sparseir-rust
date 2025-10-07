@@ -6,7 +6,7 @@
 use ndarray::Array1;
 use std::sync::Arc;
 
-use crate::kernel::{KernelProperties, LogisticKernel};
+use crate::kernel::{KernelProperties, CentrosymmKernel, LogisticKernel};
 use crate::poly::PiecewiseLegendrePolyVector;
 use crate::polyfourier::PiecewiseLegendreFTVector;
 use crate::sve::{SVEResult, compute_sve, TworkType};
@@ -24,10 +24,19 @@ use crate::traits::{StatisticsType, Fermionic, Bosonic};
 ///
 /// This basis is inferred from a reduced form by appropriate scaling of
 /// the variables.
+///
+/// # Type Parameters
+///
+/// * `K` - Kernel type implementing `KernelProperties + CentrosymmKernel`
+/// * `S` - Statistics type (`Fermionic` or `Bosonic`)
 #[derive(Clone)]
-pub struct FiniteTempBasis<S: StatisticsType> {
+pub struct FiniteTempBasis<K, S>
+where
+    K: KernelProperties + CentrosymmKernel + Clone + 'static,
+    S: StatisticsType,
+{
     /// The kernel used to construct this basis
-    pub kernel: LogisticKernel,
+    pub kernel: K,
     
     /// The SVE result (in scaled variables)
     pub sve_result: Arc<SVEResult>,
@@ -56,13 +65,17 @@ pub struct FiniteTempBasis<S: StatisticsType> {
     _phantom: std::marker::PhantomData<S>,
 }
 
-impl<S: StatisticsType> FiniteTempBasis<S> {
+impl<K, S> FiniteTempBasis<K, S>
+where
+    K: KernelProperties + CentrosymmKernel + Clone + 'static,
+    S: StatisticsType,
+{
     /// Create a new FiniteTempBasis
     ///
     /// # Arguments
     ///
+    /// * `kernel` - Kernel implementing `KernelProperties + CentrosymmKernel`
     /// * `beta` - Inverse temperature (β > 0)
-    /// * `omega_max` - Frequency cutoff (ωmax ≥ 0)
     /// * `epsilon` - Accuracy parameter (optional, defaults to NaN for auto)
     /// * `max_size` - Maximum number of basis functions (optional)
     ///
@@ -70,8 +83,8 @@ impl<S: StatisticsType> FiniteTempBasis<S> {
     ///
     /// A new FiniteTempBasis
     pub fn new(
+        kernel: K,
         beta: f64,
-        omega_max: f64,
         epsilon: Option<f64>,
         max_size: Option<usize>,
     ) -> Self {
@@ -79,25 +92,18 @@ impl<S: StatisticsType> FiniteTempBasis<S> {
         if beta <= 0.0 {
             panic!("Inverse temperature beta must be positive, got {}", beta);
         }
-        if omega_max < 0.0 {
-            panic!("Frequency cutoff omega_max must be non-negative, got {}", omega_max);
-        }
-        
-        // Create kernel with Λ = β * ωmax
-        let lambda = beta * omega_max;
-        let kernel = LogisticKernel::new(lambda);
         
         // Compute SVE
         let epsilon_value = epsilon.unwrap_or(f64::NAN);
         let sve_result = compute_sve(
-            kernel,
+            kernel.clone(),
             epsilon_value,
             None,  // cutoff
             max_size.map(|s| s as usize),
             TworkType::Auto,
         );
         
-        Self::from_sve_result(beta, omega_max, kernel, sve_result, epsilon, max_size)
+        Self::from_sve_result(kernel, beta, sve_result, epsilon, max_size)
     }
     
     /// Create basis from existing SVE result
@@ -105,22 +111,12 @@ impl<S: StatisticsType> FiniteTempBasis<S> {
     /// This is useful when you want to reuse the same SVE computation
     /// for both fermionic and bosonic bases.
     pub fn from_sve_result(
+        kernel: K,
         beta: f64,
-        omega_max: f64,
-        kernel: LogisticKernel,
         sve_result: SVEResult,
         epsilon: Option<f64>,
         max_size: Option<usize>,
     ) -> Self {
-        // Validate Λ = β * ωmax
-        let lambda = kernel.lambda();
-        if (beta * omega_max - lambda).abs() > 1e-10 {
-            panic!(
-                "Product of beta and omega_max must equal lambda: {} * {} != {}",
-                beta, omega_max, lambda
-            );
-        }
-        
         // Get truncated u, s, v from SVE result
         let (u_sve, s_sve, v_sve) = sve_result.part(epsilon, max_size);
         
@@ -131,9 +127,12 @@ impl<S: StatisticsType> FiniteTempBasis<S> {
             sve_result.s[sve_result.s.len() - 1] / sve_result.s[0]
         };
         
+        // Get kernel parameters
+        let lambda = kernel.lambda();
+        let omega_max = lambda / beta;
+        
         // Scale polynomials to new variables
         // tau = β/2 * (x + 1), w = ωmax * y
-        let omega_max_actual = lambda / beta;
         
         // Transform u: x ∈ [-1, 1] → τ ∈ [0, β]
         let u_knots: Vec<f64> = u_sve.get_polys()[0].knots.iter()
@@ -150,10 +149,10 @@ impl<S: StatisticsType> FiniteTempBasis<S> {
         
         // Transform v: y ∈ [-1, 1] → ω ∈ [-ωmax, ωmax]
         let v_knots: Vec<f64> = v_sve.get_polys()[0].knots.iter()
-            .map(|&y| omega_max_actual * y)
+            .map(|&y| omega_max * y)
             .collect();
         let v_delta_x: Vec<f64> = v_sve.get_polys()[0].delta_x.iter()
-            .map(|&dy| omega_max_actual * dy)
+            .map(|&dy| omega_max * dy)
             .collect();
         let v_symm: Vec<i32> = v_sve.get_polys().iter()
             .map(|p| p.symm)
@@ -164,8 +163,8 @@ impl<S: StatisticsType> FiniteTempBasis<S> {
         // Scale singular values
         // s_scaled = sqrt(β/2 * ωmax) * ωmax^(-ypower) * s_sve
         let ypower = kernel.ypower();
-        let scale_factor = (beta / 2.0 * omega_max_actual).sqrt() 
-                         * omega_max_actual.powi(-ypower);
+        let scale_factor = (beta / 2.0 * omega_max).sqrt() 
+                         * omega_max.powi(-ypower);
         let s = s_sve.mapv(|x| scale_factor * x);
         
         // Construct uhat (Fourier transform of u)
@@ -226,11 +225,11 @@ impl<S: StatisticsType> FiniteTempBasis<S> {
     }
 }
 
-/// Type alias for fermionic basis
-pub type FermionicBasis = FiniteTempBasis<Fermionic>;
+/// Type alias for fermionic basis with LogisticKernel
+pub type FermionicBasis = FiniteTempBasis<LogisticKernel, Fermionic>;
 
-/// Type alias for bosonic basis  
-pub type BosonicBasis = FiniteTempBasis<Bosonic>;
+/// Type alias for bosonic basis with LogisticKernel
+pub type BosonicBasis = FiniteTempBasis<LogisticKernel, Bosonic>;
 
 #[cfg(test)]
 mod tests {
@@ -242,7 +241,8 @@ mod tests {
         let omega_max = 1.0;
         let epsilon = 1e-6;
         
-        let basis = FermionicBasis::new(beta, omega_max, Some(epsilon), None);
+        let kernel = LogisticKernel::new(beta * omega_max);
+        let basis = FermionicBasis::new(kernel, beta, Some(epsilon), None);
         
         assert_eq!(basis.beta, beta);
         assert!((basis.omega_max() - omega_max).abs() < 1e-10);
@@ -254,13 +254,8 @@ mod tests {
     #[test]
     #[should_panic(expected = "beta must be positive")]
     fn test_negative_beta() {
-        let _ = FermionicBasis::new(-1.0, 1.0, None, None);
-    }
-    
-    #[test]
-    #[should_panic(expected = "omega_max must be non-negative")]
-    fn test_negative_omega_max() {
-        let _ = FermionicBasis::new(1.0, -1.0, None, None);
+        let kernel = LogisticKernel::new(1.0);
+        let _ = FermionicBasis::new(kernel, -1.0, None, None);
     }
 }
 
