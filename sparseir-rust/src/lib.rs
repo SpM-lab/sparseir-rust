@@ -16,6 +16,7 @@ pub mod polyfourier;
 pub mod special_functions;
 pub mod traits;
 pub mod sve;
+pub mod basis;
 
 // Re-export commonly used types and traits
 pub use freq::{
@@ -38,6 +39,7 @@ pub use interpolation1d::Interpolate1D;
 pub use interpolation2d::Interpolate2D;
 pub use kernelmatrix::{DiscretizedKernel, InterpolatedKernel, matrix_from_gauss, matrix_from_gauss_with_segments};
 pub use sve::{SVEResult, TworkType, SVDStrategy, SamplingSVE, CentrosymmSVE, SVEStrategy, compute_sve, compute_svd, truncate};
+pub use basis::{FiniteTempBasis, FermionicBasis, BosonicBasis};
 
 // Re-export external dependencies for convenience
 pub use ndarray::{Array1, Array2};

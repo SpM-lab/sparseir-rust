@@ -454,7 +454,7 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
 }
 
 /// Vector of PiecewiseLegendreFT polynomials
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PiecewiseLegendreFTVector<S: StatisticsType> {
     pub polyvec: Vec<PiecewiseLegendreFT<S>>,
     _phantom: std::marker::PhantomData<S>,

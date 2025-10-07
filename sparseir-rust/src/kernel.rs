@@ -73,6 +73,12 @@ pub trait KernelProperties {
     /// For most kernels, this is 0 (no scaling).
     /// For RegularizedBoseKernel, this is 1 (linear scaling).
     fn ypower(&self) -> i32;
+    
+    /// Convergence radius of the Matsubara basis asymptotic model
+    /// 
+    /// For improved numerical accuracy, IR basis functions on Matsubara axis
+    /// can be evaluated from asymptotic expression for |n| > conv_radius.
+    fn conv_radius(&self) -> f64;
 
     /// Get the upper bound of the x domain
     fn xmax(&self) -> f64;
@@ -137,14 +143,6 @@ pub trait CentrosymmKernel: Send + Sync {
 
     /// Get the cutoff parameter Λ (lambda)
     fn lambda(&self) -> f64;
-
-    /// Convergence radius of the Matsubara basis asymptotic model.
-    ///
-    /// For improved relative numerical accuracy, the IR basis functions on the
-    /// Matsubara axis can be evaluated from an asymptotic expression for
-    /// abs(n) > conv_radius. If conv_radius is infinity, then the asymptotics
-    /// are unused (the default).
-    fn conv_radius(&self) -> f64;
 }
 
 /// Logistic kernel for fermionic analytical continuation
@@ -175,6 +173,10 @@ impl KernelProperties for LogisticKernel {
         T: Copy + Debug + Send + Sync + CustomNumeric + 'static;
     fn ypower(&self) -> i32 {
         0 // No y-power scaling for LogisticKernel
+    }
+    
+    fn conv_radius(&self) -> f64 {
+        40.0 * self.lambda
     }
 
     fn xmax(&self) -> f64 {
@@ -275,10 +277,6 @@ impl CentrosymmKernel for LogisticKernel {
 
     fn lambda(&self) -> f64 {
         self.lambda
-    }
-
-    fn conv_radius(&self) -> f64 {
-        40.0 * self.lambda
     }
 }
 
