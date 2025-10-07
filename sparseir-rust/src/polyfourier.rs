@@ -186,18 +186,77 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
         result
     }
 
-    /// Compute stable phase factors
-    fn phase_stable(poly: &PiecewiseLegendrePoly, wn: i32) -> Vec<Complex64> {
-        let mut phase_wi = Vec::with_capacity(poly.knots.len() - 1);
-        let pi_over_4 = PI / 4.0;
+    /// Compute midpoint relative to nearest integer
+    /// 
+    /// Returns (xmid_diff, extra_shift) where:
+    /// - xmid_diff: midpoint values for numerical stability
+    /// - extra_shift: nearest integer shift (-1, 0, or 1)
+    fn shift_xmid(knots: &[f64], delta_x: &[f64]) -> (Vec<f64>, Vec<i32>) {
+        let n_segments = delta_x.len();
+        let delta_x_half: Vec<f64> = delta_x.iter().map(|&dx| dx / 2.0).collect();
+        
+        // xmid_m1: cumsum(Δx) - Δx_half
+        let mut xmid_m1 = Vec::with_capacity(n_segments);
+        let mut cumsum = 0.0;
+        for i in 0..n_segments {
+            cumsum += delta_x[i];
+            xmid_m1.push(cumsum - delta_x_half[i]);
+        }
+        
+        // xmid_p1: -reverse(cumsum(reverse(Δx))) + Δx_half
+        let mut xmid_p1 = Vec::with_capacity(n_segments);
+        let mut cumsum_rev = 0.0;
+        for i in (0..n_segments).rev() {
+            cumsum_rev += delta_x[i];
+            xmid_p1.insert(0, -cumsum_rev + delta_x_half[i]);
+        }
+        
+        // xmid_0: knots[1:] - Δx_half
+        let xmid_0: Vec<f64> = (0..n_segments)
+            .map(|i| knots[i + 1] - delta_x_half[i])
+            .collect();
+        
+        // Determine shift and diff
+        let mut xmid_diff = Vec::with_capacity(n_segments);
+        let mut extra_shift = Vec::with_capacity(n_segments);
+        
+        for i in 0..n_segments {
+            let shift = xmid_0[i].round() as i32;
+            extra_shift.push(shift);
+            
+            // Choose appropriate xmid based on shift
+            let diff = match shift {
+                -1 => xmid_m1[i],
+                0 => xmid_0[i],
+                1 => xmid_p1[i],
+                _ => xmid_0[i],  // Fallback
+            };
+            xmid_diff.push(diff);
+        }
+        
+        (xmid_diff, extra_shift)
+    }
 
-        for j in 0..poly.knots.len() - 1 {
-            let xm = poly.xm[j];
-            let phase = Complex64::new(
-                (pi_over_4 * wn as f64 * xm).cos(),
-                (pi_over_4 * wn as f64 * xm).sin(),
-            );
-            phase_wi.push(phase);
+    /// Compute stable phase factors
+    /// 
+    /// Computes: im^mod(wn * (extra_shift + 1), 4) * cispi(wn * xmid_diff / 2)
+    /// where cispi(x) = exp(i*π*x)
+    fn phase_stable(poly: &PiecewiseLegendrePoly, wn: i32) -> Vec<Complex64> {
+        let (xmid_diff, extra_shift) = Self::shift_xmid(&poly.knots, &poly.delta_x);
+        let mut phase_wi = Vec::with_capacity(xmid_diff.len());
+        
+        let im_unit = Complex64::new(0.0, 1.0);
+        
+        for j in 0..xmid_diff.len() {
+            // Compute im^mod(wn * (extra_shift[j] + 1), 4)
+            let power = ((wn * (extra_shift[j] + 1)) % 4 + 4) % 4;  // Ensure positive mod
+            let im_power = im_unit.powi(power);
+            
+            // Compute cispi(wn * xmid_diff[j] / 2) = exp(i*π*wn*xmid_diff/2)
+            let arg = PI * wn as f64 * xmid_diff[j] / 2.0;
+            let cispi = Complex64::new(arg.cos(), arg.sin());
+            
+            phase_wi.push(im_power * cispi);
         }
 
         phase_wi
