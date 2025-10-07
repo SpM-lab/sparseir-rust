@@ -278,7 +278,7 @@ impl CentrosymmKernel for LogisticKernel {
     }
 
     fn conv_radius(&self) -> f64 {
-        40.0 * self.lambda // For LogisticKernel, conv_radius = 40 * Λ
+        40.0 * self.lambda
     }
 }
 

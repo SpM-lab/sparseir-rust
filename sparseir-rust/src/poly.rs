@@ -113,6 +113,35 @@ impl PiecewiseLegendrePoly {
             ..self.clone()
         }
     }
+    
+    /// Rescale domain: create a new polynomial with the same data but different knots
+    /// 
+    /// This is useful for transforming from one domain to another, e.g.,
+    /// from x ∈ [-1, 1] to τ ∈ [0, β].
+    /// 
+    /// # Arguments
+    /// 
+    /// * `new_knots` - New knot points
+    /// * `new_delta_x` - Optional new segment widths (computed from knots if None)
+    /// * `new_symm` - Optional new symmetry parameter (keeps old if None)
+    /// 
+    /// # Returns
+    /// 
+    /// New polynomial with rescaled domain
+    pub fn rescale_domain(
+        &self,
+        new_knots: Vec<f64>,
+        new_delta_x: Option<Vec<f64>>,
+        new_symm: Option<i32>,
+    ) -> Self {
+        Self::new(
+            self.data.clone(),
+            new_knots,
+            self.l,
+            new_delta_x,
+            new_symm.unwrap_or(self.symm),
+        )
+    }
 
     /// Evaluate the polynomial at a given point
     pub fn evaluate(&self, x: f64) -> f64 {
@@ -527,6 +556,38 @@ impl PiecewiseLegendrePolyVector {
     /// Get the size of the vector
     pub fn size(&self) -> usize {
         self.polyvec.len()
+    }
+    
+    /// Rescale domain for all polynomials in the vector
+    /// 
+    /// Creates a new PiecewiseLegendrePolyVector where each polynomial has
+    /// the same data but new knots and delta_x.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `new_knots` - New knot points (same for all polynomials)
+    /// * `new_delta_x` - Optional new segment widths
+    /// * `new_symm` - Optional vector of new symmetry parameters (one per polynomial)
+    /// 
+    /// # Returns
+    /// 
+    /// New vector with rescaled domains
+    pub fn rescale_domain(
+        &self,
+        new_knots: Vec<f64>,
+        new_delta_x: Option<Vec<f64>>,
+        new_symm: Option<Vec<i32>>,
+    ) -> Self {
+        let polyvec = self.polyvec
+            .iter()
+            .enumerate()
+            .map(|(i, poly)| {
+                let symm = new_symm.as_ref().map(|s| s[i]);
+                poly.rescale_domain(new_knots.clone(), new_delta_x.clone(), symm)
+            })
+            .collect();
+        
+        Self { polyvec }
     }
 
     /// Get polynomial by index (immutable)
