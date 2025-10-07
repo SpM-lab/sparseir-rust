@@ -83,19 +83,9 @@ where
     let mut s_list = Vec::new();
     let mut v_list = Vec::new();
     
-    for (idx, matrix) in matrices.iter().enumerate() {
-        eprintln!("DEBUG Computing SVD for matrix {}: {}x{}", idx, matrix.nrows(), matrix.ncols());
+    for matrix in matrices.iter() {
         let (u, s, v) = compute_svd(&matrix);
-        eprintln!("DEBUG SVD result for matrix {}:", idx);
-        eprintln!("  U: {}x{}, S: {}, V: {}x{}", u.nrows(), u.ncols(), s.len(), v.nrows(), v.ncols());
-        if s.len() > 0 {
-            eprintln!("  {} singular values before truncate", s.len());
-            for (i, &sval) in s.iter().enumerate().take(10) {
-                eprintln!("    SVD s[{}] = {:.6e}", i, sval.to_f64());
-            }
-        } else {
-            eprintln!("  WARNING: SVD returned 0 singular values!");
-        }
+        
         u_list.push(u);
         s_list.push(s);
         v_list.push(v);
@@ -103,7 +93,6 @@ where
     
     // 4. Truncate based on cutoff
     let rtol = cutoff.unwrap_or(2.0 * f64::EPSILON);
-    eprintln!("DEBUG truncate: rtol = {:.6e}", rtol);
     let rtol_t = T::from_f64(rtol);
     let (u_trunc, s_trunc, v_trunc) = truncate(
         u_list, 
@@ -112,14 +101,6 @@ where
         rtol_t, 
         max_num_svals
     );
-    
-    eprintln!("DEBUG after truncate:");
-    for (idx, s) in s_trunc.iter().enumerate() {
-        eprintln!("  Matrix {}: {} singular values", idx, s.len());
-        for (i, &sval) in s.iter().enumerate().take(10) {
-            eprintln!("    s[{}] = {:.6e}", i, sval.to_f64());
-        }
-    }
     
     // 5. Post-process to create SVEResult
     sve.postprocess(u_trunc, s_trunc, v_trunc)
@@ -217,11 +198,6 @@ pub fn truncate<T: CustomNumeric>(
 ) -> (Vec<Array2<T>>, Vec<Array1<T>>, Vec<Array2<T>>) {
     let zero = T::zero();
     
-    eprintln!("DEBUG truncate: {} matrices", s_list.len());
-    for (i, s) in s_list.iter().enumerate() {
-        eprintln!("  Input matrix {}: {} singular values", i, s.len());
-    }
-    
     // Validate
     if let Some(max) = max_num_svals {
         if (max as isize) < 0 {
@@ -243,9 +219,6 @@ pub fn truncate<T: CustomNumeric>(
         .copied()
         .unwrap_or(zero);
     
-    eprintln!("  Max singular value: {:.6e}", max_sval.to_f64());
-    eprintln!("  rtol: {:.6e}", rtol.to_f64());
-    
     // Determine cutoff
     let cutoff = if let Some(max_count) = max_num_svals {
         if max_count < all_svals.len() {
@@ -263,8 +236,6 @@ pub fn truncate<T: CustomNumeric>(
     } else {
         rtol * max_sval
     };
-    
-    eprintln!("  Cutoff value: {:.6e}", cutoff.to_f64());
     
     // Truncate each result
     let mut u_trunc = Vec::new();

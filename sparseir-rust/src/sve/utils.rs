@@ -89,7 +89,7 @@ pub fn extend_to_full_domain(
         .map(|i| if i % 2 == 0 { 1.0 } else { -1.0 })
         .collect();
     
-    polys.into_iter().map(|poly| {
+    polys.into_iter().enumerate().map(|(poly_idx, poly)| {
         // Create full segments from this polynomial's knots: [-xmax, ..., 0, ..., xmax]
         let knots_pos = &poly.knots;
         let mut full_segments = Vec::new();
@@ -208,6 +208,7 @@ pub fn svd_to_polynomials<T: CustomNumeric>(
                 data[[i, j]] = u_data[[i, j, k]];
             }
         }
+        
         polys.push(PiecewiseLegendrePoly::new(
             data, 
             knots.clone(), 
@@ -245,16 +246,6 @@ pub fn merge_results(
     let (u_odd, s_odd, v_odd) = result_odd;
     
     // Debug output
-    eprintln!("DEBUG merge_results:");
-    eprintln!("  Even singular values ({}):", s_even.len());
-    for (i, &s) in s_even.iter().enumerate() {
-        eprintln!("    even s[{}] = {:.6e}", i, s);
-    }
-    eprintln!("  Odd singular values ({}):", s_odd.len());
-    for (i, &s) in s_odd.iter().enumerate() {
-        eprintln!("    odd s[{}] = {:.6e}", i, s);
-    }
-    
     // Create indices with symmetry info
     let mut indices: Vec<(usize, bool)> = Vec::new();
     for i in 0..s_even.len() {

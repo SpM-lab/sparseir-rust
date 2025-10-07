@@ -84,8 +84,9 @@ where
         v: &Array2<T>,
     ) -> (PiecewiseLegendrePolyVector, Array1<f64>, PiecewiseLegendrePolyVector) {
         // 1. Remove weights
+        // Both U and V have rows corresponding to Gauss points, so is_row=true for both
         let u_unweighted = remove_weights(u, self.gauss_x.w.as_slice().unwrap(), true);
-        let v_unweighted = remove_weights(v, self.gauss_y.w.as_slice().unwrap(), false);
+        let v_unweighted = remove_weights(v, self.gauss_y.w.as_slice().unwrap(), true);
         
         // 2. Convert to polynomials
         let gauss_rule_f64 = legendre_generic::<f64>(self.n_gauss);
@@ -153,17 +154,6 @@ where
         let segments_y = hints.segments_y();
         let n_gauss = hints.ngauss();
         
-        eprintln!("DEBUG CentrosymmSVE::new:");
-        eprintln!("  segments_x: {} knots → {} segments", segments_x.len(), segments_x.len() - 1);
-        eprintln!("  segments_y: {} knots → {} segments", segments_y.len(), segments_y.len() - 1);
-        eprintln!("  n_gauss: {}", n_gauss);
-        if segments_x.len() > 0 {
-            eprintln!("  First 5 segments_x: {:?}", 
-                     segments_x.iter().take(5).map(|x| x.to_f64()).collect::<Vec<_>>());
-            eprintln!("  Last 5 segments_x: {:?}", 
-                     segments_x.iter().skip(segments_x.len().saturating_sub(5)).map(|x| x.to_f64()).collect::<Vec<_>>());
-        }
-        
         // Create composite Gauss rules
         let rule = legendre_generic::<T>(n_gauss);
         let gauss_x = rule.piecewise(&segments_x);
@@ -206,19 +196,6 @@ where
         
         // Apply weights for SVE
         let weighted = discretized.apply_weights_for_sve();
-        
-        // Debug output
-        if symmetry == SymmetryType::Even {
-            eprintln!("DEBUG Even matrix (after weights):");
-            eprintln!("  Matrix element [0,0]: {:.6e}", weighted[[0, 0]].to_f64());
-            eprintln!("  Matrix element [0,1]: {:.6e}", weighted[[0, 1]].to_f64());
-            eprintln!("  Matrix element [49,69]: {:.6e}", weighted[[49, 69]].to_f64());
-            let norm: f64 = weighted.iter().map(|&x| {
-                let v = x.to_f64();
-                v * v
-            }).sum();
-            eprintln!("  Matrix norm (sum of squares): {:.6e}", norm);
-        }
         
         weighted
     }
