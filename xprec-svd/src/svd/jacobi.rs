@@ -267,8 +267,28 @@ pub fn jacobi_svd<T: Precision>(
     
     let mut v = Array2::eye(n); // V is always n x n initially, then we take first k columns
     
+    // Scale matrix like Eigen3 to reduce over/under-flows and improve threshold calculation
+    // This ensures max_diag_entry is close to 1, making threshold ~ epsilon (achievable)
+    let a_rows = a.nrows();
+    let a_cols = a.ncols();
+    let mut scale = T::zero();
+    for i in 0..a_rows {
+        for j in 0..a_cols {
+            scale = Precision::max(scale, Precision::abs(a[[i, j]]));
+        }
+    }
+    if scale <= T::zero() || !scale.is_finite() {
+        scale = T::one();
+    }
+    // Scale the matrix
+    for i in 0..a_rows {
+        for j in 0..a_cols {
+            a[[i, j]] = a[[i, j]] / scale;
+        }
+    }
+    
     // Use Eigen3's convergence criteria
-    let consider_as_zero = <T as From<f64>>::from(std::f64::MIN_POSITIVE);
+    let consider_as_zero = <T as From<f64>>::from(std::f64::MIN_POSITIVE);  // Like Eigen3
     let precision = <T as From<f64>>::from(2.0) * <T as Precision>::epsilon();
     let max_iter = 1000; // Maximum number of sweeps
     
@@ -280,21 +300,23 @@ pub fn jacobi_svd<T: Precision>(
     //   - max_diag_entry = max absolute value in the matrix
     
     // Track maximum diagonal entry for threshold calculation
-    // Initialize with maximum absolute value in the matrix to handle non-diagonal matrices
+    // Initialize with maximum absolute value of diagonal elements (like Eigen3)
+    let diagsize = a_rows.min(a_cols);
+    
     let mut max_diag_entry = T::zero();
-    let a_rows = a.nrows();
-    let a_cols = a.ncols();
-    for i in 0..a_rows {
-        for j in 0..a_cols {
-            max_diag_entry = Precision::max(max_diag_entry, Precision::abs(a[[i, j]]));
-        }
+    for i in 0..diagsize {
+        max_diag_entry = Precision::max(max_diag_entry, Precision::abs(a[[i, i]]));
     }
     
-    let diagsize = a_rows.min(a_cols); // For the working matrix after QR
     let mut converged;
     
-    for _iter in 0..max_iter {
+    // eprintln!("[Jacobi SVD] Starting iterations: matrix {}x{}, diagsize={}, initial max_diag_entry={:.6e}", 
+    //           a_rows, a_cols, diagsize, max_diag_entry.to_f64().unwrap_or(0.0));
+    
+    for iter in 0..max_iter {
         converged = true;
+        let mut num_rotations = 0;
+        let mut max_off_diag = T::zero();
         
         // One-sided Jacobi: eliminate off-diagonal elements
         // Use Eigen3's loop order: p from 1 to diagsize, q from 0 to p-1
@@ -303,12 +325,18 @@ pub fn jacobi_svd<T: Precision>(
                 // Use Eigen3's threshold calculation
                 let threshold = Precision::max(consider_as_zero, precision * max_diag_entry);
                 
+                let off_diag = Precision::max(Precision::abs(a[[p, q]]), Precision::abs(a[[q, p]]));
+                max_off_diag = Precision::max(max_off_diag, off_diag);
                 
+                // Check if off-diagonal elements are below threshold (like Eigen3)
+                // Eigen3 uses: if (abs(...) > threshold || abs(...) > threshold) { not_finished }
+                // So we skip (continue) if both are <= threshold
                 if Precision::abs(a[[p, q]]) <= threshold && Precision::abs(a[[q, p]]) <= threshold {
                     continue;
                 }
                 
                 converged = false;
+                num_rotations += 1;
                 
                 // Compute 2×2 Jacobi SVD of the 2×2 submatrix
                 let (left_rot, right_rot, (_s1, _s2)) = real_2x2_jacobi_svd(
@@ -335,19 +363,38 @@ pub fn jacobi_svd<T: Precision>(
                 apply_givens_right(&mut a, p, q, c2, s2_rot);
                 apply_givens_right(&mut v, p, q, c2, s2_rot);
                 
+                // Update max_diag_entry like Eigen3 does
+                max_diag_entry = Precision::max(
+                    max_diag_entry,
+                    Precision::max(Precision::abs(a[[p, p]]), Precision::abs(a[[q, q]]))
+                );
             }
         }
         
+        // Log progress (disabled for production)
+        // if iter % 10 == 0 || converged || iter == max_iter - 1 {
+        //     let threshold = Precision::max(consider_as_zero, precision * max_diag_entry);
+        //     eprintln!("[Jacobi SVD] Iter {}: rotations={}, max_off_diag={:.6e}, threshold={:.6e}, max_diag={:.6e}, converged={}", 
+        //               iter, num_rotations, max_off_diag.to_f64().unwrap_or(0.0), threshold.to_f64().unwrap_or(0.0), 
+        //               max_diag_entry.to_f64().unwrap_or(0.0), converged);
+        // }
+        
         if converged {
+            // eprintln!("[Jacobi SVD] Converged after {} iterations", iter);
             break;
+        }
+        
+        if iter == max_iter - 1 {
+            eprintln!("[Jacobi SVD] WARNING: Max iterations ({}) reached without convergence!", max_iter);
         }
     }
     
     // Step 3: Extract singular values and ensure they are positive (like Eigen3)
+    // Note: singular values need to be scaled back by the original scale factor
     let mut s = Array1::zeros(diagsize);
     for i in 0..diagsize {
         let diag_val = a[[i, i]];
-        s[i] = Precision::abs(diag_val);
+        s[i] = Precision::abs(diag_val) * scale;  // Scale back
         
         // If diagonal entry is negative, flip the corresponding U column
         if diag_val < T::zero() {

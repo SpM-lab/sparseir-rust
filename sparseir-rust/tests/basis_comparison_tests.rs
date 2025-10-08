@@ -27,16 +27,18 @@ struct BasisReferenceData {
 }
 
 impl BasisReferenceData {
-    fn load(lambda: f64) -> Result<Self, String> {
-        // Embed reference data as const arrays (simplified version for lambda=10)
-        if (lambda - 10.0).abs() < 1e-10 {
-            Self::load_lambda_10()
+    fn load(lambda: f64, beta: f64) -> Result<Self, String> {
+        // Embed reference data as const arrays
+        if (lambda - 10.0).abs() < 1e-10 && (beta - 1.0).abs() < 1e-10 {
+            Self::load_lambda_10_beta_1()
+        } else if (lambda - 1000.0).abs() < 1e-10 && (beta - 100.0).abs() < 1e-10 {
+            Self::load_lambda_1000_beta_100()
         } else {
-            Err(format!("Reference data for lambda={} not yet embedded", lambda))
+            Err(format!("Reference data for lambda={}, beta={} not yet embedded", lambda, beta))
         }
     }
     
-    fn load_lambda_10() -> Result<Self, String> {
+    fn load_lambda_10_beta_1() -> Result<Self, String> {
         // From Julia generated data for lambda=10, epsilon=1e-6, beta=1.0
         let size_f = 10;
         let size_b = 10;
@@ -164,11 +166,141 @@ impl BasisReferenceData {
             uhat_wn_b,
         })
     }
+    
+    fn load_lambda_1000_beta_100() -> Result<Self, String> {
+        // From Julia generated data for lambda=1000, beta=100, epsilon=1e-6
+        // Note: omega_max = lambda/beta = 10.0
+        let size_f = 34;
+        let size_b = 34;
+        let accuracy = 9.516587022699077e-7;
+        
+        let svals = vec![
+            1.5511081043435417,
+            1.4289129641805978,
+            1.0588362836617466,
+            0.8469455306384281,
+            0.6030885452053223,
+            0.44256246787047904,
+            0.31078628341824566,
+            0.21894909354401765,
+            0.15151295568369325,
+            0.10432666006127535,
+        ];
+        
+        // tau points (scaled by beta=100)
+        let tau_points = vec![0.1, 1.0, 10.0, 50.0, 100.0];
+        let u_tau_f = vec![
+            vec![0.674804399067457, -0.8743028071547695, 0.8957813311031454],
+            vec![0.28760450033599283, -0.3139521934991705, 0.07245425088390034],
+            vec![0.08271254932070381, -0.05357592144738383, -0.08868595336857119],
+            vec![0.03842202880779884, 2.1581892743528232e-17, -0.06087935939023406],
+            vec![0.8591411662160833, 1.14929985611491, 1.3613030053254767],
+        ];
+        
+        // omega points (omega_max = 10.0)
+        let omega_points = vec![-9.0, -5.0, -1.0, 0.0, 1.0, 5.0, 9.0];
+        let v_omega_f = vec![
+            vec![0.04940224704932481, 0.06975836605821752, 0.0985619438278353],
+            vec![0.07946346516860682, 0.11045323877599142, 0.14496799491300374],
+            vec![0.24852828200268648, 0.31984343636587476, 0.27510190333344414],
+            vec![2.323910839690569, -4.168737253615449e-14, -2.8877880823356694],
+            vec![0.24852828200268648, -0.31984343636587476, 0.27510190333344414],
+            vec![0.07946346516860682, -0.11045323877599142, 0.14496799491300374],
+            vec![0.04940224704932481, -0.06975836605821752, 0.0985619438278353],
+        ];
+        
+        // Matsubara frequencies
+        let wn_f = vec![1, 3, 5, 11, 21, 41];
+        let uhat_wn_f = vec![
+            vec![
+                Complex64::new(-2.6241963311660627e-16, 3.136396927990673),
+                Complex64::new(-4.089103284229498, 3.0141079499151143e-17),
+                Complex64::new(-3.165732792925321e-16, -4.325665692771434),
+            ],
+            vec![
+                Complex64::new(-5.143494217906491e-17, 2.167092602975325),
+                Complex64::new(-2.655603341442736, 1.1538817323013114e-16),
+                Complex64::new(1.1754788942676862e-16, -1.9923776960743937),
+            ],
+            vec![
+                Complex64::new(1.0317045396797477e-16, 1.7572943649594648),
+                Complex64::new(-2.064452575066733, 2.2813563253687663e-17),
+                Complex64::new(-1.3006779284083324e-16, -1.140403056568134),
+            ],
+            vec![
+                Complex64::new(-2.9555663711048974e-17, 1.2263114460798898),
+                Complex64::new(-1.3218746351405508, 8.847193257760363e-17),
+                Complex64::new(4.670124285968068e-17, -0.23384803706626567),
+            ],
+            vec![
+                Complex64::new(2.5737242692819774e-18, 0.8864843180353076),
+                Complex64::new(-0.868606915645137, -6.417572178813686e-17),
+                Complex64::new(5.6114138351239e-17, 0.17638150897109875),
+            ],
+            vec![
+                Complex64::new(-3.9423719915883975e-17, 0.616093509254019),
+                Complex64::new(-0.5283900588410059, 1.527634547456741e-17),
+                Complex64::new(1.477144200184723e-17, 0.36465161306162097),
+            ],
+        ];
+        
+        let wn_b = vec![0, 2, 4, 10, 20, 40];
+        let uhat_wn_b = vec![
+            vec![
+                Complex64::new(7.2092738744317275, 0.0),
+                Complex64::new(-3.189250306701418e-17, 0.0),
+                Complex64::new(-6.11538960220523, 0.0),
+            ],
+            vec![
+                Complex64::new(2.753370433551026, 1.514906638504372e-16),
+                Complex64::new(7.361743927124106e-17, -1.6139218354280587),
+                Complex64::new(0.4819142542331083, -1.3841777371174086e-16),
+            ],
+            vec![
+                Complex64::new(1.8800642824818488, 3.8972137871760894e-17),
+                Complex64::new(2.502720150965713e-16, -1.5417418751317504),
+                Complex64::new(1.099351067367909, -8.24794758448945e-17),
+            ],
+            vec![
+                Complex64::new(1.0607021168670052, -2.587184290267125e-17),
+                Complex64::new(-1.9852960036320536e-16, -1.2482907198970428),
+                Complex64::new(1.2111396289306668, -6.511452582875415e-17),
+            ],
+            vec![
+                Complex64::new(0.6531367734860059, -1.4399749173858074e-16),
+                Complex64::new(1.2296508171726334e-16, -0.9806413148224159),
+                Complex64::new(1.00377580855312, -3.157348368783964e-17),
+            ],
+            vec![
+                Complex64::new(0.3796438357226972, -9.311405998530255e-17),
+                Complex64::new(-1.9737487362497317e-17, -0.7280160398209289),
+                Complex64::new(0.7158525799058675, -9.014761249120269e-18),
+            ],
+        ];
+        
+        Ok(BasisReferenceData {
+            lambda: 1000.0,
+            beta: 100.0,
+            epsilon: 1e-6,
+            size_f,
+            size_b,
+            accuracy,
+            svals,
+            tau_points,
+            u_tau_f,
+            omega_points,
+            v_omega_f,
+            wn_f,
+            uhat_wn_f,
+            wn_b,
+            uhat_wn_b,
+        })
+    }
 }
 
 #[test]
-fn test_basis_size_lambda_10() {
-    let ref_data = BasisReferenceData::load(10.0).unwrap();
+fn test_basis_size_lambda_10_beta_1() {
+    let ref_data = BasisReferenceData::load(10.0, 1.0).unwrap();
     
     let kernel = LogisticKernel::new(ref_data.lambda);
     let basis_f = FermionicBasis::new(kernel.clone(), ref_data.beta, Some(ref_data.epsilon), None);
@@ -182,8 +314,8 @@ fn test_basis_size_lambda_10() {
 }
 
 #[test]
-fn test_basis_singular_values_lambda_10() {
-    let ref_data = BasisReferenceData::load(10.0).unwrap();
+fn test_basis_singular_values_lambda_10_beta_1() {
+    let ref_data = BasisReferenceData::load(10.0, 1.0).unwrap();
     
     let kernel = LogisticKernel::new(ref_data.lambda);
     let basis_f = FermionicBasis::new(kernel, ref_data.beta, Some(ref_data.epsilon), None);
@@ -203,8 +335,8 @@ fn test_basis_singular_values_lambda_10() {
 }
 
 #[test]
-fn test_basis_u_tau_lambda_10() {
-    let ref_data = BasisReferenceData::load(10.0).unwrap();
+fn test_basis_u_tau_lambda_10_beta_1() {
+    let ref_data = BasisReferenceData::load(10.0, 1.0).unwrap();
     
     let kernel = LogisticKernel::new(ref_data.lambda);
     let basis_f = FermionicBasis::new(kernel, ref_data.beta, Some(ref_data.epsilon), None);
@@ -228,8 +360,8 @@ fn test_basis_u_tau_lambda_10() {
 }
 
 #[test]
-fn test_basis_v_omega_lambda_10() {
-    let ref_data = BasisReferenceData::load(10.0).unwrap();
+fn test_basis_v_omega_lambda_10_beta_1() {
+    let ref_data = BasisReferenceData::load(10.0, 1.0).unwrap();
     
     let kernel = LogisticKernel::new(ref_data.lambda);
     let basis_f = FermionicBasis::new(kernel, ref_data.beta, Some(ref_data.epsilon), None);
@@ -253,8 +385,8 @@ fn test_basis_v_omega_lambda_10() {
 }
 
 #[test]
-fn test_basis_uhat_wn_fermionic_lambda_10() {
-    let ref_data = BasisReferenceData::load(10.0).unwrap();
+fn test_basis_uhat_wn_fermionic_lambda_10_beta_1() {
+    let ref_data = BasisReferenceData::load(10.0, 1.0).unwrap();
     
     let kernel = LogisticKernel::new(ref_data.lambda);
     let basis_f = FermionicBasis::new(kernel, ref_data.beta, Some(ref_data.epsilon), None);
@@ -278,8 +410,8 @@ fn test_basis_uhat_wn_fermionic_lambda_10() {
 }
 
 #[test]
-fn test_basis_uhat_wn_bosonic_lambda_10() {
-    let ref_data = BasisReferenceData::load(10.0).unwrap();
+fn test_basis_uhat_wn_bosonic_lambda_10_beta_1() {
+    let ref_data = BasisReferenceData::load(10.0, 1.0).unwrap();
     
     let kernel = LogisticKernel::new(ref_data.lambda);
     let basis_b = BosonicBasis::new(kernel, ref_data.beta, Some(ref_data.epsilon), None);
@@ -302,3 +434,46 @@ fn test_basis_uhat_wn_bosonic_lambda_10() {
     }
 }
 
+
+// ========================================
+// Tests for beta=100, lambda=1000 (omega_max=10)
+// ========================================
+
+#[test]
+fn test_basis_size_lambda_1000_beta_100() {
+    let ref_data = BasisReferenceData::load(1000.0, 100.0).unwrap();
+    
+    let kernel = LogisticKernel::new(ref_data.lambda);
+    let basis_f = FermionicBasis::new(kernel.clone(), ref_data.beta, Some(ref_data.epsilon), None);
+    let basis_b = BosonicBasis::new(kernel, ref_data.beta, Some(ref_data.epsilon), None);
+    
+    println!("\nbeta=100, lambda=1000 (omega_max=10):");
+    println!("  Fermionic basis size: {} (expected {})", basis_f.size(), ref_data.size_f);
+    println!("  Bosonic basis size: {} (expected {})", basis_b.size(), ref_data.size_b);
+    
+    assert_eq!(basis_f.size(), ref_data.size_f, "Fermionic basis size mismatch");
+    assert_eq!(basis_b.size(), ref_data.size_b, "Bosonic basis size mismatch");
+}
+
+#[test]
+fn test_basis_uhat_wn_lambda_1000_beta_100() {
+    let ref_data = BasisReferenceData::load(1000.0, 100.0).unwrap();
+    
+    let kernel = LogisticKernel::new(ref_data.lambda);
+    let basis_f = FermionicBasis::new(kernel.clone(), ref_data.beta, Some(ref_data.epsilon), None);
+    let basis_b = BosonicBasis::new(kernel, ref_data.beta, Some(ref_data.epsilon), None);
+    
+    let tol = 1e-10;
+    
+    // Fermionic - check first basis function at wn=1
+    let uhat_rust = basis_f.uhat.polyvec[0].evaluate_at_n(ref_data.wn_f[0]);
+    let uhat_julia = ref_data.uhat_wn_f[0][0];
+    let diff = (uhat_rust - uhat_julia).norm();
+    assert!(diff < tol, "uhat_f[0](wn=1) mismatch: diff={:.2e} >= {}", diff, tol);
+    
+    // Bosonic - check first basis function at wn=0
+    let uhat_rust = basis_b.uhat.polyvec[0].evaluate_at_n(ref_data.wn_b[0]);
+    let uhat_julia = ref_data.uhat_wn_b[0][0];
+    let diff = (uhat_rust - uhat_julia).norm();
+    assert!(diff < tol, "uhat_b[0](wn=0) mismatch: diff={:.2e} >= {}", diff, tol);
+}
