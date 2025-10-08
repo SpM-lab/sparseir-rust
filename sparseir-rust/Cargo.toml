@@ -37,8 +37,8 @@ statrs = "0.16"
 # Error handling
 thiserror = "1.0"
 
-# High-precision SVD (internal dependency)
-xprec-svd = { path = "../xprec-svd" }
+# High-precision SVD (internal dependency) - ndarray backend for now
+xprec-svd = { path = "../xprec-svd", default-features = false, features = ["ndarray-backend"] }
 
 # Parallel processing
 rayon = "1.7"
