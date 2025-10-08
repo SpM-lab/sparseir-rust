@@ -93,3 +93,51 @@ Phase 4に進む予定：
 
 ---
 **移行ドキュメント**: `MIGRATION_NDARRAY_TO_MDARRAY.md`
+
+### Phase 4: gauss.rs移行完了 🎉
+- ✅ `gauss_mdarray.rs`作成
+- ✅ `Rule<T>` 構造体の全フィールドを`Tensor<T, (usize,)>`に変換
+- ✅ 全テストパス (3/3)
+
+#### 主な変更点
+
+**型定義**:
+```rust
+// Before (ndarray)
+pub x: Array1<T>
+pub w: Array1<T>
+
+// After (mdarray)  
+pub x: Tensor<T, (usize,)>
+pub w: Tensor<T, (usize,)>
+```
+
+**mapv変換**:
+```rust
+// Before (ndarray)
+self.x.mapv(|xi| xi - a)
+
+// After (mdarray)
+Tensor::from_fn((n,), |idx| self.x[[idx[0]]] - a)
+```
+
+**テスト結果**:
+```
+test gauss_mdarray::tests::test_rule_creation ... ok
+test gauss_mdarray::tests::test_rule_reseat ... ok
+test gauss_mdarray::tests::test_rule_scale ... ok
+
+test result: ok. 3 passed; 0 failed
+```
+
+## 📊 統計（更新）
+
+| 指標 | 値 |
+|------|-----|
+| 移行完了モジュール | 2/12 |
+| 移行完了関数 | ~45/126 |
+| テスト成功率 | 100% (6/6) |
+| ビルド時間 | ~2秒 |
+
+---
+**最終更新**: 2025-01-08 (Phase 4完了)

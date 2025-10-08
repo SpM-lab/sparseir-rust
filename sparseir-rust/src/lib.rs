@@ -6,6 +6,7 @@
 
 pub mod freq;
 pub mod gauss;
+pub mod gauss_mdarray;  // mdarray version for migration testing
 pub mod interpolation1d;
 pub mod interpolation2d;
 pub mod kernel;
