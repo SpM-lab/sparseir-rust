@@ -1,25 +1,16 @@
 [package]
 name = "sparseir-rust"
 version = "0.1.0"
-edition = "2024"
-rust-version = "1.85"
+edition = "2021"
 description = "Rust implementation of SparseIR functionality"
 license = "MIT"
 repository = "https://github.com/sparseir-rust/sparseir-rust"
 
 [dependencies]
-# Core linear algebra - mdarray with Faer backend
-mdarray = { path = "../mdarray" }
-mdarray-linalg = { path = "../mdarray-linalg/mdarray-linalg" }
-mdarray-linalg-faer = { path = "../mdarray-linalg/mdarray-linalg-faer", optional = true }
-
-# Faer - Pure Rust high-performance linear algebra (always available)
-faer = "0.23"
-faer-traits = "0.23"
-
-# Legacy: ndarray (段階的移行のため一時的に併存)
+# Core linear algebra
 ndarray = "0.15"
 nalgebra = "0.32"
+# ndarray-linalg removed - using xprec-svd for SVD instead
 
 # Extended precision
 twofloat = "0.2"
@@ -48,10 +39,4 @@ approx = "0.5"
 proptest = "1.0"
 # Math functions
 libm = "0.2"
-
-[features]
-default = ["faer-backend"]
-faer-backend = ["mdarray-linalg-faer"]
-# blas-backend = ["mdarray-linalg-blas", "openblas-src"]
-# lapack-backend = ["mdarray-linalg-lapack", "openblas-src"]
 

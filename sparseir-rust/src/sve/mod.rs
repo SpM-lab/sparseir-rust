@@ -15,6 +15,7 @@
 
 mod types;
 mod result;
+pub mod result_mdarray;  // mdarray version for migration testing
 pub mod utils;  // Public for testing
 mod strategy;
 mod compute;
