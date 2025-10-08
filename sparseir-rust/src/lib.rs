@@ -11,6 +11,7 @@ pub mod interpolation1d;
 pub mod interpolation2d;
 pub mod kernel;
 pub mod kernelmatrix;
+pub mod kernelmatrix_mdarray;  // mdarray version for migration testing
 pub mod numeric;
 pub mod poly;
 pub mod polyfourier;
