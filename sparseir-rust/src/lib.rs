@@ -6,13 +6,11 @@
 
 pub mod freq;
 pub mod gauss;
-pub mod gauss_mdarray;  // mdarray version for migration testing
 pub mod gemm;  // Matrix multiplication utilities (Faer backend)
 pub mod interpolation1d;
 pub mod interpolation2d;
 pub mod kernel;
 pub mod kernelmatrix;
-pub mod kernelmatrix_mdarray;  // mdarray version for migration testing
 pub mod numeric;
 pub mod poly;
 pub mod polyfourier;
