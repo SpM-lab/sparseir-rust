@@ -8,6 +8,7 @@ use crate::gemm::matmul_par;
 use crate::kernel::{KernelProperties, CentrosymmKernel};
 use crate::traits::StatisticsType;
 use mdarray::{DTensor, Tensor, DynRank, Shape};
+use std::cell::RefCell;
 
 /// Move axis from position `src` to position `dst`
 ///
@@ -71,8 +72,8 @@ where
     /// Shape: (n_sampling_points, basis_size)
     matrix: DTensor<f64, 2>,
     
-    /// SVD of the sampling matrix (for fitting)
-    matrix_svd: Option<SamplingMatrixSVD>,
+    /// SVD of the sampling matrix (lazily computed on first fit)
+    matrix_svd: RefCell<Option<SamplingMatrixSVD>>,
     
     /// Marker for statistics type
     _phantom: std::marker::PhantomData<S>,
@@ -95,26 +96,28 @@ where
     ///
     /// The default sampling points are chosen as the extrema of the highest-order
     /// basis function, which gives near-optimal conditioning.
+    /// SVD is computed lazily on first call to `fit` or `fit_nd`.
     ///
     /// # Arguments
     /// * `basis` - The finite temperature basis
     ///
     /// # Returns
-    /// A new TauSampling object with SVD computed
+    /// A new TauSampling object
     pub fn new<K>(basis: &FiniteTempBasis<K, S>) -> Self
     where
         K: KernelProperties + CentrosymmKernel + Clone + 'static,
     {
         let sampling_points = basis.default_tau_sampling_points();
-        Self::with_sampling_points(basis, sampling_points, true)
+        Self::with_sampling_points(basis, sampling_points)
     }
     
     /// Create a new TauSampling with custom sampling points
     ///
+    /// SVD is computed lazily on first call to `fit` or `fit_nd`.
+    ///
     /// # Arguments
     /// * `basis` - The finite temperature basis
     /// * `sampling_points` - Custom sampling points in τ ∈ [0, β]
-    /// * `compute_svd` - Whether to compute the SVD for fitting
     ///
     /// # Returns
     /// A new TauSampling object
@@ -124,7 +127,6 @@ where
     pub fn with_sampling_points<K>(
         basis: &FiniteTempBasis<K, S>,
         sampling_points: Vec<f64>,
-        compute_svd: bool,
     ) -> Self
     where
         K: KernelProperties + CentrosymmKernel + Clone + 'static,
@@ -144,28 +146,10 @@ where
         // Compute sampling matrix: A[i, l] = u_l(τ_i)
         let matrix = eval_matrix_tau(basis, &sampling_points);
         
-        // Compute SVD if requested
-        let matrix_svd = if compute_svd {
-            Some(compute_matrix_svd(&matrix))
-        } else {
-            None
-        };
-        
-        // Check conditioning
-        if let Some(ref svd) = matrix_svd {
-            let condition_number = svd.s[0] / svd.s[svd.s.len() - 1];
-            if condition_number > 1e8 {
-                eprintln!(
-                    "Warning: Sampling matrix is poorly conditioned (cond = {:.2e})",
-                    condition_number
-                );
-            }
-        }
-        
         Self {
             sampling_points,
             matrix,
-            matrix_svd,
+            matrix_svd: RefCell::new(None),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -228,6 +212,8 @@ where
     /// Solves the least-squares problem: min ||A * coeffs - values||
     /// using the SVD pseudoinverse: coeffs = Vᵀ * S⁻¹ * Uᵀ * values
     ///
+    /// SVD is computed lazily on first call to `fit` or `fit_nd`.
+    ///
     /// # Arguments
     /// * `values` - Values at sampling points (length = n_sampling_points)
     ///
@@ -235,7 +221,7 @@ where
     /// Fitted basis coefficients (length = basis_size)
     ///
     /// # Panics
-    /// Panics if `values.len() != n_sampling_points` or if SVD was not computed
+    /// Panics if `values.len() != n_sampling_points`
     pub fn fit(&self, values: &[f64]) -> Vec<f64> {
         let n_points = self.n_sampling_points();
         assert_eq!(
@@ -246,8 +232,24 @@ where
             n_points
         );
         
-        let svd = self.matrix_svd.as_ref()
-            .expect("SVD not computed. Create TauSampling with compute_svd=true");
+        // Compute SVD lazily on first call
+        if self.matrix_svd.borrow().is_none() {
+            let svd = compute_matrix_svd(&self.matrix);
+            
+            // Check conditioning
+            let condition_number = svd.s[0] / svd.s[svd.s.len() - 1];
+            if condition_number > 1e8 {
+                eprintln!(
+                    "Warning: Sampling matrix is poorly conditioned (cond = {:.2e})",
+                    condition_number
+                );
+            }
+            
+            *self.matrix_svd.borrow_mut() = Some(svd);
+        }
+        
+        let svd = self.matrix_svd.borrow();
+        let svd = svd.as_ref().unwrap();
         
         // Convert values to column vector
         let values_col = DTensor::<f64, 2>::from_fn([n_points, 1], |idx| values[idx[0]]);
@@ -380,8 +382,24 @@ where
         let rank = values.rank();
         assert!(dim < rank, "dim={} must be < rank={}", dim, rank);
         
-        let svd = self.matrix_svd.as_ref()
-            .expect("SVD not computed. Create TauSampling with compute_svd=true");
+        // Compute SVD lazily on first call
+        if self.matrix_svd.borrow().is_none() {
+            let svd = compute_matrix_svd(&self.matrix);
+            
+            // Check conditioning
+            let condition_number = svd.s[0] / svd.s[svd.s.len() - 1];
+            if condition_number > 1e8 {
+                eprintln!(
+                    "Warning: Sampling matrix is poorly conditioned (cond = {:.2e})",
+                    condition_number
+                );
+            }
+            
+            *self.matrix_svd.borrow_mut() = Some(svd);
+        }
+        
+        let svd = self.matrix_svd.borrow();
+        let svd = svd.as_ref().unwrap();
         
         let n_points = self.n_sampling_points();
         let target_dim_size = values.shape().dim(dim);

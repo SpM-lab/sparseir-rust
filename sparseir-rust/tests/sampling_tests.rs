@@ -111,7 +111,6 @@ fn test_custom_sampling_points() {
     let sampling: TauSampling<Fermionic> = TauSampling::with_sampling_points(
         &basis,
         custom_points.clone(),
-        true,
     );
     
     assert_eq!(sampling.n_sampling_points(), n_points);
@@ -183,7 +182,6 @@ fn test_empty_sampling_points() {
     let _sampling: TauSampling<Fermionic> = TauSampling::with_sampling_points(
         &basis,
         vec![],
-        true,
     );
 }
 
@@ -197,7 +195,6 @@ fn test_sampling_point_outside_range() {
     let _sampling: TauSampling<Fermionic> = TauSampling::with_sampling_points(
         &basis,
         invalid_points,
-        true,
     );
 }
 
