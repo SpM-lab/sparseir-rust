@@ -5,7 +5,7 @@
 
 use crate::gauss::{Rule, legendre_vandermonde};
 use crate::numeric::CustomNumeric;
-use ndarray::{Array1, Array2};
+use mdarray::DTensor;
 use std::fmt::Debug;
 
 /// 1D interpolator with pre-computed Legendre polynomial coefficients
@@ -19,7 +19,7 @@ pub struct Interpolate1D<T> {
     /// Right boundary of interpolation domain  
     pub x_max: T,
     /// Pre-computed Legendre polynomial coefficients
-    pub coeffs: Array1<T>,
+    pub coeffs: Vec<T>,
     /// Gauss quadrature rule used for interpolation
     pub gauss_rule: Rule<T>,
 }
@@ -87,30 +87,21 @@ impl<T: CustomNumeric + Debug + Clone + 'static> Interpolate1D<T> {
 ///
 /// # Returns
 /// Collocation matrix C where V * C ≈ I
-pub fn legendre_collocation_matrix<T: CustomNumeric>(gauss_rule: &Rule<T>) -> Array2<T> {
+pub fn legendre_collocation_matrix<T: CustomNumeric>(gauss_rule: &Rule<T>) -> DTensor<T, 2> {
     let n = gauss_rule.x.len();
     
     // Create Legendre Vandermonde matrix
-    let v = legendre_vandermonde(&gauss_rule.x.to_vec(), n - 1);
+    let v = legendre_vandermonde(&gauss_rule.x, n - 1);
     
     // Create normalization factors: range(0.5; length=n) in Julia
-    let mut invnorm = Array1::from_elem(n, T::zero());
-    for i in 0..n {
-        let i_f64 = i as f64;
-        invnorm[i] = T::from_f64(0.5 + i_f64);
-    }
+    let invnorm: Vec<T> = (0..n).map(|i| T::from_f64(0.5 + i as f64)).collect();
     
     // Compute: res = permutedims(V .* w) .* invnorm
     // This is equivalent to: result[i,j] = V[j,i] * w[j] * invnorm[i]
-    let mut result = Array2::from_elem((n, n), T::zero());
-    
-    for i in 0..n {
-        for j in 0..n {
-            result[[i, j]] = v[[j, i]] * gauss_rule.w[j] * invnorm[i];
-        }
-    }
-    
-    result
+    DTensor::<T, 2>::from_fn([n, n], |idx| {
+        let (i, j) = (idx[0], idx[1]);
+        v[[j, i]] * gauss_rule.w[j] * invnorm[i]
+    })
 }
 
 /// 1D polynomial interpolation using Legendre collocation matrix
@@ -124,7 +115,7 @@ pub fn legendre_collocation_matrix<T: CustomNumeric>(gauss_rule: &Rule<T>) -> Ar
 ///
 /// # Returns
 /// Coefficient vector for the interpolating polynomial
-pub fn interpolate_1d_legendre<T: CustomNumeric>(values: &[T], gauss_rule: &Rule<T>) -> Array1<T> {
+pub fn interpolate_1d_legendre<T: CustomNumeric>(values: &[T], gauss_rule: &Rule<T>) -> Vec<T> {
     let n = values.len();
     assert_eq!(n, gauss_rule.x.len(), "Values length must match grid points");
     
@@ -132,7 +123,7 @@ pub fn interpolate_1d_legendre<T: CustomNumeric>(values: &[T], gauss_rule: &Rule
     let collocation_matrix = legendre_collocation_matrix(gauss_rule);
     
     // Compute coefficients: coeffs = C * values
-    let mut coeffs = Array1::from_elem(n, T::zero());
+    let mut coeffs = vec![T::zero(); n];
     for i in 0..n {
         for j in 0..n {
             coeffs[i] = coeffs[i] + collocation_matrix[[i, j]] * values[j];
@@ -150,7 +141,7 @@ pub fn interpolate_1d_legendre<T: CustomNumeric>(values: &[T], gauss_rule: &Rule
 ///
 /// # Returns
 /// Interpolated value at x
-pub fn evaluate_interpolated_polynomial<T: CustomNumeric>(x: T, coeffs: &Array1<T>) -> T {
+pub fn evaluate_interpolated_polynomial<T: CustomNumeric>(x: T, coeffs: &[T]) -> T {
     let n = coeffs.len();
     let mut result = T::zero();
     

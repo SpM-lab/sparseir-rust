@@ -1,6 +1,6 @@
 //! SVE computation strategies
 
-use ndarray::Array2;
+use mdarray::DTensor;
 use crate::numeric::CustomNumeric;
 use crate::kernel::{CentrosymmKernel, KernelProperties, SVEHints, SymmetryType};
 use crate::poly::{PiecewiseLegendrePolyVector};
@@ -13,14 +13,14 @@ use super::utils::{remove_weights, svd_to_polynomials, extend_to_full_domain, me
 /// Trait for SVE computation strategies
 pub trait SVEStrategy<T: CustomNumeric> {
     /// Compute the discretized matrices for SVD
-    fn matrices(&self) -> Vec<Array2<T>>;
+    fn matrices(&self) -> Vec<DTensor<T, 2>>;
     
     /// Post-process SVD results to create SVEResult
     fn postprocess(
         &self,
-        u_list: Vec<Array2<T>>,
+        u_list: Vec<DTensor<T, 2>>,
         s_list: Vec<Vec<T>>,
-        v_list: Vec<Array2<T>>,
+        v_list: Vec<DTensor<T, 2>>,
     ) -> SVEResult;
 }
 
@@ -77,11 +77,11 @@ where
     /// 
     /// This converts SVD results to piecewise Legendre polynomials
     /// on the domain specified by segments (e.g., [0, xmax] for reduced kernels).
-    pub fn postprocess_single(
+    pub     fn postprocess_single(
         &self,
-        u: &Array2<T>,
+        u: &DTensor<T, 2>,
         s: &[T],
-        v: &Array2<T>,
+        v: &DTensor<T, 2>,
     ) -> (PiecewiseLegendrePolyVector, Vec<f64>, PiecewiseLegendrePolyVector) {
         // 1. Remove weights
         // Both U and V have rows corresponding to Gauss points, so is_row=true for both
@@ -183,7 +183,7 @@ where
     }
     
     /// Compute reduced kernel matrix for given symmetry
-    fn compute_reduced_matrix(&self, symmetry: SymmetryType) -> Array2<T> {
+    fn compute_reduced_matrix(&self, symmetry: SymmetryType) -> DTensor<T, 2> {
         // Compute K_red(x, y) = K(x, y) + sign * K(x, -y)
         // where x, y are in [0, xmax] and [0, ymax]
         let discretized = matrix_from_gauss_with_segments(
@@ -234,7 +234,7 @@ where
     K: CentrosymmKernel + KernelProperties + Clone,
     K::SVEHintsType<T>: SVEHints<T> + Clone,
 {
-    fn matrices(&self) -> Vec<Array2<T>> {
+    fn matrices(&self) -> Vec<DTensor<T, 2>> {
         // Compute reduced kernels for even and odd symmetries
         let even_matrix = self.compute_reduced_matrix(SymmetryType::Even);
         let odd_matrix = self.compute_reduced_matrix(SymmetryType::Odd);
@@ -244,9 +244,9 @@ where
     
     fn postprocess(
         &self,
-        u_list: Vec<Array2<T>>,
+        u_list: Vec<DTensor<T, 2>>,
         s_list: Vec<Vec<T>>,
-        v_list: Vec<Array2<T>>,
+        v_list: Vec<DTensor<T, 2>>,
     ) -> SVEResult {
         // Process even and odd results using SamplingSVE (which doesn't know about symmetry)
         let result_even = self.sampling_sve.postprocess_single(

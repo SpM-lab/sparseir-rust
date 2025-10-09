@@ -6,7 +6,7 @@
 use crate::gauss::Rule;
 use crate::interpolation1d::{legendre_collocation_matrix, evaluate_legendre_basis};
 use crate::numeric::CustomNumeric;
-use ndarray::Array2;
+use mdarray::DTensor;
 use std::fmt::Debug;
 
 /// 2D interpolation object for a single grid cell
@@ -22,7 +22,7 @@ pub struct Interpolate2D<T> {
     pub y_max: T,
     
     /// Pre-computed polynomial coefficients
-    pub coeffs: Array2<T>,
+    pub coeffs: DTensor<T, 2>,
     
     /// Grid points (for validation)
     pub gauss_x: Rule<T>,
@@ -40,13 +40,14 @@ impl<T: CustomNumeric + Debug + 'static> Interpolate2D<T> {
     /// # Panics
     /// Panics if dimensions don't match or if grid is empty
     pub fn new(
-        values: &Array2<T>,
+        values: &DTensor<T, 2>,
         gauss_x: &Rule<T>,
         gauss_y: &Rule<T>,
     ) -> Self {
-        assert!(!values.is_empty(), "Cannot create interpolation from empty grid");
-        assert_eq!(values.nrows(), gauss_x.x.len(), "Values height must match gauss_x length");
-        assert_eq!(values.ncols(), gauss_y.x.len(), "Values width must match gauss_y length");
+        let shape = *values.shape();
+        assert!(shape.0 > 0 && shape.1 > 0, "Cannot create interpolation from empty grid");
+        assert_eq!(shape.0, gauss_x.x.len(), "Values height must match gauss_x length");
+        assert_eq!(shape.1, gauss_y.x.len(), "Values width must match gauss_y length");
         
         // Create normalized Gauss rules for coefficient computation
         // interpolate_2d_legendre expects Gauss points in [-1, 1] range
@@ -84,7 +85,7 @@ impl<T: CustomNumeric + Debug + 'static> Interpolate2D<T> {
     }
     
     /// Get the coefficient matrix
-    pub fn coefficients(&self) -> &Array2<T> {
+    pub fn coefficients(&self) -> &DTensor<T, 2> {
         &self.coeffs
     }
     
@@ -128,15 +129,16 @@ impl<T: CustomNumeric + Debug + 'static> Interpolate2D<T> {
 /// # Returns
 /// Coefficient matrix (n_x x n_y) for the interpolating polynomial
 pub fn interpolate_2d_legendre<T: CustomNumeric + 'static>(
-    values: &Array2<T>,
+    values: &DTensor<T, 2>,
     gauss_x: &Rule<T>,
     gauss_y: &Rule<T>,
-) -> Array2<T> {
+) -> DTensor<T, 2> {
     let n_x = gauss_x.x.len();
     let n_y = gauss_y.x.len();
 
-    assert_eq!(values.nrows(), n_x, "Values matrix rows must match x grid points");
-    assert_eq!(values.ncols(), n_y, "Values matrix cols must match y grid points");
+    let shape = *values.shape();
+    assert_eq!(shape.0, n_x, "Values matrix rows must match x grid points");
+    assert_eq!(shape.1, n_y, "Values matrix cols must match y grid points");
 
     // Get collocation matrices (pre-computed inverses of Vandermonde matrices)
     let collocation_x = legendre_collocation_matrix(gauss_x);
@@ -144,7 +146,7 @@ pub fn interpolate_2d_legendre<T: CustomNumeric + 'static>(
 
     // Compute coefficients using tensor product approach
     // coeffs = C_x * values * C_y^T
-    let mut temp = Array2::from_elem((n_x, n_y), <T as CustomNumeric>::zero());
+    let mut temp = DTensor::<T, 2>::from_elem([n_x, n_y], <T as CustomNumeric>::zero());
     for i in 0..n_x {
         for j in 0..n_y {
             for k in 0..n_x {
@@ -153,7 +155,7 @@ pub fn interpolate_2d_legendre<T: CustomNumeric + 'static>(
         }
     }
     
-    let mut coeffs = Array2::from_elem((n_x, n_y), <T as CustomNumeric>::zero());
+    let mut coeffs = DTensor::<T, 2>::from_elem([n_x, n_y], <T as CustomNumeric>::zero());
     for i in 0..n_x {
         for j in 0..n_y {
             for k in 0..n_y {
@@ -169,12 +171,13 @@ pub fn interpolate_2d_legendre<T: CustomNumeric + 'static>(
 pub fn evaluate_2d_legendre_polynomial<T: CustomNumeric>(
     x: T,
     y: T,
-    coeffs: &Array2<T>,
+    coeffs: &DTensor<T, 2>,
     gauss_x: &Rule<T>,
     gauss_y: &Rule<T>,
 ) -> T {
-    let n_x = coeffs.nrows();
-    let n_y = coeffs.ncols();
+    let shape = *coeffs.shape();
+    let n_x = shape.0;
+    let n_y = shape.1;
     
     // Normalize coordinates from [a,b] to [-1,1] where [a,b] is the cell domain
     let x_norm = T::from_f64(2.0) * (x - gauss_x.a) / (gauss_x.b - gauss_x.a) - T::from_f64(1.0);

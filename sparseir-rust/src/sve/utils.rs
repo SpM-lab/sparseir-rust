@@ -1,6 +1,6 @@
 //! Utility functions for SVE computation
 
-use ndarray::{Array2, Array3};
+use mdarray::{DTensor, Tensor};
 use crate::numeric::CustomNumeric;
 use crate::poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
 use crate::kernel::SymmetryType;
@@ -23,25 +23,26 @@ use crate::interpolation1d::legendre_collocation_matrix;
 /// 
 /// Matrix with weights removed
 pub fn remove_weights<T: CustomNumeric>(
-    matrix: &Array2<T>,
+    matrix: &DTensor<T, 2>,
     weights: &[T],
     is_row: bool,
-) -> Array2<T> {
+) -> DTensor<T, 2> {
     let mut result = matrix.clone();
     
+    let shape = *result.shape();
     if is_row {
         // Remove weights from rows (for U matrix)
-        for i in 0..result.nrows() {
+        for i in 0..shape.0 {
             let sqrt_weight = weights[i].sqrt();
-            for j in 0..result.ncols() {
+            for j in 0..shape.1 {
                 result[[i, j]] = result[[i, j]] / sqrt_weight;
             }
         }
     } else {
         // Remove weights from columns (for V matrix)
-        for j in 0..result.ncols() {
+        for j in 0..shape.1 {
             let sqrt_weight = weights[j].sqrt();
-            for i in 0..result.nrows() {
+            for i in 0..shape.0 {
                 result[[i, j]] = result[[i, j]] / sqrt_weight;
             }
         }
@@ -81,7 +82,7 @@ pub fn extend_to_full_domain(
     // Create poly_flip_x: alternating signs for Legendre polynomials
     // This accounts for P_n(-x) = (-1)^n P_n(x)
     let n_poly_coeffs = if !polys.is_empty() { 
-        polys[0].data.nrows() 
+        polys[0].data.shape().0
     } else { 
         return Vec::new(); 
     };
@@ -146,16 +147,16 @@ pub fn extend_to_full_domain(
 /// 
 /// Vector of piecewise Legendre polynomials
 pub fn svd_to_polynomials<T: CustomNumeric>(
-    u_or_v: &Array2<T>,
+    u_or_v: &DTensor<T, 2>,
     segments: &[T],
     gauss_rule: &Rule<f64>,
     n_gauss: usize,
 ) -> Vec<PiecewiseLegendrePoly> {
     let n_segments = segments.len() - 1;
-    let n_svals = u_or_v.ncols();
+    let n_svals = u_or_v.shape().1;
     
     // Reshape to 3D: (n_gauss, n_segments, n_svals)
-    let mut tensor_3d = Array3::<f64>::zeros((n_gauss, n_segments, n_svals));
+    let mut tensor_3d = DTensor::<f64, 3>::zeros([n_gauss, n_segments, n_svals]);
     for i in 0..n_gauss {
         for j in 0..n_segments {
             for k in 0..n_svals {
@@ -169,10 +170,11 @@ pub fn svd_to_polynomials<T: CustomNumeric>(
     let cmat = legendre_collocation_matrix(gauss_rule);
     
     // Transform to Legendre basis
-    let mut u_data = Array3::<f64>::zeros((cmat.nrows(), n_segments, n_svals));
+    let cmat_shape = *cmat.shape();
+    let mut u_data = DTensor::<f64, 3>::zeros([cmat_shape.0, n_segments, n_svals]);
     for j in 0..n_segments {
         for k in 0..n_svals {
-            for i in 0..cmat.nrows() {
+            for i in 0..cmat_shape.0 {
                 let mut sum = 0.0;
                 for l in 0..n_gauss {
                     sum += cmat[[i, l]] * tensor_3d[[l, j, k]];
@@ -204,8 +206,9 @@ pub fn svd_to_polynomials<T: CustomNumeric>(
     
     for k in 0..n_svals {
         // Extract data for this singular value: (n_coeffs, n_segments)
-        let mut data = Array2::zeros((u_data.shape()[0], n_segments));
-        for i in 0..u_data.shape()[0] {
+        let u_data_shape = u_data.shape();
+        let mut data = DTensor::<f64, 2>::zeros([u_data_shape.0, n_segments]);
+        for i in 0..u_data_shape.0 {
             for j in 0..n_segments {
                 data[[i, j]] = u_data[[i, j, k]];
             }
@@ -352,7 +355,9 @@ mod tests {
 
     #[test]
     fn test_remove_weights() {
-        let matrix = Array2::from_shape_vec((2, 2), vec![1.0, 2.0, 3.0, 4.0]).unwrap();
+        let matrix = DTensor::<f64, 2>::from_fn([2, 2], |idx| {
+            (idx[0] * 2 + idx[1] + 1) as f64
+        });
         let weights = vec![1.0, 4.0];
         
         let result = remove_weights(&matrix, &weights, true);
