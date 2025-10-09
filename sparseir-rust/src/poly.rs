@@ -807,6 +807,14 @@ impl PiecewiseLegendrePolyVector {
         }
         all_roots
     }
+    
+    /// Get reference to last polynomial
+    /// 
+    /// C++ equivalent: u.polyvec.back()
+    pub fn last(&self) -> &PiecewiseLegendrePoly {
+        self.polyvec.last()
+            .expect("Cannot get last from empty PiecewiseLegendrePolyVector")
+    }
 
     /// Get the number of roots
     pub fn nroots(&self, tolerance: Option<f64>) -> usize {
@@ -823,6 +831,70 @@ impl std::ops::Index<usize> for PiecewiseLegendrePolyVector {
     fn index(&self, index: usize) -> &Self::Output {
         &self.polyvec[index]
     }
+}
+
+/// Get default sampling points in [-1, 1]
+///
+/// C++ implementation: libsparseir/include/sparseir/basis.hpp:287-310
+///
+/// For orthogonal polynomials (the high-T limit of IR), we know that the
+/// ideal sampling points for a basis of size L are the roots of the L-th
+/// polynomial. We empirically find that these stay good sampling points
+/// for our kernels (probably because the kernels are totally positive).
+/// 
+/// If we do not have enough polynomials in the basis, we approximate the
+/// roots of the L'th polynomial by the extrema of the last basis function,
+/// which is sensible due to the strong interleaving property of these
+/// functions' roots.
+pub fn default_sampling_points(
+    u: &PiecewiseLegendrePolyVector,
+    l: usize,
+) -> Vec<f64> {
+    // C++: if (u.xmin() != -1.0 || u.xmax() != 1.0)
+    //          throw std::runtime_error("Expecting unscaled functions here.");
+    if (u.xmin() - (-1.0)).abs() > 1e-10 || (u.xmax() - 1.0).abs() > 1e-10 {
+        panic!("Expecting unscaled functions here.");
+    }
+
+    let x0 = if l < u.polyvec.len() {
+        // C++: return u.polyvec[L].roots();
+        u[l].roots()
+    } else {
+        // C++: PiecewiseLegendrePoly poly = u.polyvec.back();
+        //      Eigen::VectorXd maxima = poly.deriv().roots();
+        let poly = u.last();
+        let poly_deriv = poly.deriv(1);
+        let maxima = poly_deriv.roots();
+
+        // C++: double left = (maxima[0] + poly.xmin) / 2.0;
+        let left = (maxima[0] + poly.xmin) / 2.0;
+
+        // C++: double right = (maxima[maxima.size() - 1] + poly.xmax) / 2.0;
+        let right = (maxima[maxima.len() - 1] + poly.xmax) / 2.0;
+
+        // C++: Eigen::VectorXd x0(maxima.size() + 2);
+        //      x0[0] = left;
+        //      x0.segment(1, maxima.size()) = maxima;
+        //      x0[x0.size() - 1] = right;
+        let mut x0_vec = Vec::with_capacity(maxima.len() + 2);
+        x0_vec.push(left);
+        x0_vec.extend_from_slice(&maxima);
+        x0_vec.push(right);
+
+        x0_vec
+    };
+
+    // C++: if (x0.size() != L) { warning }
+    if x0.len() != l {
+        eprintln!(
+            "Warning: Expecting to get {} sampling points for corresponding basis function, \
+             instead got {}. This may happen if not enough precision is left in the polynomial.",
+            l,
+            x0.len()
+        );
+    }
+
+    x0
 }
 
 // IndexMut implementation removed - PiecewiseLegendrePolyVector is designed to be immutable
