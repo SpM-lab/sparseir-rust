@@ -103,7 +103,9 @@ pub fn extend_to_full_domain(
         }
         
         // Normalize by 1/sqrt(2) and convert to f64
-        let pos_data = poly.data.mapv(|x| x / 2.0_f64.sqrt());
+        let pos_data = DTensor::<f64, 2>::from_fn(*poly.data.shape(), |idx| {
+            poly.data[idx] / 2.0_f64.sqrt()
+        });
         
         // Create negative part by reversing columns and applying signs
         let mut neg_data = pos_data.clone();
@@ -111,9 +113,12 @@ pub fn extend_to_full_domain(
         neg_data = neg_data.slice(ndarray::s![.., ..;-1]).to_owned();
         
         // Apply poly_flip_x and sign to negative part
+        let neg_data_shape = *neg_data.shape();
         for (i, &flip_sign) in poly_flip_x.iter().enumerate() {
             let coeff_sign = flip_sign * sign;
-            neg_data.row_mut(i).mapv_inplace(|x| x * coeff_sign);
+            for j in 0..neg_data_shape.1 {
+                neg_data[[i, j]] *= coeff_sign;
+            }
         }
         
         // Combine negative and positive parts
@@ -256,8 +261,8 @@ fn canonicalize_signs(
         
         if u_at_xmax < 0.0 {
             // Flip sign of both u and v
-            let u_data_flipped = u_vec[i].data.mapv(|x| -x);
-            let v_data_flipped = v_vec[i].data.mapv(|x| -x);
+            let u_data_flipped = DTensor::<f64, 2>::from_fn(*u_vec[i].data.shape(), |idx| -u_vec[i].data[idx]);
+            let v_data_flipped = DTensor::<f64, 2>::from_fn(*v_vec[i].data.shape(), |idx| -v_vec[i].data[idx]);
             
             new_u_vec.push(PiecewiseLegendrePoly::new(
                 u_data_flipped,
