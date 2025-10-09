@@ -77,6 +77,9 @@ where
 
 /// Matrix transpose: B = Aᵀ
 ///
+/// This is a thin wrapper around mdarray's `.transpose()` method.
+/// For complex transposition needs, use mdarray-linalg's `to_col_major()`.
+///
 /// # Arguments
 /// * `a` - Input matrix (M x N)
 ///
@@ -93,10 +96,8 @@ where
 /// // b = [[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]]
 /// ```
 pub fn transpose<T: Clone>(a: &DTensor<T, 2>) -> DTensor<T, 2> {
-    let shape = *a.shape();
-    let m = shape.0;
-    let n = shape.1;
-    DTensor::<T, 2>::from_fn([n, m], |idx| a[[idx[1], idx[0]]].clone())
+    // Use mdarray's built-in transpose
+    a.transpose().to_tensor()
 }
 
 /// Solve linear system using SVD pseudoinverse: X = A⁺ * B
