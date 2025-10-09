@@ -8,11 +8,8 @@ license = "MIT"
 repository = "https://github.com/sparseir-rust/xprec-svd"
 
 [dependencies]
-# Core linear algebra - mdarray (optional)
-mdarray = { path = "../mdarray", optional = true }
-
-# Legacy: ndarray (default for backward compatibility)
-ndarray = { version = "0.15", optional = true }
+# Core linear algebra - mdarray only
+mdarray = { path = "../mdarray" }
 nalgebra = "0.32"
 
 # Extended precision
@@ -29,9 +26,7 @@ thiserror = "1.0"
 serde = { version = "1.0", features = ["derive"], optional = true }
 
 [features]
-default = ["ndarray-backend"]
-ndarray-backend = ["ndarray"]
-mdarray-backend = ["mdarray"]
+default = []
 f128 = []  # Enable f128 support when available
 serialize = ["serde"]
 

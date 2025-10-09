@@ -1,6 +1,6 @@
 //! Truncated SVD (TSVD) implementation
 
-use ndarray::{Array1, Array2};
+use mdarray::Tensor;
 use crate::precision::Precision;
 use crate::qr::{rrqr, truncate_qr_result};
 use crate::svd::jacobi_svd;

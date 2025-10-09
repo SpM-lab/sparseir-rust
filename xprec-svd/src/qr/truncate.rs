@@ -1,6 +1,6 @@
 //! QR truncation utilities
 
-use ndarray::{Array2, s};
+use mdarray::Tensor;
 use crate::precision::Precision;
 use super::rrqr::QRPivoted;
 
@@ -11,20 +11,20 @@ use super::rrqr::QRPivoted;
 pub fn truncate_qr_result<T: Precision>(
     qr: &QRPivoted<T>,
     k: usize,
-) -> (Array2<T>, Array2<T>) {
-    let m = qr.factors.nrows();
-    let n = qr.factors.ncols();
+) -> (Tensor<T, (usize, usize)>, Tensor<T, (usize, usize)>) {
+    let shape = *qr.factors.shape();
+    let (m, n) = shape;
     
     // Extract Q_trunc (m × k) - Initialize as identity
-    let mut q_trunc = Array2::eye(m);
-    let q_trunc = q_trunc.slice_mut(s![.., ..k]).to_owned();
-    let mut q_trunc = q_trunc;
+    let mut q_trunc = Tensor::from_fn((m, k), |idx| {
+        if idx[0] == idx[1] { T::one() } else { T::zero() }
+    });
     
     // Apply Householder reflections using lmul (like libsparseir)
     let min_mn = m.min(k);
     for i in (0..min_mn).rev() {
-        if qr.taus[i] != T::zero() {
-            let tau = qr.taus[i];
+        if qr.taus[[i]] != T::zero() {
+            let tau = qr.taus[[i]];
             
             // Apply H_i to Q_trunc (like libsparseir's lmul)
             for j in 0..k {
@@ -42,12 +42,13 @@ pub fn truncate_qr_result<T: Precision>(
     }
     
     // Extract R_trunc (k × n)
-    let mut r_trunc = Array2::zeros((k, n));
-    for i in 0..k {
-        for j in i..n {
-            r_trunc[[i, j]] = qr.factors[[i, j]];
+    let r_trunc = Tensor::from_fn((k, n), |idx| {
+        if idx[1] >= idx[0] {
+            qr.factors[[idx[0], idx[1]]]
+        } else {
+            T::zero()
         }
-    }
+    });
     
     (q_trunc, r_trunc)
 }

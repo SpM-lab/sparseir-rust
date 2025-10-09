@@ -1,6 +1,6 @@
 //! Result validation utilities
 
-use ndarray::{Array2, ArrayView1, ArrayView2};
+use mdarray::Tensor;
 use crate::precision::Precision;
 
 /// Validate SVD result

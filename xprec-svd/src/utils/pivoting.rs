@@ -1,6 +1,6 @@
 //! Column pivoting utilities
 
-use ndarray::Array1;
+use mdarray::Tensor;
 use crate::precision::Precision;
 
 /// Apply column permutation to a matrix

@@ -1,6 +1,6 @@
 //! Householder reflection utilities for QR decomposition
 
-use ndarray::{Array1, Array2, ArrayView1, ArrayViewMut1, ArrayViewMut2, s};
+use mdarray::Tensor;
 use crate::precision::Precision;
 // Householder reflection utilities
 
@@ -10,14 +10,19 @@ use crate::precision::Precision;
 /// such that Hx = [β, 0, ..., 0]^T where β = ±||x||
 /// 
 /// Returns (τ, β) where τ is the reflection coefficient and β is the first element
-pub fn reflector<T: Precision>(mut x: ArrayViewMut1<T>) -> (T, T) {
+pub fn reflector<T: Precision>(x: &mut Vec<T>) -> (T, T) {
     let n = x.len();
     if n == 0 {
         return (T::zero(), T::zero());
     }
     
     let xi1 = x[0];
-    let normu = crate::utils::norms::norm_2(x.view());
+    // Compute norm
+    let mut sum = T::zero();
+    for i in 0..n {
+        sum = sum + x[i] * x[i];
+    }
+    let normu = Precision::sqrt(sum);
     
     if normu == T::zero() {
         return (T::zero(), T::zero());
@@ -45,38 +50,40 @@ pub fn reflector<T: Precision>(mut x: ArrayViewMut1<T>) -> (T, T) {
     (tau, -nu)
 }
 
-/// Apply Householder reflection to a matrix
+/// Apply Householder reflection to a block of matrix
 /// 
-/// Applies the Householder reflection H = I - τvv^T to matrix A from the left:
-/// A = H * A
-pub fn reflector_apply<T: Precision>(
-    v: ArrayView1<T>,
+/// Applies the Householder reflection H = I - τvv^T to columns [col_start..col_end) of matrix
+/// starting from row row_start
+pub fn reflector_apply_to_block<T: Precision>(
+    matrix: &mut Tensor<T, (usize, usize)>,
+    row_start: usize,
+    v_col: usize,
     tau: T,
-    mut a: ArrayViewMut2<T>,
+    col_start: usize,
+    col_end: usize,
 ) {
-    let m = a.nrows();
-    let n = a.ncols();
+    let shape = *matrix.shape();
+    let m = shape.0;
     
-    if m == 0 || n == 0 {
+    if m == 0 || col_start >= col_end {
         return;
     }
     
+    let v_len = m - row_start;
+    
     // Apply H = I - τvv^T to each column of A (like libsparseir)
-    for j in 0..n {
-        // Compute vBj = tau * (B(0, j) + xj.dot(Bj))
-        // where xj = v[1..] and Bj = B[1.., j]
-        let mut vBj = a[[0, j]];
-        for i in 1..m {
-            vBj = vBj + v[i] * a[[i, j]];
+    for j in col_start..col_end {
+        // Compute vBj = tau * (B(0, j) + v.dot(B_col_j))
+        let mut vBj = matrix[[row_start, j]];
+        for i in 1..v_len {
+            vBj = vBj + matrix[[row_start + i, v_col]] * matrix[[row_start + i, j]];
         }
         vBj = tau * vBj;
         
-        // Update B(0, j)
-        a[[0, j]] = a[[0, j]] - vBj;
-        
-        // Apply axpy operation: Bj -= vBj * xj
-        for i in 1..m {
-            a[[i, j]] = a[[i, j]] - vBj * v[i];
+        // Update column j
+        matrix[[row_start, j]] = matrix[[row_start, j]] - vBj;
+        for i in 1..v_len {
+            matrix[[row_start + i, j]] = matrix[[row_start + i, j]] - vBj * matrix[[row_start + i, v_col]];
         }
     }
 }
@@ -85,26 +92,36 @@ pub fn reflector_apply<T: Precision>(
 /// 
 /// Given the packed QR factorization (factors, taus), computes the full Q matrix
 pub fn compute_q<T: Precision>(
-    factors: &Array2<T>,
-    taus: &Array1<T>,
-) -> Array2<T> {
-    let m = factors.nrows();
+    factors: &Tensor<T, (usize, usize)>,
+    taus: &Tensor<T, (usize,)>,
+) -> Tensor<T, (usize, usize)> {
+    let shape = *factors.shape();
+    let m = shape.0;
     let k = taus.len();
     
-    let mut q = Array2::eye(m);
+    let mut q = Tensor::from_fn((m, m), |idx| {
+        if idx[0] == idx[1] { T::one() } else { T::zero() }
+    });
     
-    // Apply Householder reflections in forward order (like libsparseir)
-    // Q = H_1 * H_2 * ... * H_k
-    for i in 0..k {
-        if taus[i] != T::zero() {
-            let v = factors.slice(s![i.., i]);
-            let tau = taus[i];
+    // Apply Householder reflections in reverse order
+    for i in (0..k).rev() {
+        if taus[[i]] != T::zero() {
+            let tau = taus[[i]];
             
-            // Apply H_i to Q (left multiplication)
-            let q_slice = q.slice_mut(s![i.., ..]);
-            reflector_apply(v, tau, q_slice);
+            // Apply H_i to Q from the left
+            for j in 0..m {
+                let mut vQj = q[[i, j]];
+                for row in (i+1)..m {
+                    vQj = vQj + factors[[row, i]] * q[[row, j]];
+                }
+                vQj = tau * vQj;
+                
+                q[[i, j]] = q[[i, j]] - vQj;
+                for row in (i+1)..m {
+                    q[[row, j]] = q[[row, j]] - vQj * factors[[row, i]];
+                }
+            }
         }
-        // If tau == 0, no reflection is needed (column is already in upper triangular form)
     }
     
     q
@@ -114,10 +131,10 @@ pub fn compute_q<T: Precision>(
 /// 
 /// Extracts the upper triangular R matrix from the packed QR factorization
 pub fn compute_r<T: Precision>(
-    factors: &Array2<T>,
-) -> Array2<T> {
-    let m = factors.nrows();
-    let n = factors.ncols();
+    factors: &Tensor<T, (usize, usize)>,
+) -> Tensor<T, (usize, usize)> {
+    let shape = *factors.shape();
+    let (m, n) = shape;
     let k = m.min(n);
     
     let mut r = Array2::zeros((k, n));

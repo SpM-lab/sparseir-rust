@@ -1,6 +1,6 @@
 //! Rank-Revealing QR with Column Pivoting (RRQR)
 
-use ndarray::{Array1, Array2, ArrayView1, s};
+use mdarray::Tensor;
 use crate::precision::Precision;
 // RRQR implementation
 
@@ -8,19 +8,21 @@ use crate::precision::Precision;
 #[derive(Debug, Clone)]
 pub struct QRPivoted<T: Precision> {
     /// Packed QR factorization (Q and R stored together)
-    pub factors: Array2<T>,
+    pub factors: Tensor<T, (usize, usize)>,
     /// Householder reflection coefficients
-    pub taus: Array1<T>,
+    pub taus: Tensor<T, (usize,)>,
     /// Column pivot indices
-    pub jpvt: Array1<usize>,
+    pub jpvt: Tensor<usize, (usize,)>,
 }
 
 /// Find the index of the maximum element in a vector
-fn argmax<T: Precision>(vec: ArrayView1<T>) -> usize {
+fn argmax<T: Precision>(vec: &Tensor<T, (usize,)>) -> usize {
     let mut max_idx = 0;
-    let mut max_val = vec[0];
+    let mut max_val = vec[[0]];
     
-    for (i, &val) in vec.iter().enumerate() {
+    let n = vec.len();
+    for i in 0..n {
+        let val = vec[[i]];
         if val > max_val {
             max_val = val;
             max_idx = i;
@@ -45,29 +47,32 @@ fn argmax<T: Precision>(vec: ArrayView1<T>) -> usize {
 /// * `QRPivoted` - QR factorization result with pivot information
 /// * `usize` - Effective numerical rank
 pub fn rrqr_with_options<T: Precision>(
-    matrix: &mut Array2<T>,
+    matrix: &mut Tensor<T, (usize, usize)>,
     rtol: T,
     use_pivoting: bool,
 ) -> (QRPivoted<T>, usize) {
-    let m = matrix.nrows();
-    let n = matrix.ncols();
+    let shape = *matrix.shape();
+    let (m, n) = shape;
     let k = m.min(n);
     
     // Initialize pivot indices
-    let mut jpvt: Array1<usize> = Array1::from_iter(0..n);
+    let mut jpvt: Tensor<usize, (usize,)> = Tensor::from_fn((n,), |idx| idx[0]);
     
     // Initialize tau vector
-    let mut taus = Array1::zeros(k);
+    let mut taus = Tensor::from_elem((k,), T::zero());
     
     // Compute initial column norms
-    let mut xnorms = Array1::zeros(n);
-    let mut pnorms = Array1::zeros(n);
-    
-    for j in 0..n {
-        let norm = crate::utils::norms::norm_2(matrix.column(j));
-        xnorms[j] = norm;
-        pnorms[j] = norm;
-    }
+    let mut xnorms = Tensor::from_fn((n,), |idx| {
+        let j = idx[0];
+        // Compute column norm manually
+        let mut sum = T::zero();
+        for i in 0..m {
+            let val = matrix[[i, j]];
+            sum = sum + val * val;
+        }
+        Precision::sqrt(sum)
+    });
+    let mut pnorms = xnorms.clone();
     
     let sqrteps = Precision::sqrt(<T as Precision>::epsilon());
     let mut rk = k;
@@ -75,15 +80,34 @@ pub fn rrqr_with_options<T: Precision>(
     for i in 0..k {
         // Find column with maximum norm and swap if pivoting is enabled
         if use_pivoting {
-            let pvt = argmax(pnorms.slice(s![i..])) + i;
+            // Find max in pnorms[i..]
+            let mut pvt = i;
+            let mut max_val = pnorms[[i]];
+            for j in (i+1)..n {
+                if pnorms[[j]] > max_val {
+                    max_val = pnorms[[j]];
+                    pvt = j;
+                }
+            }
             
             // Swap columns if necessary
             if i != pvt {
-                jpvt.swap(i, pvt);
-                xnorms.swap(i, pvt);
-                pnorms.swap(i, pvt);
+                // Swap in jpvt
+                let temp_jpvt = jpvt[[i]];
+                jpvt[[i]] = jpvt[[pvt]];
+                jpvt[[pvt]] = temp_jpvt;
+                
+                // Swap in xnorms and pnorms
+                let temp_x = xnorms[[i]];
+                xnorms[[i]] = xnorms[[pvt]];
+                xnorms[[pvt]] = temp_x;
+                
+                let temp_p = pnorms[[i]];
+                pnorms[[i]] = pnorms[[pvt]];
+                pnorms[[pvt]] = temp_p;
+                
                 // Swap columns manually
-                for row in 0..matrix.nrows() {
+                for row in 0..m {
                     let temp = matrix[[row, i]];
                     matrix[[row, i]] = matrix[[row, pvt]];
                     matrix[[row, pvt]] = temp;
@@ -92,30 +116,40 @@ pub fn rrqr_with_options<T: Precision>(
         }
         
         // Apply Householder reflection
-        let mut Ainp = matrix.slice_mut(s![i.., i]);
-        let (tau_i, _) = super::householder::reflector(Ainp.view_mut());
-        taus[i] = tau_i;
+        // Extract column i from row i onwards
+        let col_len = m - i;
+        let mut col_i: Vec<T> = (0..col_len).map(|idx| matrix[[i + idx, i]]).collect();
+        let (tau_i, _) = super::householder::reflector(&mut col_i);
+        taus[[i]] = tau_i;
+        
+        // Write back the modified column
+        for idx in 0..col_len {
+            matrix[[i + idx, i]] = col_i[idx];
+        }
         
         // Apply reflection to remaining columns only if tau_i != 0
         if tau_i != T::zero() && i + 1 < n {
-            let v = matrix.slice(s![i.., i]).to_owned();
-            let mut block = matrix.slice_mut(s![i.., i+1..]);
-            super::householder::reflector_apply(v.view(), tau_i, block.view_mut());
+            super::householder::reflector_apply_to_block(matrix, i, i, tau_i, i + 1, n);
         }
         
         // Update column norms
         for j in (i + 1)..n {
-            let temp = Precision::abs(matrix[[i, j]]) / pnorms[j];
+            let temp = Precision::abs(matrix[[i, j]]) / pnorms[[j]];
             let temp = (T::one() + temp) * (T::one() - temp);
-            let temp = temp * (pnorms[j] / xnorms[j]) * (pnorms[j] / xnorms[j]);
+            let temp = temp * (pnorms[[j]] / xnorms[[j]]) * (pnorms[[j]] / xnorms[[j]]);
             
             if temp < sqrteps {
                 // Recompute norm to avoid numerical issues
-                let recomputed = crate::utils::norms::norm_2(matrix.slice(s![i+1.., j]));
-                pnorms[j] = recomputed;
-                xnorms[j] = recomputed;
+                let mut sum = T::zero();
+                for row in (i+1)..m {
+                    let val = matrix[[row, j]];
+                    sum = sum + val * val;
+                }
+                let recomputed = Precision::sqrt(sum);
+                pnorms[[j]] = recomputed;
+                xnorms[[j]] = recomputed;
             } else {
-                pnorms[j] = pnorms[j] * Precision::sqrt(temp);
+                pnorms[[j]] = pnorms[[j]] * Precision::sqrt(temp);
             }
         }
         
@@ -133,7 +167,7 @@ pub fn rrqr_with_options<T: Precision>(
             }
             // Zero out remaining taus
             for j in i..k {
-                taus[j] = T::zero();
+                taus[[j]] = T::zero();
             }
             rk = i;
             break;
@@ -162,7 +196,7 @@ pub fn rrqr_with_options<T: Precision>(
 /// * `QRPivoted` - QR factorization result with pivot information
 /// * `usize` - Effective numerical rank
 pub fn rrqr<T: Precision>(
-    matrix: &mut Array2<T>,
+    matrix: &mut Tensor<T, (usize, usize)>,
     rtol: T,
 ) -> (QRPivoted<T>, usize) {
     rrqr_with_options(matrix, rtol, true)

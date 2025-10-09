@@ -1,6 +1,6 @@
 //! Jacobi SVD implementation
 
-use ndarray::{s, Array1, Array2};
+use mdarray::Tensor;
 use crate::precision::Precision;
 // Jacobi SVD implementation
 
@@ -8,11 +8,11 @@ use crate::precision::Precision;
 #[derive(Debug, Clone)]
 pub struct SVDResult<T: Precision> {
     /// Left singular vectors (m × k)
-    pub u: Array2<T>,
+    pub u: Tensor<T, (usize, usize)>,
     /// Singular values (k)
-    pub s: Array1<T>,
+    pub s: Tensor<T, (usize,)>,
     /// Right singular vectors (n × k)
-    pub v: Array2<T>,
+    pub v: Tensor<T, (usize, usize)>,
     /// Effective rank
     pub rank: usize,
 }
@@ -223,10 +223,10 @@ pub fn apply_givens_right<T: Precision>(
 /// Computes the SVD using two-sided Jacobi iterations.
 /// This is more accurate than bidiagonalization methods but slower.
 pub fn jacobi_svd<T: Precision>(
-    matrix: &Array2<T>,
+    matrix: &Tensor<T, (usize, usize)>,
 ) -> SVDResult<T> {
-    let m = matrix.nrows();
-    let n = matrix.ncols();
+    let shape = *matrix.shape();
+    let (m, n) = shape;
     let k = m.min(n);
     
     // QR preconditioner for rectangular matrices (like Eigen3)
@@ -238,39 +238,38 @@ pub fn jacobi_svd<T: Precision>(
         let (q_full, r_full) = crate::qr::truncate_qr_result(&qr_result.0, n);
         
         // Extract R matrix (n x n upper triangular)
-        let r = r_full.slice(s![0..n, 0..n]).to_owned();
+        let r = Tensor::from_fn((n, n), |idx| r_full[[idx[0], idx[1]]]);
         
         // U = Q (m x n)
-        let u_init = q_full.slice(s![.., 0..n]).to_owned();
+        let u_init = Tensor::from_fn((m, n), |idx| q_full[[idx[0], idx[1]]]);
         
         (r, u_init)
     } else if n > m {
         // More columns than rows: A^T = QR, then SVD(R^T)
         // TODO: Implement this case if needed
         (matrix.clone(), {
-            let mut mat = Array2::zeros((m, k));
-            for i in 0..k {
-                mat[[i, i]] = T::one();
-            }
-            mat
+            Tensor::from_fn((m, k), |idx| {
+                if idx[0] == idx[1] { T::one() } else { T::zero() }
+            })
         })
     } else {
         // Square matrix: no QR preconditioner needed
         (matrix.clone(), {
-            let mut mat = Array2::zeros((m, k));
-            for i in 0..k {
-                mat[[i, i]] = T::one();
-            }
-            mat
+            Tensor::from_fn((m, k), |idx| {
+                if idx[0] == idx[1] { T::one() } else { T::zero() }
+            })
         })
     };
     
-    let mut v = Array2::eye(n); // V is always n x n initially, then we take first k columns
+    // V is identity matrix (n x n)
+    let mut v = Tensor::from_fn((n, n), |idx| {
+        if idx[0] == idx[1] { T::one() } else { T::zero() }
+    });
     
     // Scale matrix like Eigen3 to reduce over/under-flows and improve threshold calculation
     // This ensures max_diag_entry is close to 1, making threshold ~ epsilon (achievable)
-    let a_rows = a.nrows();
-    let a_cols = a.ncols();
+    let a_shape = *a.shape();
+    let (a_rows, a_cols) = a_shape;
     let mut scale = T::zero();
     for i in 0..a_rows {
         for j in 0..a_cols {
@@ -391,14 +390,18 @@ pub fn jacobi_svd<T: Precision>(
     
     // Step 3: Extract singular values and ensure they are positive (like Eigen3)
     // Note: singular values need to be scaled back by the original scale factor
-    let mut s = Array1::zeros(diagsize);
+    let mut s = Tensor::from_fn((diagsize,), |idx| {
+        let i = idx[0];
+        let diag_val = a[[i, i]];
+        Precision::abs(diag_val) * scale  // Scale back
+    });
+    
+    // If diagonal entry is negative, flip the corresponding U column
     for i in 0..diagsize {
         let diag_val = a[[i, i]];
-        s[i] = Precision::abs(diag_val) * scale;  // Scale back
-        
-        // If diagonal entry is negative, flip the corresponding U column
         if diag_val < T::zero() {
-            for row in 0..u.nrows() {
+            let u_shape = *u.shape();
+            for row in 0..u_shape.0 {
                 u[[row, i]] = -u[[row, i]];
             }
         }
@@ -406,17 +409,12 @@ pub fn jacobi_svd<T: Precision>(
     
     // Step 4: Sort singular values in descending order (like Eigen3)
     let mut indices: Vec<usize> = (0..diagsize).collect();
-    indices.sort_by(|&a, &b| s[b].partial_cmp(&s[a]).unwrap());
+    indices.sort_by(|&a, &b| s[[b]].partial_cmp(&s[[a]]).unwrap());
     
-    let mut s_sorted = Array1::zeros(diagsize);
-    let mut u_sorted = Array2::zeros((m, diagsize));
-    let mut v_sorted = Array2::zeros((n, diagsize));
+    let s_sorted = Tensor::from_fn((diagsize,), |idx| s[[indices[idx[0]]]]);
+    let u_sorted = Tensor::from_fn((m, diagsize), |idx| u[[idx[0], indices[idx[1]]]]);
+    let v_sorted = Tensor::from_fn((n, diagsize), |idx| v[[idx[0], indices[idx[1]]]]);
     
-    for (new_idx, &old_idx) in indices.iter().enumerate() {
-        s_sorted[new_idx] = s[old_idx];
-        u_sorted.column_mut(new_idx).assign(&u.column(old_idx));
-        v_sorted.column_mut(new_idx).assign(&v.column(old_idx));
-    }
     
     SVDResult {
         u: u_sorted,
@@ -429,7 +427,7 @@ pub fn jacobi_svd<T: Precision>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::array;
+    use mdarray::tensor;
     use approx::assert_abs_diff_eq;
     
     #[test]
@@ -451,12 +449,14 @@ mod tests {
     
     #[test]
     fn test_jacobi_svd_identity() {
-        let a = Array2::eye(3);
+        let a = Tensor::from_fn((3, 3), |idx| {
+            if idx[0] == idx[1] { 1.0 } else { 0.0 }
+        });
         let result: SVDResult<f64> = jacobi_svd(&a);
         
         // Identity matrix should have singular values all equal to 1
-        for &s in result.s.iter() {
-            assert_abs_diff_eq!(s, 1.0, epsilon = 1e-10);
+        for i in 0..result.s.len() {
+            assert_abs_diff_eq!(result.s[[i]], 1.0, epsilon = 1e-10);
         }
         
         // U and V should be identity matrices
@@ -471,7 +471,7 @@ mod tests {
     
     #[test]
     fn test_jacobi_svd_rank_one() {
-        let a = array![
+        let a = tensor![
             [1.0, 1.0, 1.0],
             [1.0, 1.0, 1.0],
             [1.0, 1.0, 1.0]
@@ -480,8 +480,8 @@ mod tests {
         let result: SVDResult<f64> = jacobi_svd(&a);
         
         // Should have only one non-zero singular value
-        assert!(result.s[0] > 1.0); // Should be around 3.0
-        assert_abs_diff_eq!(result.s[1], 0.0, epsilon = 1e-10);
-        assert_abs_diff_eq!(result.s[2], 0.0, epsilon = 1e-10);
+        assert!(result.s[[0]] > 1.0); // Should be around 3.0
+        assert_abs_diff_eq!(result.s[[1]], 0.0, epsilon = 1e-10);
+        assert_abs_diff_eq!(result.s[[2]], 0.0, epsilon = 1e-10);
     }
 }

@@ -1,31 +1,39 @@
 //! Vector and matrix norm computations
 
-use ndarray::{ArrayView1, ArrayView2};
+use mdarray::Tensor;
 use crate::precision::Precision;
 
 /// Compute the 2-norm (Euclidean norm) of a vector
-pub fn norm_2<T: Precision>(vec: ArrayView1<T>) -> T {
+pub fn norm_2<T: Precision>(vec: &Tensor<T, (usize,)>) -> T {
     let mut sum = T::zero();
-    for &val in vec.iter() {
+    let n = vec.len();
+    for i in 0..n {
+        let val = vec[[i]];
         sum = sum + val * val;
     }
     Precision::sqrt(sum)
 }
 
 /// Compute the Frobenius norm of a matrix
-pub fn norm_frobenius<T: Precision>(mat: ArrayView2<T>) -> T {
+pub fn norm_frobenius<T: Precision>(mat: &Tensor<T, (usize, usize)>) -> T {
+    let shape = *mat.shape();
+    let (m, n) = shape;
     let mut sum = T::zero();
-    for &val in mat.iter() {
-        sum = sum + val * val;
+    for i in 0..m {
+        for j in 0..n {
+            let val = mat[[i, j]];
+            sum = sum + val * val;
+        }
     }
     Precision::sqrt(sum)
 }
 
 /// Compute the maximum absolute value in a vector
-pub fn norm_inf<T: Precision>(vec: ArrayView1<T>) -> T {
+pub fn norm_inf<T: Precision>(vec: &Tensor<T, (usize,)>) -> T {
     let mut max_val = T::zero();
-    for &val in vec.iter() {
-        let abs_val = Precision::abs(val);
+    let n = vec.len();
+    for i in 0..n {
+        let abs_val = Precision::abs(vec[[i]]);
         if abs_val > max_val {
             max_val = abs_val;
         }
@@ -34,12 +42,16 @@ pub fn norm_inf<T: Precision>(vec: ArrayView1<T>) -> T {
 }
 
 /// Compute the maximum absolute value in a matrix
-pub fn norm_max<T: Precision>(mat: ArrayView2<T>) -> T {
+pub fn norm_max<T: Precision>(mat: &Tensor<T, (usize, usize)>) -> T {
+    let shape = *mat.shape();
+    let (m, n) = shape;
     let mut max_val = T::zero();
-    for &val in mat.iter() {
-        let abs_val = Precision::abs(val);
-        if abs_val > max_val {
-            max_val = abs_val;
+    for i in 0..m {
+        for j in 0..n {
+            let abs_val = Precision::abs(mat[[i, j]]);
+            if abs_val > max_val {
+                max_val = abs_val;
+            }
         }
     }
     max_val
