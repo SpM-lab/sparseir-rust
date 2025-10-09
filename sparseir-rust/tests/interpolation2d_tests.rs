@@ -1,4 +1,4 @@
-use ndarray::Array2;
+use mdarray::DTensor;
 use sparseir_rust::{CustomNumeric, TwoFloat, Interpolate2D};
 use sparseir_rust::gauss::legendre_generic;
 use sparseir_rust::interpolation2d::{interpolate_2d_legendre, evaluate_2d_legendre_polynomial};
@@ -10,7 +10,7 @@ fn test_interpolate_2d_legendre_basic() {
     let gauss_y = legendre_generic::<f64>(2).reseat(-1.0, 1.0);
     
     // Create test values
-    let mut values = Array2::from_elem((2, 2), 0.0);
+    let mut values = DTensor::<f64, 2>::from_elem([2, 2], 0.0);
     for i in 0..2 {
         for j in 0..2 {
             values[[i, j]] = gauss_x.x[i] + gauss_y.x[j];
@@ -38,7 +38,7 @@ fn test_interpolate_2d_object() {
     let gauss_x = legendre_generic::<f64>(2).reseat(0.0, 1.0);
     let gauss_y = legendre_generic::<f64>(2).reseat(0.0, 2.0);
     
-    let values = Array2::from_elem((2, 2), 1.0);
+    let values = DTensor::<f64, 2>::from_elem([2, 2], 1.0);
     let interp = Interpolate2D::new(&values, &gauss_x, &gauss_y);
     
     // Test interpolation at center of cell
@@ -54,7 +54,7 @@ fn test_interpolate_2d_quadratic_polynomial() {
     let gauss_y = legendre_generic::<TwoFloat>(4).reseat(TwoFloat::from_f64(-1.0), TwoFloat::from_f64(1.0));
     
     // Create test values for f(x,y) = x^2 + y^2 + x*y
-    let mut values = Array2::from_elem((4, 4), <TwoFloat as CustomNumeric>::zero());
+    let mut values = DTensor::<TwoFloat, 2>::from_elem([4, 4], <TwoFloat as CustomNumeric>::zero());
     for i in 0..4 {
         for j in 0..4 {
             let x = gauss_x.x[i];
@@ -119,7 +119,7 @@ fn test_interpolate2d_struct_generic<T: CustomNumeric + 'static>() {
     let gauss_y = legendre_generic::<T>(n).reseat(T::from_f64(-1.0), T::from_f64(1.0));
     
     // Create test function values: f(x,y) = x^2 + y^2
-    let mut values = Array2::from_elem((n, n), <T as CustomNumeric>::zero());
+    let mut values = DTensor::<T, 2>::from_elem([n, n], <T as CustomNumeric>::zero());
     for i in 0..n {
         for j in 0..n {
             let x = gauss_x.x[i];

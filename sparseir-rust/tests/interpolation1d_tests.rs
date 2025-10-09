@@ -1,4 +1,4 @@
-use ndarray::{Array1, Array2};
+use mdarray::DTensor;
 use sparseir_rust::{legendre, legendre_custom, legendre_twofloat, CustomNumeric, Rule, TwoFloat, Interpolate1D};
 use sparseir_rust::gauss::{legendre_vandermonde, legendre_generic};
 use sparseir_rust::interpolation1d::{legendre_collocation_matrix, interpolate_1d_legendre, evaluate_interpolated_polynomial};
@@ -17,7 +17,7 @@ fn test_legendre_collocation_matrix_inverse() {
         let collocation = legendre_collocation_matrix(&gauss_rule);
         
         // Compute V * C and check if it's approximately the identity matrix
-        let mut product = Array2::zeros((n, n));
+        let mut product = DTensor::<f64, 2>::from_elem([n, n], 0.0);
         for i in 0..n {
             for j in 0..n {
                 for k in 0..n {
@@ -27,8 +27,14 @@ fn test_legendre_collocation_matrix_inverse() {
         }
         
         // Check that V * C ≈ I
-        let identity: Array2<f64> = Array2::eye(n);
-        let error = (&product - &identity).mapv(|x: f64| x.abs()).sum() / (n * n) as f64;
+        let mut error = 0.0;
+        for i in 0..n {
+            for j in 0..n {
+                let expected = if i == j { 1.0 } else { 0.0 };
+                error += (product[[i, j]] - expected).abs();
+            }
+        }
+        error /= (n * n) as f64;
         
         println!("n={}, error={}", n, error);
         assert!(error < 1e-10, 
