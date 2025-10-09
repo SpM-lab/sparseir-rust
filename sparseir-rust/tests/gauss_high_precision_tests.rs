@@ -1,8 +1,7 @@
-use ndarray::Array1;
 use sparseir_rust::{legendre_custom, legendre_twofloat, TwoFloat};
 
-/// Helper function to check if two arrays are approximately equal within tolerance
-fn arrays_approx_equal<T>(a: &Array1<T>, b: &Array1<T>, tolerance: T) -> bool
+/// Helper function to check if two vectors are approximately equal within tolerance
+fn vecs_approx_equal<T>(a: &[T], b: &[T], tolerance: T) -> bool
 where
     T: Copy + std::ops::Sub<Output = T> + PartialOrd,
     T: std::fmt::Display,
@@ -77,7 +76,7 @@ fn test_high_precision_legendre_f64() {
     let rule = legendre_custom::<f64>(n);
 
     // Expected values computed with high precision (similar to C++ DDouble test)
-    let x_expected = Array1::from(vec![
+    let x_expected = vec![
         -0.9894009349916499,
         -0.9445750230732325,
         -0.8656312023878318,
@@ -94,9 +93,9 @@ fn test_high_precision_legendre_f64() {
         0.8656312023878318,
         0.9445750230732325,
         0.9894009349916499,
-    ]);
+    ];
 
-    let w_expected = Array1::from(vec![
+    let w_expected = vec![
         0.027152459411754124,
         0.06225352393864806,
         0.0951585116824928,
@@ -113,7 +112,7 @@ fn test_high_precision_legendre_f64() {
         0.0951585116824928,
         0.06225352393864806,
         0.027152459411754124,
-    ]);
+    ];
 
     // Check with high precision tolerance (1e-13)
     let tolerance = 1e-13;
