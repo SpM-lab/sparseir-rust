@@ -20,6 +20,54 @@ fn create_test_basis_bosonic() -> FiniteTempBasis<LogisticKernel, Bosonic> {
     FiniteTempBasis::new(kernel, beta, epsilon, None)
 }
 
+/// Single-pole Green's function for fermions: G(τ) = -e^(-ω*τ) / (1 + e^(-β*ω))
+/// 
+/// For ω > 0 (particle pole), this gives the retarded Green's function in imaginary time.
+/// 
+/// Supports extended τ range using anti-periodic boundary condition: G(τ + β) = -G(τ)
+/// - For -β < τ < 0: use G(τ) = -G(τ + β)
+/// - For β < τ < 2β: use G(τ) = -G(τ - β)
+fn fermionic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
+    // Normalize τ to [0, β) and track sign from anti-periodicity
+    // G(τ + β) = -G(τ) for fermions
+    let (tau_normalized, sign) = if tau < 0.0 {
+        // -β < τ < 0: G(τ) = -G(τ + β)
+        (tau + beta, -1.0)
+    } else if tau >= beta {
+        // β ≤ τ < 2β: G(τ) = -G(τ - β)  
+        (tau - beta, -1.0)
+    } else {
+        // 0 ≤ τ < β: normal range
+        (tau, 1.0)
+    };
+    
+    sign * (-(-omega * tau_normalized).exp() / (1.0 + (-beta * omega).exp()))
+}
+
+/// Single-pole Green's function for bosons: G(τ) = e^(-ω*τ) / (1 - e^(-β*ω))
+/// 
+/// For ω > 0, this gives the bosonic Green's function in imaginary time.
+/// 
+/// Supports extended τ range using periodic boundary condition: G(τ + β) = G(τ)
+/// - For -β < τ < 0: use G(τ) = G(τ + β)
+/// - For β < τ < 2β: use G(τ) = G(τ - β)
+fn bosonic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
+    // Normalize τ to [0, β) using periodicity
+    // G(τ + β) = G(τ) for bosons
+    let tau_normalized = if tau < 0.0 {
+        // -β < τ < 0: G(τ) = G(τ + β)
+        tau + beta
+    } else if tau >= beta {
+        // β ≤ τ < 2β: G(τ) = G(τ - β)
+        tau - beta
+    } else {
+        // 0 ≤ τ < β: normal range
+        tau
+    };
+    
+    (-omega * tau_normalized).exp() / (1.0 - (-beta * omega).exp())
+}
+
 #[test]
 fn test_tau_sampling_construction_fermionic() {
     let basis = create_test_basis_fermionic();
@@ -50,29 +98,34 @@ fn test_tau_sampling_construction_bosonic() {
 #[test]
 fn test_evaluate_fit_roundtrip_fermionic() {
     let basis = create_test_basis_fermionic();
-    
     let sampling: TauSampling<Fermionic> = TauSampling::new(&basis);
     
-    // Create test coefficients (use singular values as test data)
-    let coeffs: Vec<f64> = basis.s.iter().copied().collect();
+    // Physical test: Single pole at ω = 0.5 * wmax
+    let beta = basis.beta;
+    let omega = 0.5 * basis.omega_max();
     
-    // Evaluate: coeffs → values at sampling points
-    let values = sampling.evaluate(&coeffs);
-    assert_eq!(values.len(), sampling.n_sampling_points());
+    // Compute Green's function values at sampling points
+    let g_values: Vec<f64> = sampling.sampling_points()
+        .iter()
+        .map(|&tau| fermionic_single_pole(tau, omega, beta))
+        .collect();
     
-    // Fit back: values → coeffs
-    let fitted_coeffs = sampling.fit(&values);
-    assert_eq!(fitted_coeffs.len(), sampling.basis_size());
+    // Fit to IR basis coefficients
+    let coeffs = sampling.fit(&g_values);
+    assert_eq!(coeffs.len(), sampling.basis_size());
+    
+    // Evaluate back: coeffs → values
+    let fitted_values = sampling.evaluate(&coeffs);
     
     // Check roundtrip accuracy
-    for (orig, fitted) in coeffs.iter().zip(fitted_coeffs.iter()) {
-        let rel_error = (orig - fitted).abs() / orig.abs().max(1e-10);
+    for (orig, fitted) in g_values.iter().zip(fitted_values.iter()) {
+        let abs_error = (orig - fitted).abs();
         assert!(
-            rel_error < 1e-10,
-            "Roundtrip error too large: orig={}, fitted={}, rel_error={}",
+            abs_error < 1e-10,
+            "Roundtrip error too large: orig={}, fitted={}, error={}",
             orig,
             fitted,
-            rel_error
+            abs_error
         );
     }
 }
@@ -80,20 +133,88 @@ fn test_evaluate_fit_roundtrip_fermionic() {
 #[test]
 fn test_evaluate_fit_roundtrip_bosonic() {
     let basis = create_test_basis_bosonic();
-    
     let sampling: TauSampling<Bosonic> = TauSampling::new(&basis);
     
-    // Create test coefficients
-    let coeffs: Vec<f64> = basis.s.iter().copied().collect();
+    // Physical test: Single pole at ω = 0.5 * wmax
+    let beta = basis.beta;
+    let omega = 0.5 * basis.omega_max();
     
-    // Evaluate and fit
-    let values = sampling.evaluate(&coeffs);
-    let fitted_coeffs = sampling.fit(&values);
+    // Compute Green's function values at sampling points
+    let g_values: Vec<f64> = sampling.sampling_points()
+        .iter()
+        .map(|&tau| bosonic_single_pole(tau, omega, beta))
+        .collect();
+    
+    // Fit to IR basis coefficients
+    let coeffs = sampling.fit(&g_values);
+    
+    // Evaluate back: coeffs → values
+    let fitted_values = sampling.evaluate(&coeffs);
     
     // Check roundtrip accuracy
-    for (orig, fitted) in coeffs.iter().zip(fitted_coeffs.iter()) {
-        let rel_error = (orig - fitted).abs() / orig.abs().max(1e-10);
-        assert!(rel_error < 1e-10);
+    for (orig, fitted) in g_values.iter().zip(fitted_values.iter()) {
+        let abs_error = (orig - fitted).abs();
+        assert!(abs_error < 1e-10, "Bosonic roundtrip error: {}", abs_error);
+    }
+}
+
+#[test]
+fn test_fermionic_antiperiodicity() {
+    let beta = 1.0;
+    let omega = 5.0;
+    
+    // Test anti-periodicity: G(τ + β) = -G(τ)
+    for i in 0..10 {
+        let tau = i as f64 * 0.1 * beta;
+        let g_tau = fermionic_single_pole(tau, omega, beta);
+        let g_tau_plus_beta = fermionic_single_pole(tau + beta, omega, beta);
+        
+        let diff = (g_tau + g_tau_plus_beta).abs();
+        assert!(diff < 1e-14, 
+                "Anti-periodicity violated at τ={}: G(τ)={}, G(τ+β)={}", 
+                tau, g_tau, g_tau_plus_beta);
+    }
+    
+    // Test for negative τ: G(τ) = -G(τ + β)
+    for i in 1..10 {
+        let tau = -i as f64 * 0.1 * beta;
+        let g_tau = fermionic_single_pole(tau, omega, beta);
+        let g_tau_plus_beta = fermionic_single_pole(tau + beta, omega, beta);
+        
+        let diff = (g_tau + g_tau_plus_beta).abs();
+        assert!(diff < 1e-14, 
+                "Anti-periodicity violated at τ={}: G(τ)={}, G(τ+β)={}", 
+                tau, g_tau, g_tau_plus_beta);
+    }
+}
+
+#[test]
+fn test_bosonic_periodicity() {
+    let beta = 1.0;
+    let omega = 5.0;
+    
+    // Test periodicity: G(τ + β) = G(τ)
+    for i in 0..10 {
+        let tau = i as f64 * 0.1 * beta;
+        let g_tau = bosonic_single_pole(tau, omega, beta);
+        let g_tau_plus_beta = bosonic_single_pole(tau + beta, omega, beta);
+        
+        let diff = (g_tau - g_tau_plus_beta).abs();
+        assert!(diff < 1e-14, 
+                "Periodicity violated at τ={}: G(τ)={}, G(τ+β)={}", 
+                tau, g_tau, g_tau_plus_beta);
+    }
+    
+    // Test for negative τ: G(τ) = G(τ + β)
+    for i in 1..10 {
+        let tau = -i as f64 * 0.1 * beta;
+        let g_tau = bosonic_single_pole(tau, omega, beta);
+        let g_tau_plus_beta = bosonic_single_pole(tau + beta, omega, beta);
+        
+        let diff = (g_tau - g_tau_plus_beta).abs();
+        assert!(diff < 1e-14, 
+                "Periodicity violated at τ={}: G(τ)={}, G(τ+β)={}", 
+                tau, g_tau, g_tau_plus_beta);
     }
 }
 
@@ -346,37 +467,43 @@ fn test_fit_nd_3d_roundtrip() {
     let basis = create_test_basis_fermionic();
     let sampling: TauSampling<Fermionic> = TauSampling::new(&basis);
     
-    // Create 3D coefficients
-    let basis_size = sampling.basis_size();
+    // Physical test: Multiple poles at different ω for different k-points
+    // Simulating G(τ, k, ω) where each (k, ω) has a pole at ω_pole(k, ω)
+    let beta = basis.beta;
+    let wmax = basis.omega_max();
     let n_k = 3;
     let n_omega = 4;
-    let s_vec = &basis.s;
     
-    let coeffs_3d_typed = mdarray::DTensor::<f64, 3>::from_fn([basis_size, n_k, n_omega], |idx| {
-        s_vec[idx[0]] * (1.0 + 0.1 * idx[1] as f64)
-    });
+    // Create 3D Green's function: G(τ, k, ω_index)
+    let mut values_3d: Tensor<f64, DynRank> = Tensor::zeros(&vec![sampling.n_sampling_points(), n_k, n_omega][..]);
     
-    let mut coeffs_3d: Tensor<f64, DynRank> = Tensor::zeros(&vec![basis_size, n_k, n_omega][..]);
-    for l in 0..basis_size {
+    for (i, &tau) in sampling.sampling_points().iter().enumerate() {
         for k in 0..n_k {
-            for omega in 0..n_omega {
-                coeffs_3d[&[l, k, omega][..]] = coeffs_3d_typed[[l, k, omega]];
+            for omega_idx in 0..n_omega {
+                // Different pole position for each (k, omega_idx)
+                let omega_pole = wmax * (0.2 + 0.15 * k as f64 + 0.1 * omega_idx as f64);
+                let g_val = fermionic_single_pole(tau, omega_pole, beta);
+                values_3d[&[i, k, omega_idx][..]] = g_val;
             }
         }
     }
     
-    // Evaluate then fit
-    let values_3d = sampling.evaluate_nd(&coeffs_3d, 0);
-    let fitted_coeffs_3d = sampling.fit_nd(&values_3d, 0);
+    // Fit: values → coeffs
+    let coeffs_3d = sampling.fit_nd(&values_3d, 0);
+    
+    // Evaluate back: coeffs → values
+    let fitted_values_3d = sampling.evaluate_nd(&coeffs_3d, 0);
     
     // Check roundtrip accuracy
     for k in 0..n_k {
-        for omega in 0..n_omega {
-            for l in 0..basis_size {
-                let original = coeffs_3d[&[l, k, omega][..]];
-                let fitted = fitted_coeffs_3d[&[l, k, omega][..]];
-                let rel_error = (original - fitted).abs() / original.abs().max(1e-10);
-                assert!(rel_error < 1e-10, "Error at ({}, {}, {}): rel_error={}", l, k, omega, rel_error);
+        for omega_idx in 0..n_omega {
+            for i in 0..sampling.n_sampling_points() {
+                let original = values_3d[&[i, k, omega_idx][..]];
+                let fitted = fitted_values_3d[&[i, k, omega_idx][..]];
+                let abs_error = (original - fitted).abs();
+                assert!(abs_error < 1e-10, 
+                        "Error at (tau_idx={}, k={}, ω_idx={}): error={}", 
+                        i, k, omega_idx, abs_error);
             }
         }
     }
