@@ -142,20 +142,35 @@ pub fn compute_svd<T: CustomNumeric + 'static>(
     }
 }
 
-/// Compute SVD for f64 using xprec-svd
+/// Compute SVD for f64 using mdarray-linalg (Faer backend)
 fn compute_svd_f64_xprec<T: CustomNumeric>(
     matrix: &DTensor<T, 2>
 ) -> (DTensor<T, 2>, Vec<T>, DTensor<T, 2>) {
+    use mdarray_linalg::SVD;
+    use mdarray_linalg_faer::Faer;
+    
     let matrix_f64 = DTensor::<f64, 2>::from_fn(*matrix.shape(), |idx| matrix[idx].to_f64());
     
-    let result = xprec_svd::jacobi_svd(&matrix_f64);
+    // Clone for SVD (mdarray-linalg requires &mut)
+    let mut matrix_copy = matrix_f64.clone();
+    let result = Faer.svd(&mut matrix_copy)
+        .expect("SVD computation failed");
+    
+    // Extract singular values from diagonal matrix
+    let min_dim = result.s.shape().0.min(result.s.shape().1);
+    let s_vec: Vec<T> = (0..min_dim)
+        .map(|i| T::from_f64(result.s[[i, i]]))
+        .collect();
     
     // Convert back to T
     let u = DTensor::<T, 2>::from_fn(*result.u.shape(), |idx| T::from_f64(result.u[idx]));
-    let s: Vec<T> = result.s.iter().map(|&x| T::from_f64(x)).collect();
-    let v = DTensor::<T, 2>::from_fn(*result.v.shape(), |idx| T::from_f64(result.v[idx]));
     
-    (u, s, v)
+    // mdarray-linalg returns vt (V^T), but we need v (V)
+    // First convert vt to type T, then transpose
+    let vt = DTensor::<T, 2>::from_fn(*result.vt.shape(), |idx| T::from_f64(result.vt[idx]));
+    let v = vt.transpose().to_tensor();  // (V^T)^T = V
+    
+    (u, s_vec, v)
 }
 
 /// Compute SVD for TwoFloat using xprec-svd

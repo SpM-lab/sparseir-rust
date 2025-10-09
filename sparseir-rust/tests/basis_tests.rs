@@ -89,16 +89,19 @@ fn test_default_tau_sampling_points_conditioning() {
     
     println!("Sampling matrix shape: {}x{}", num_points, basis_size);
     
-    // Compute SVD with looser tolerance to avoid convergence issues
-    let matrix_tensor = array2_to_tensor(&matrix);
-    let svd = xprec_svd::tsvd_f64(&matrix_tensor, 1e-12).unwrap();
+    // Compute SVD using mdarray-linalg (Faer backend)
+    use mdarray_linalg::SVD;
+    use mdarray_linalg_faer::Faer;
+    let mut matrix_copy = matrix.clone();
+    let svd = Faer.svd(&mut matrix_copy).expect("SVD computation failed");
     
     println!("\nSampling matrix SVD:");
-    println!("  Rank: {}", svd.s.len());
-    println!("  First singular value: {:.6e}", svd.s[[0]]);
-    println!("  Last singular value: {:.6e}", svd.s[[svd.s.len()-1]]);
+    let min_dim = svd.s.shape().0.min(svd.s.shape().1);
+    println!("  Rank: {}", min_dim);
+    println!("  First singular value: {:.6e}", svd.s[[0, 0]]);
+    println!("  Last singular value: {:.6e}", svd.s[[min_dim-1, min_dim-1]]);
     
-    let condition_number = svd.s[[0]] / svd.s[[svd.s.len()-1]];
+    let condition_number = svd.s[[0, 0]] / svd.s[[min_dim-1, min_dim-1]];
     println!("  Condition number: {:.6e}", condition_number);
     
     // Reference condition number (from Julia/C++ for beta=1, lambda=10)
