@@ -1,6 +1,6 @@
 //! Tests for piecewise Legendre polynomial Fourier transform implementations
 
-use ndarray::arr2;
+use mdarray::tensor;
 use sparseir_rust::freq::{BosonicFreq, FermionicFreq};
 use sparseir_rust::poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
 use sparseir_rust::polyfourier::{
@@ -11,7 +11,7 @@ use sparseir_rust::traits::{Bosonic, Fermionic, Statistics};
 
 #[test]
 fn test_fermionic_ft_creation() {
-    let data = arr2(&[[1.0], [0.0]]);
+    let data = tensor![[1.0], [0.0]];
     let knots = vec![-1.0, 1.0];
     let poly = PiecewiseLegendrePoly::new(data, knots, 0, None, 0);
 
@@ -24,7 +24,7 @@ fn test_fermionic_ft_creation() {
 
 #[test]
 fn test_bosonic_ft_creation() {
-    let data = arr2(&[[1.0], [0.0]]);
+    let data = tensor![[1.0], [0.0]];
     let knots = vec![-1.0, 1.0];
     let poly = PiecewiseLegendrePoly::new(data, knots, 0, None, 0);
 
@@ -37,7 +37,7 @@ fn test_bosonic_ft_creation() {
 
 #[test]
 fn test_ft_evaluation_fermionic() {
-    let data = arr2(&[[1.0], [0.0]]);
+    let data = tensor![[1.0], [0.0]];
     let knots = vec![-1.0, 1.0];
     let poly = PiecewiseLegendrePoly::new(data, knots, 0, None, 0);
 
@@ -54,7 +54,7 @@ fn test_ft_evaluation_fermionic() {
 
 #[test]
 fn test_ft_evaluation_bosonic() {
-    let data = arr2(&[[1.0], [0.0]]);
+    let data = tensor![[1.0], [0.0]];
     let knots = vec![-1.0, 1.0];
     let poly = PiecewiseLegendrePoly::new(data, knots, 0, None, 0);
 
@@ -71,8 +71,8 @@ fn test_ft_evaluation_bosonic() {
 
 #[test]
 fn test_ft_vector_creation() {
-    let data1 = arr2(&[[1.0], [0.0]]);
-    let data2 = arr2(&[[0.0], [1.0]]);
+    let data1 = tensor![[1.0], [0.0]];
+    let data2 = tensor![[0.0], [1.0]];
     let knots = vec![-1.0, 1.0];
 
     let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 0);
@@ -88,8 +88,8 @@ fn test_ft_vector_creation() {
 
 #[test]
 fn test_ft_vector_from_poly_vector() {
-    let data1 = arr2(&[[1.0], [0.0]]);
-    let data2 = arr2(&[[0.0], [1.0]]);
+    let data1 = tensor![[1.0], [0.0]];
+    let data2 = tensor![[0.0], [1.0]];
     let knots = vec![-1.0, 1.0];
 
     let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 0);
@@ -104,7 +104,7 @@ fn test_ft_vector_from_poly_vector() {
 
 #[test]
 fn test_ft_vector_evaluation() {
-    let data = arr2(&[[1.0], [0.0]]);
+    let data = tensor![[1.0], [0.0]];
     let knots = vec![-1.0, 1.0];
     let poly = PiecewiseLegendrePoly::new(data, knots, 0, None, 0);
 
@@ -120,7 +120,7 @@ fn test_ft_vector_evaluation() {
 
 #[test]
 fn test_power_model_creation() {
-    let data = arr2(&[[1.0, 0.0], [0.0, 1.0]]);
+    let data = tensor![[1.0, 0.0], [0.0, 1.0]];
     let knots = vec![-1.0, 0.0, 1.0];
     let poly = PiecewiseLegendrePoly::new(data, knots, 1, None, 0);
 
@@ -133,7 +133,7 @@ fn test_power_model_creation() {
 
 #[test]
 fn test_invalid_domain_panic() {
-    let data = arr2(&[[1.0], [0.0]]);
+    let data = tensor![[1.0], [0.0]];
     let knots = vec![0.0, 2.0]; // Invalid domain for Fourier transform
 
     let poly = PiecewiseLegendrePoly::new(data, knots, 0, None, 0);

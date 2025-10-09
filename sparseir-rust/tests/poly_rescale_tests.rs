@@ -1,16 +1,17 @@
 //! Tests for polynomial domain rescaling and data scaling
 
 use sparseir_rust::poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
-use ndarray::Array2;
+use mdarray::DTensor;
 
 #[test]
 fn test_rescale_domain_single_poly() {
     // Create a simple polynomial on [-1, 1]
-    let data = Array2::from_shape_vec((3, 2), vec![
+    let data_vec = vec![
         1.0, 2.0,  // const term
         0.5, 1.0,  // linear term
         0.2, 0.3,  // quadratic term
-    ]).unwrap();
+    ];
+    let data = DTensor::<f64, 2>::from_fn([3, 2], |idx| data_vec[idx[0] * 2 + idx[1]]);
     
     let knots = vec![-1.0, 0.0, 1.0];
     let poly = PiecewiseLegendrePoly::new(data, knots, 0, None, 0);
@@ -38,10 +39,8 @@ fn test_rescale_domain_single_poly() {
 #[test]
 fn test_scale_data_single_poly() {
     // Create a polynomial
-    let data = Array2::from_shape_vec((2, 2), vec![
-        1.0, 2.0,
-        0.5, 1.0,
-    ]).unwrap();
+    let data_vec = vec![1.0, 2.0, 0.5, 1.0];
+    let data = DTensor::<f64, 2>::from_fn([2, 2], |idx| data_vec[idx[0] * 2 + idx[1]]);
     
     let knots = vec![-1.0, 0.0, 1.0];
     let poly = PiecewiseLegendrePoly::new(data, knots, 0, None, 0);
@@ -64,8 +63,8 @@ fn test_scale_data_single_poly() {
 #[test]
 fn test_rescale_domain_vector() {
     // Create vector with 2 polynomials
-    let data1 = Array2::from_shape_vec((2, 1), vec![1.0, 0.5]).unwrap();
-    let data2 = Array2::from_shape_vec((2, 1), vec![2.0, 1.0]).unwrap();
+    let data1 = DTensor::<f64, 2>::from_fn([2, 1], |idx| if idx[0] == 0 { 1.0 } else { 0.5 });
+    let data2 = DTensor::<f64, 2>::from_fn([2, 1], |idx| if idx[0] == 0 { 2.0 } else { 1.0 });
     
     let knots = vec![-1.0, 1.0];
     let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 1);  // symm=1
@@ -98,8 +97,8 @@ fn test_rescale_domain_vector() {
 #[test]
 fn test_scale_data_vector() {
     // Create vector with 2 polynomials
-    let data1 = Array2::from_shape_vec((2, 1), vec![1.0, 0.5]).unwrap();
-    let data2 = Array2::from_shape_vec((2, 1), vec![2.0, 1.0]).unwrap();
+    let data1 = DTensor::<f64, 2>::from_fn([2, 1], |idx| if idx[0] == 0 { 1.0 } else { 0.5 });
+    let data2 = DTensor::<f64, 2>::from_fn([2, 1], |idx| if idx[0] == 0 { 2.0 } else { 1.0 });
     
     let knots = vec![-1.0, 1.0];
     let poly1 = PiecewiseLegendrePoly::new(data1, knots.clone(), 0, None, 0);
@@ -127,7 +126,7 @@ fn test_scale_data_vector() {
 #[test]
 fn test_rescale_with_symmetry_change() {
     // Test rescaling with symmetry parameter change
-    let data = Array2::from_shape_vec((2, 1), vec![1.0, 0.5]).unwrap();
+    let data = DTensor::<f64, 2>::from_fn([2, 1], |idx| if idx[0] == 0 { 1.0 } else { 0.5 });
     let knots = vec![-1.0, 1.0];
     let poly = PiecewiseLegendrePoly::new(data, knots.clone(), 0, None, 1);
     
@@ -151,11 +150,8 @@ fn test_basis_transformation_example() {
     let beta = 10.0;
     
     // Original polynomial on [-1, 1]
-    let data = Array2::from_shape_vec((3, 2), vec![
-        1.0, 1.5,
-        0.2, 0.3,
-        0.1, 0.1,
-    ]).unwrap();
+    let data_vec = vec![1.0, 1.5, 0.2, 0.3, 0.1, 0.1];
+    let data = DTensor::<f64, 2>::from_fn([3, 2], |idx| data_vec[idx[0] * 2 + idx[1]]);
     let sve_knots = vec![-1.0, 0.0, 1.0];
     let poly_sve = PiecewiseLegendrePoly::new(data, sve_knots, 0, None, 0);
     
