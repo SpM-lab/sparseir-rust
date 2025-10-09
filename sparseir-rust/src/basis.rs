@@ -7,7 +7,7 @@ use ndarray::Array1;
 use std::sync::Arc;
 
 use crate::kernel::{KernelProperties, CentrosymmKernel, LogisticKernel};
-use crate::poly::PiecewiseLegendrePolyVector;
+use crate::poly::{PiecewiseLegendrePolyVector, default_sampling_points};
 use crate::polyfourier::PiecewiseLegendreFTVector;
 use crate::sve::{SVEResult, compute_sve, TworkType};
 use crate::traits::{StatisticsType, Fermionic, Bosonic};
@@ -222,6 +222,66 @@ where
     pub fn significance(&self) -> Array1<f64> {
         let s0 = self.s[0];
         self.s.mapv(|s| s / s0)
+    }
+    
+    /// Get default tau sampling points
+    ///
+    /// C++ implementation: libsparseir/include/sparseir/basis.hpp:229-270
+    ///
+    /// Returns sampling points in imaginary time τ ∈ [0, β].
+    pub fn default_tau_sampling_points(&self) -> Vec<f64> {
+        let sz = self.size();
+        
+        // C++: Eigen::VectorXd x = default_sampling_points(*(this->sve_result->u), sz);
+        let x = default_sampling_points(&self.sve_result.u, sz);
+        
+        // C++: Extract unique half of sampling points
+        let mut unique_x = Vec::new();
+        if x.len() % 2 == 0 {
+            // C++: for (auto i = 0; i < x.size() / 2; ++i)
+            for i in 0..(x.len() / 2) {
+                unique_x.push(x[i]);
+            }
+        } else {
+            // C++: for (auto i = 0; i < x.size() / 2; ++i)
+            for i in 0..(x.len() / 2) {
+                unique_x.push(x[i]);
+            }
+            // C++: auto x_new = 0.5 * (unique_x.back() + 0.5);
+            let x_new = 0.5 * (unique_x.last().unwrap() + 0.5);
+            unique_x.push(x_new);
+        }
+        
+        // C++: Generate symmetric points
+        //      Eigen::VectorXd smpl_taus(2 * unique_x.size());
+        //      for (auto i = 0; i < unique_x.size(); ++i) {
+        //          smpl_taus(i) = (this->beta / 2.0) * (unique_x[i] + 1.0);
+        //          smpl_taus(unique_x.size() + i) = -smpl_taus(i);
+        //      }
+        let mut smpl_taus = Vec::with_capacity(2 * unique_x.len());
+        for &ux in &unique_x {
+            smpl_taus.push((self.beta / 2.0) * (ux + 1.0));
+        }
+        for i in 0..unique_x.len() {
+            smpl_taus.push(-smpl_taus[i]);
+        }
+        
+        // C++: std::sort(smpl_taus.data(), smpl_taus.data() + smpl_taus.size());
+        smpl_taus.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        
+        // C++: Convert negative values to [beta/2, beta]
+        //      for (auto i = 0; i < smpl_taus.size(); ++i) {
+        //          if (smpl_taus(i) < 0.0) {
+        //              smpl_taus(i) += this->beta;
+        //          }
+        //      }
+        for tau in &mut smpl_taus {
+            if *tau < 0.0 {
+                *tau += self.beta;
+            }
+        }
+        
+        smpl_taus
     }
 }
 
