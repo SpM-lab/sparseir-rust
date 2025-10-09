@@ -7,7 +7,7 @@ use crate::gauss::Rule;
 use crate::kernel::{CentrosymmKernel, KernelProperties, SymmetryType};
 use crate::numeric::CustomNumeric;
 use crate::interpolation2d::Interpolate2D;
-use ndarray::Array2;
+use mdarray::DTensor;
 use std::fmt::Debug;
 
 /// This structure stores a discrete kernel matrix along with the corresponding
@@ -17,7 +17,7 @@ use std::fmt::Debug;
 #[derive(Debug, Clone)]
 pub struct DiscretizedKernel<T> {
     /// Discrete kernel matrix
-    pub matrix: Array2<T>,
+    pub matrix: DTensor<T, 2>,
     /// Gauss quadrature rule for x coordinates
     pub gauss_x: Rule<T>,
     /// Gauss quadrature rule for y coordinates  
@@ -30,12 +30,12 @@ pub struct DiscretizedKernel<T> {
 
 impl<T: CustomNumeric + Clone> DiscretizedKernel<T> {
     /// Create a new DiscretizedKernel
-    pub fn new(matrix: Array2<T>, gauss_x: Rule<T>, gauss_y: Rule<T>, segments_x: Vec<T>, segments_y: Vec<T>) -> Self {
+    pub fn new(matrix: DTensor<T, 2>, gauss_x: Rule<T>, gauss_y: Rule<T>, segments_x: Vec<T>, segments_y: Vec<T>) -> Self {
         Self { matrix, gauss_x, gauss_y, segments_x, segments_y }
     }
     
     /// Create a new DiscretizedKernel without segments (legacy)
-    pub fn new_legacy(matrix: Array2<T>, gauss_x: Rule<T>, gauss_y: Rule<T>) -> Self {
+    pub fn new_legacy(matrix: DTensor<T, 2>, gauss_x: Rule<T>, gauss_y: Rule<T>) -> Self {
         Self { 
             matrix, 
             gauss_x: gauss_x.clone(), 
@@ -51,11 +51,11 @@ impl<T: CustomNumeric + Clone> DiscretizedKernel<T> {
     }
     
     pub fn nrows(&self) -> usize {
-        self.matrix.nrows()
+        self.matrix.shape().0
     }
     
     pub fn ncols(&self) -> usize {
-        self.matrix.ncols()
+        self.matrix.shape().1
     }
     
     pub fn iter(&self) -> impl Iterator<Item = &T> {
@@ -67,19 +67,24 @@ impl<T: CustomNumeric + Clone> DiscretizedKernel<T> {
     /// This applies the square root of Gauss weights to the matrix,
     /// which is required before performing SVD for SVE computation.
     /// The original matrix remains unchanged.
-    pub fn apply_weights_for_sve(&self) -> Array2<T> {
+    pub fn apply_weights_for_sve(&self) -> DTensor<T, 2> {
         let mut weighted_matrix = self.matrix.clone();
+        let shape = *weighted_matrix.shape();
         
         // Apply square root of x-direction weights to rows
         for i in 0..self.gauss_x.x.len() {
             let weight_sqrt = self.gauss_x.w[i].sqrt();
-            weighted_matrix.row_mut(i).mapv_inplace(|x| x * weight_sqrt);
+            for j in 0..shape.1 {
+                weighted_matrix[[i, j]] = weighted_matrix[[i, j]] * weight_sqrt;
+            }
         }
         
         // Apply square root of y-direction weights to columns
         for j in 0..self.gauss_y.x.len() {
             let weight_sqrt = self.gauss_y.w[j].sqrt();
-            weighted_matrix.column_mut(j).mapv_inplace(|x| x * weight_sqrt);
+            for i in 0..shape.0 {
+                weighted_matrix[[i, j]] = weighted_matrix[[i, j]] * weight_sqrt;
+            }
         }
         
         weighted_matrix
@@ -87,16 +92,22 @@ impl<T: CustomNumeric + Clone> DiscretizedKernel<T> {
     
     /// Remove weights from matrix (inverse of apply_weights_for_sve)
     pub fn remove_weights_from_sve(&mut self) {
+        let shape = *self.matrix.shape();
+        
         // Remove weights from U matrix (x-direction)
         for i in 0..self.gauss_x.x.len() {
             let weight_sqrt = self.gauss_x.w[i].sqrt();
-            self.matrix.row_mut(i).mapv_inplace(|x| x / weight_sqrt);
+            for j in 0..shape.1 {
+                self.matrix[[i, j]] = self.matrix[[i, j]] / weight_sqrt;
+            }
         }
         
         // Remove weights from V matrix (y-direction) 
         for j in 0..self.gauss_y.x.len() {
             let weight_sqrt = self.gauss_y.w[j].sqrt();
-            self.matrix.column_mut(j).mapv_inplace(|x| x / weight_sqrt);
+            for i in 0..shape.0 {
+                self.matrix[[i, j]] = self.matrix[[i, j]] / weight_sqrt;
+            }
         }
     }
     
@@ -156,7 +167,7 @@ pub fn matrix_from_gauss_with_segments<T: CustomNumeric + Clone + Send + Sync, K
     
     let n = gauss_x.x.len();
     let m = gauss_y.x.len();
-    let mut result = Array2::from_elem((n, m), T::zero());
+    let mut result = DTensor::<T, 2>::from_elem([n, m], T::zero());
     
     // Evaluate kernel at all combinations of Gauss points
     for i in 0..n {
@@ -208,7 +219,7 @@ pub fn matrix_from_gauss<T: CustomNumeric + Clone, K: CentrosymmKernel + KernelP
     
     let n = gauss_x.x.len();
     let m = gauss_y.x.len();
-    let mut result = Array2::from_elem((n, m), T::zero());
+    let mut result = DTensor::<T, 2>::from_elem([n, m], T::zero());
     
     // Evaluate kernel at all combinations of Gauss points
     for i in 0..n {
@@ -240,7 +251,7 @@ pub struct InterpolatedKernel<T> {
     pub domain_y: (T, T),
     
     /// Interpolators for each cell ((segments_x.len()-1) × (segments_y.len()-1))
-    pub interpolators: Array2<Interpolate2D<T>>,
+    pub interpolators: DTensor<Interpolate2D<T>, 2>,
     
     /// Number of cells (for efficiency)
     pub n_cells_x: usize,
@@ -286,7 +297,7 @@ impl<T: CustomNumeric + Debug + Clone + 'static> InterpolatedKernel<T> {
                     .reseat(segments_y[j], segments_y[j+1]);
                 
                 // Evaluate kernel at Gauss points in this cell
-                let mut cell_values = Array2::from_elem((gauss_per_cell, gauss_per_cell), T::zero());
+                let mut cell_values = DTensor::<T, 2>::from_elem([gauss_per_cell, gauss_per_cell], T::zero());
                 for k in 0..gauss_per_cell {
                     for l in 0..gauss_per_cell {
                         let x = cell_gauss_x.x[k];
@@ -302,9 +313,10 @@ impl<T: CustomNumeric + Debug + Clone + 'static> InterpolatedKernel<T> {
             }
         }
         
-        // Convert Vec to Array2
-        let interpolators_array = Array2::from_shape_vec((n_cells_x, n_cells_y), interpolators)
-            .expect("Failed to create interpolators array");
+        // Convert Vec to DTensor
+        let interpolators_array = DTensor::<Interpolate2D<T>, 2>::from_fn([n_cells_x, n_cells_y], |idx| {
+            interpolators[idx[0] * n_cells_y + idx[1]].clone()
+        });
         
         Self {
             segments_x: segments_x.clone(),

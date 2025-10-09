@@ -101,12 +101,12 @@ impl<T: CustomNumeric + Debug + 'static> Interpolate2D<T> {
     
     /// Get the number of interpolation points in x direction
     pub fn n_points_x(&self) -> usize {
-        self.coeffs.nrows()
+        self.coeffs.shape().0
     }
     
     /// Get the number of interpolation points in y direction
     pub fn n_points_y(&self) -> usize {
-        self.coeffs.ncols()
+        self.coeffs.shape().1
     }
     
     /// Evaluate the interpolated function at a given point (alias for interpolate)
