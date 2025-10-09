@@ -166,6 +166,56 @@ fn apply_rotation_right<T: Precision>(m: &mut [[T; 2]; 2], p: usize, q: usize, r
     m[1][p] = temp2;
 }
 
+/// Apply Givens rotation to matrix from the left
+/// 
+/// Applies rotation to rows p and q of matrix.
+/// Equivalent to M = G^T * M where G is the Givens rotation matrix.
+pub fn apply_givens_left<T: Precision>(
+    matrix: &mut Tensor<T, (usize, usize)>,
+    p: usize,
+    q: usize,
+    c: T,
+    s: T,
+) {
+    let shape = *matrix.shape();
+    let n = shape.1;
+    for j in 0..n {
+        let xi = matrix[[p, j]];
+        let yi = matrix[[q, j]];
+        
+        let new_xi = c * xi - s * yi;
+        let new_yi = s * xi + c * yi;
+        
+        matrix[[p, j]] = new_xi;
+        matrix[[q, j]] = new_yi;
+    }
+}
+
+/// Apply Givens rotation to matrix from the right
+/// 
+/// Applies rotation to columns p and q of matrix.
+/// Equivalent to M = M * G where G is the Givens rotation matrix.
+pub fn apply_givens_right<T: Precision>(
+    matrix: &mut Tensor<T, (usize, usize)>,
+    p: usize,
+    q: usize,
+    c: T,
+    s: T,
+) {
+    let shape = *matrix.shape();
+    let m = shape.0;
+    for i in 0..m {
+        let xj = matrix[[i, p]];
+        let yj = matrix[[i, q]];
+        
+        let new_xj = c * xj - s * yj;
+        let new_yj = s * xj + c * yj;
+        
+        matrix[[i, p]] = new_xj;
+        matrix[[i, q]] = new_yj;
+    }
+}
+
 /// Jacobi SVD algorithm
 /// 
 /// Computes the SVD using two-sided Jacobi iterations.
