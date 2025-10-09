@@ -60,27 +60,29 @@ pub fn norm_max<T: Precision>(mat: &Tensor<T, (usize, usize)>) -> T {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::array;
+    use mdarray::tensor;
     use approx::assert_abs_diff_eq;
     
     #[test]
     fn test_norm_2() {
-        let v = array![3.0, 4.0, 0.0];
-        let norm = norm_2(v.view());
+        let v = Tensor::from_fn((3,), |idx| [3.0, 4.0, 0.0][idx[0]]);
+        let norm = norm_2(&v);
         assert_abs_diff_eq!(norm, 5.0, epsilon = 1e-10);
     }
     
     #[test]
     fn test_norm_frobenius() {
-        let m = array![[3.0, 4.0], [0.0, 5.0]];
-        let norm = norm_frobenius(m.view());
+        let m = Tensor::from_fn((2, 2), |idx| {
+            [[3.0, 4.0], [0.0, 5.0]][idx[0]][idx[1]]
+        });
+        let norm = norm_frobenius(&m);
         assert_abs_diff_eq!(norm, (9.0 + 16.0 + 0.0 + 25.0).sqrt(), epsilon = 1e-10);
     }
     
     #[test]
     fn test_norm_inf() {
-        let v = array![1.0, -3.0, 2.0];
-        let norm = norm_inf(v.view());
+        let v = Tensor::from_fn((3,), |idx| [1.0, -3.0, 2.0][idx[0]]);
+        let norm = norm_inf(&v);
         assert_abs_diff_eq!(norm, 3.0, epsilon = 1e-10);
     }
 }

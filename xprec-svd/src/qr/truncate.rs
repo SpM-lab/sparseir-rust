@@ -57,17 +57,15 @@ pub fn truncate_qr_result<T: Precision>(
 mod tests {
     use super::*;
     use crate::qr::rrqr::rrqr;
-    use ndarray::array;
+    use mdarray::tensor;
     use approx::assert_abs_diff_eq;
     
     #[test]
     fn test_truncate_qr_result() {
         // Create a test matrix
-        let mut a = array![
-            [1.0, 2.0, 3.0],
-            [4.0, 5.0, 6.0],
-            [7.0, 8.0, 9.0]
-        ];
+        let mut a = Tensor::from_fn((3, 3), |idx| {
+            [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]][idx[0]][idx[1]]
+        });
         
         // Perform RRQR
         let (qr, rank) = rrqr(&mut a, 1e-10);
@@ -76,17 +74,23 @@ mod tests {
         let (q_trunc, r_trunc) = truncate_qr_result(&qr, rank);
         
         // Verify dimensions
-        assert_eq!(q_trunc.nrows(), 3);
-        assert_eq!(q_trunc.ncols(), rank);
-        assert_eq!(r_trunc.nrows(), rank);
-        assert_eq!(r_trunc.ncols(), 3);
+        let q_shape = *q_trunc.shape();
+        let r_shape = *r_trunc.shape();
+        assert_eq!(q_shape.0, 3);
+        assert_eq!(q_shape.1, rank);
+        assert_eq!(r_shape.0, rank);
+        assert_eq!(r_shape.1, 3);
         
         // Verify that Q_trunc is orthogonal (Q^T Q = I)
-        let qtq = q_trunc.t().dot(&q_trunc);
+        // Compute Q^T * Q manually
         for i in 0..rank {
             for j in 0..rank {
+                let mut sum = 0.0;
+                for k in 0..3 {
+                    sum += q_trunc[[k, i]] * q_trunc[[k, j]];
+                }
                 let expected = if i == j { 1.0 } else { 0.0 };
-                assert_abs_diff_eq!(qtq[[i, j]], expected, epsilon = 1e-10);
+                assert_abs_diff_eq!(sum, expected, epsilon = 1e-10);
             }
         }
     }

@@ -425,7 +425,7 @@ pub fn jacobi_svd<T: Precision>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mdarray::tensor;
+    use mdarray::{tensor, Tensor};
     use approx::assert_abs_diff_eq;
     
     #[test]
@@ -458,10 +458,17 @@ mod tests {
         }
         
         // U and V should be identity matrices
-        for i in 0..3 {
-            for j in 0..3 {
+        let u_shape = *result.u.shape();
+        let v_shape = *result.v.shape();
+        for i in 0..u_shape.0.min(u_shape.1) {
+            for j in 0..u_shape.1 {
                 let expected = if i == j { 1.0 } else { 0.0 };
                 assert_abs_diff_eq!(result.u[[i, j]], expected, epsilon = 1e-10);
+            }
+        }
+        for i in 0..v_shape.0.min(v_shape.1) {
+            for j in 0..v_shape.1 {
+                let expected = if i == j { 1.0 } else { 0.0 };
                 assert_abs_diff_eq!(result.v[[i, j]], expected, epsilon = 1e-10);
             }
         }
@@ -469,11 +476,7 @@ mod tests {
     
     #[test]
     fn test_jacobi_svd_rank_one() {
-        let a = tensor![
-            [1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0]
-        ];
+        let a = Tensor::from_fn((3, 3), |_| 1.0);
         
         let result: SVDResult<f64> = jacobi_svd(&a);
         

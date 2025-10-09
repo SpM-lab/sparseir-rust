@@ -62,23 +62,21 @@ pub fn invert_permutation(permutation: &Tensor<usize, (usize,)>) -> Tensor<usize
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::array;
+    use mdarray::tensor;
     use approx::assert_abs_diff_eq;
     
     #[test]
     fn test_apply_column_permutation() {
-        let mut m = array![
-            [1.0, 2.0, 3.0],
-            [4.0, 5.0, 6.0]
-        ];
-        let p = array![2, 0, 1]; // Swap columns 0<->2, 1<->0, 2<->1
+        let mut m = Tensor::from_fn((2, 3), |idx| {
+            [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]][idx[0]][idx[1]]
+        });
+        let p = Tensor::from_fn((3,), |idx| [2, 0, 1][idx[0]]);
         
         apply_column_permutation(&mut m, &p);
         
-        let expected = array![
-            [3.0, 1.0, 2.0],
-            [6.0, 4.0, 5.0]
-        ];
+        let expected = Tensor::from_fn((2, 3), |idx| {
+            [[3.0, 1.0, 2.0], [6.0, 4.0, 5.0]][idx[0]][idx[1]]
+        });
         
         for i in 0..2 {
             for j in 0..3 {
@@ -89,14 +87,12 @@ mod tests {
     
     #[test]
     fn test_permutation_matrix() {
-        let p = array![2, 0, 1];
+        let p = Tensor::from_fn((3,), |idx| [2, 0, 1][idx[0]]);
         let p_matrix = permutation_matrix::<f64>(&p);
         
-        let expected = array![
-            [0.0, 0.0, 1.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0]
-        ];
+        let expected = Tensor::from_fn((3, 3), |idx| {
+            [[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]][idx[0]][idx[1]]
+        });
         
         for i in 0..3 {
             for j in 0..3 {
@@ -107,13 +103,13 @@ mod tests {
     
     #[test]
     fn test_invert_permutation() {
-        let p = array![2, 0, 1];
+        let p = Tensor::from_fn((3,), |idx| [2, 0, 1][idx[0]]);
         let inv_p = invert_permutation(&p);
         
-        let expected = array![1, 2, 0];
+        let expected = [1, 2, 0];
         
         for i in 0..3 {
-            assert_eq!(inv_p[i], expected[i]);
+            assert_eq!(inv_p[[i]], expected[i]);
         }
     }
 }

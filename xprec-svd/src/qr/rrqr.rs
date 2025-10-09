@@ -205,16 +205,14 @@ pub fn rrqr<T: Precision>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::array;
+    use mdarray::tensor;
     // Test utilities
     
     #[test]
     fn test_rrqr_simple() {
-        let mut a = array![
-            [1.0, 2.0, 3.0],
-            [4.0, 5.0, 6.0],
-            [7.0, 8.0, 9.0]
-        ];
+        let mut a = Tensor::from_fn((3, 3), |idx| {
+            [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]][idx[0]][idx[1]]
+        });
         
         let (qr, rank) = rrqr(&mut a, 1e-10);
         
@@ -230,11 +228,9 @@ mod tests {
     
     #[test]
     fn test_rrqr_full_rank() {
-        let mut a = array![
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0]
-        ];
+        let mut a = Tensor::from_fn((3, 3), |idx| {
+            if idx[0] == idx[1] { 1.0 } else { 0.0 }
+        });
         
         let (qr, rank) = rrqr(&mut a, 1e-10);
         
@@ -244,11 +240,7 @@ mod tests {
     
     #[test]
     fn test_rrqr_rank_one() {
-        let mut a = array![
-            [1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0]
-        ];
+        let mut a = Tensor::from_fn((3, 3), |_| 1.0);
         
         let (qr, rank) = rrqr(&mut a, 1e-10);
         

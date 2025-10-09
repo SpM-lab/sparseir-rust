@@ -166,17 +166,17 @@ pub fn tsvd_twofloat_from_f64(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::array;
+    use mdarray::tensor;
     use approx::assert_abs_diff_eq;
     
     #[test]
     fn test_tsvd_identity() {
-        let a = Array2::eye(3);
+        let a = Tensor::from_fn((3, 3), |idx| if idx[0] == idx[1] { 1.0 } else { 0.0 });
         let result = tsvd_f64(&a, 1e-10).unwrap();
         
         // Identity matrix should have singular values all equal to 1
-        for &s in result.s.iter() {
-            assert_abs_diff_eq!(s, 1.0, epsilon = 1e-10);
+        for i in 0..result.s.len() {
+            assert_abs_diff_eq!(result.s[[i]], 1.0, epsilon = 1e-10);
         }
         
         assert_eq!(result.rank, 3);
@@ -184,11 +184,7 @@ mod tests {
     
     #[test]
     fn test_tsvd_rank_one() {
-        let a = array![
-            [1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0]
-        ];
+        let a = Tensor::from_fn((3, 3), |_| 1.0);
         
         let result = tsvd_f64(&a, 1e-10).unwrap();
         
@@ -196,12 +192,12 @@ mod tests {
         assert_eq!(result.rank, 1);
         
         // Should have one non-zero singular value
-        assert!(result.s[0] > 1.0);
+        assert!(result.s[[0]] > 1.0);
     }
     
     #[test]
     fn test_tsvd_empty_matrix() {
-        let a = Array2::<f64>::zeros((0, 0));
+        let a = Tensor::from_elem((0, 0), 0.0);
         let result = tsvd_f64(&a, 1e-10);
         
         assert!(matches!(result, Err(TSVDError::EmptyMatrix)));
@@ -209,7 +205,7 @@ mod tests {
     
     #[test]
     fn test_tsvd_invalid_tolerance() {
-        let a = Array2::eye(2);
+        let a = Tensor::from_fn((2, 2), |idx| if idx[0] == idx[1] { 1.0 } else { 0.0 });
         let result = tsvd_f64(&a, -1.0);
         
         assert!(matches!(result, Err(TSVDError::InvalidTolerance(_))));

@@ -143,35 +143,37 @@ mod tests {
     
     #[test]
     fn test_validate_svd_identity() {
-        let original = Array2::eye(3);
-        let u = Array2::eye(3);
-        let s = array![1.0, 1.0, 1.0];
-        let v = Array2::eye(3);
+        let original = Tensor::from_fn((3, 3), |idx| if idx[0] == idx[1] { 1.0 } else { 0.0 });
+        let u = Tensor::from_fn((3, 3), |idx| if idx[0] == idx[1] { 1.0 } else { 0.0 });
+        let s = Tensor::from_fn((3,), |_| 1.0);
+        let v = Tensor::from_fn((3, 3), |idx| if idx[0] == idx[1] { 1.0 } else { 0.0 });
         
-        assert!(validate_svd(original.view(), u.view(), s.view(), v.view(), 1e-10));
+        assert!(validate_svd(&original, &u, &s, &v, 1e-10));
     }
     
     #[test]
     fn test_is_orthogonal() {
-        let u = Array2::eye(3);
-        assert!(is_orthogonal(u.view(), 1e-10));
+        let u = Tensor::from_fn((3, 3), |idx| if idx[0] == idx[1] { 1.0 } else { 0.0 });
+        assert!(is_orthogonal(&u, 1e-10));
         
-        let u = array![[1.0, 0.0], [0.0, 1.0]];
-        assert!(is_orthogonal(u.view(), 1e-10));
+        let u = Tensor::from_fn((2, 2), |idx| if idx[0] == idx[1] { 1.0 } else { 0.0 });
+        assert!(is_orthogonal(&u, 1e-10));
         
-        let u = array![[1.0, 1.0], [0.0, 1.0]]; // Not orthogonal
-        assert!(!is_orthogonal(u.view(), 1e-10));
+        let u = Tensor::from_fn((2, 2), |idx| {
+            [[1.0, 1.0], [0.0, 1.0]][idx[0]][idx[1]]
+        });
+        assert!(!is_orthogonal(&u, 1e-10));
     }
     
     #[test]
     fn test_is_singular_values_valid() {
-        let s = array![3.0, 2.0, 1.0]; // Valid: positive and sorted
-        assert!(is_singular_values_valid(s.view(), 1e-10));
+        let s = Tensor::from_fn((3,), |idx| [3.0, 2.0, 1.0][idx[0]]);
+        assert!(is_singular_values_valid(&s, 1e-10));
         
-        let s = array![1.0, 2.0, 3.0]; // Invalid: not sorted
-        assert!(!is_singular_values_valid(s.view(), 1e-10));
+        let s = Tensor::from_fn((3,), |idx| [1.0, 2.0, 3.0][idx[0]]);
+        assert!(!is_singular_values_valid(&s, 1e-10));
         
-        let s = array![3.0, -1.0, 1.0]; // Invalid: negative
-        assert!(!is_singular_values_valid(s.view(), 1e-10));
+        let s = Tensor::from_fn((3,), |idx| [3.0, -1.0, 1.0][idx[0]]);
+        assert!(!is_singular_values_valid(&s, 1e-10));
     }
 }
