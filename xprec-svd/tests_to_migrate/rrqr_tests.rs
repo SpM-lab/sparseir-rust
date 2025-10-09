@@ -1,13 +1,14 @@
 //! Parameterized RRQR tests for f64 and TwoFloat precision
 
 use xprec_svd::*;
-use ndarray::array;
+use mdarray::Tensor;;
+
 use xprec_svd::precision::{Precision, TwoFloatPrecision};
 
 /// Convert f64 matrix to TwoFloatPrecision matrix
-fn to_twofloat_matrix(matrix: &ndarray::Array2<f64>) -> ndarray::Array2<TwoFloatPrecision> {
-    let (m, n) = matrix.dim();
-    let mut result = ndarray::Array2::zeros((m, n));
+fn to_twofloat_matrix(matrix: &Tensor<f64>) -> Tensor<TwoFloatPrecision> {
+    let (m, n) = matrix.shape();
+    let mut result = Tensor::from_elem((m, n), T::zero());
     for i in 0..m {
         for j in 0..n {
             result[[i, j]] = TwoFloatPrecision::from_f64(matrix[[i, j]]);
@@ -17,9 +18,9 @@ fn to_twofloat_matrix(matrix: &ndarray::Array2<f64>) -> ndarray::Array2<TwoFloat
 }
 
 /// Convert TwoFloatPrecision matrix back to f64 for comparison
-fn to_f64_matrix(matrix: &ndarray::Array2<TwoFloatPrecision>) -> ndarray::Array2<f64> {
-    let (m, n) = matrix.dim();
-    let mut result = ndarray::Array2::zeros((m, n));
+fn to_f64_matrix(matrix: &Tensor<TwoFloatPrecision>) -> Tensor<f64> {
+    let (m, n) = matrix.shape();
+    let mut result = Tensor::from_elem((m, n), T::zero());
     for i in 0..m {
         for j in 0..n {
             result[[i, j]] = matrix[[i, j]].to_f64();
@@ -39,8 +40,8 @@ where
     ];
     
     // Convert to target precision
-    let (m, n) = matrix_f64.dim();
-    let mut a = ndarray::Array2::zeros((m, n));
+    let (m, n) = matrix_f64.shape();
+    let mut a = Tensor::from_elem((m, n), T::zero());
     for i in 0..m {
         for j in 0..n {
             a[[i, j]] = <T as From<f64>>::from(matrix_f64[[i, j]]);
@@ -69,7 +70,7 @@ fn test_rrqr_simple_matrix_template_f64() {
     let (q, r) = truncate_qr_result(&qr, rank);
     
     // Create permutation matrix P
-    let mut p: ndarray::Array2<f64> = ndarray::Array2::zeros((a.ncols(), a.ncols()));
+    let mut p: Tensor<f64> = Tensor::zeros((a.shape().1, a.shape().1));
     for (i, &j) in qr.jpvt.iter().enumerate() {
         p[[j, i]] = 1.0;
     }
@@ -105,7 +106,7 @@ fn test_rrqr_simple_matrix_template_twofloat() {
     let (q, r) = truncate_qr_result(&qr, rank);
     
     // Create permutation matrix P
-    let mut p: ndarray::Array2<f64> = ndarray::Array2::zeros((a.ncols(), a.ncols()));
+    let mut p: Tensor<f64> = Tensor::zeros((a.shape().1, a.shape().1));
     for (i, &j) in qr.jpvt.iter().enumerate() {
         p[[j, i]] = 1.0;
     }
@@ -135,8 +136,8 @@ where
     ];
     
     // Convert to target precision
-    let (m, n) = matrix_f64.dim();
-    let mut a = ndarray::Array2::zeros((m, n));
+    let (m, n) = matrix_f64.shape();
+    let mut a = Tensor::from_elem((m, n), T::zero());
     for i in 0..m {
         for j in 0..n {
             a[[i, j]] = <T as From<f64>>::from(matrix_f64[[i, j]]);
@@ -160,8 +161,8 @@ where
     ];
     
     // Convert to target precision
-    let (m, n) = matrix_f64.dim();
-    let mut a = ndarray::Array2::zeros((m, n));
+    let (m, n) = matrix_f64.shape();
+    let mut a = Tensor::from_elem((m, n), T::zero());
     for i in 0..m {
         for j in 0..n {
             a[[i, j]] = <T as From<f64>>::from(matrix_f64[[i, j]]);
@@ -182,8 +183,8 @@ where
     let matrix_f64 = array![[5.0]];
     
     // Convert to target precision
-    let (m, n) = matrix_f64.dim();
-    let mut a = ndarray::Array2::zeros((m, n));
+    let (m, n) = matrix_f64.shape();
+    let mut a = Tensor::from_elem((m, n), T::zero());
     for i in 0..m {
         for j in 0..n {
             a[[i, j]] = <T as From<f64>>::from(matrix_f64[[i, j]]);
@@ -209,7 +210,7 @@ fn test_rrqr_orthogonal_q_template_f64() {
     
     // Q should be orthogonal: Q^T * Q = I
     let qtq = q.t().dot(&q);
-    let identity: ndarray::Array2<f64> = ndarray::Array2::eye(q.ncols());
+    let identity: Tensor<f64> = Tensor::eye(q.shape().1);
     
     let error = &qtq - &identity;
     let max_error = error.iter().map(|x| x.abs()).fold(0.0, f64::max);
@@ -235,7 +236,7 @@ fn test_rrqr_orthogonal_q_template_twofloat() {
     
     // Q should be orthogonal: Q^T * Q = I
     let qtq = q_f64.t().dot(&q_f64);
-    let identity: ndarray::Array2<f64> = ndarray::Array2::eye(q_f64.ncols());
+    let identity: Tensor<f64> = Tensor::eye(q_f64.shape().1);
     
     let error = &qtq - &identity;
     let max_error = error.iter().map(|x| x.abs()).fold(0.0, f64::max);
@@ -334,8 +335,8 @@ fn test_rrqr_precision_comparison() {
     let (q_tf, _) = truncate_qr_result(&qr_tf, rank_tf);
     let q_tf_f64 = to_f64_matrix(&q_tf);
     
-    for i in 0..q_f64.nrows() {
-        for j in 0..q_f64.ncols() {
+    for i in 0..q_f64.shape().0 {
+        for j in 0..q_f64.shape().1 {
             let diff = (q_f64[[i, j]] - q_tf_f64[[i, j]]).abs();
             // TwoFloat should be more accurate, so difference should be small
             assert!(diff < 100.0 * f64::EPSILON, "Q matrix difference at [{}, {}]: {}", i, j, diff);
