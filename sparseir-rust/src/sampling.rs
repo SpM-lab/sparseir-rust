@@ -7,7 +7,7 @@ use crate::basis::FiniteTempBasis;
 use crate::gemm::matmul_par;
 use crate::kernel::{KernelProperties, CentrosymmKernel};
 use crate::traits::StatisticsType;
-use mdarray::DTensor;
+use mdarray::{DTensor, Tensor, DynRank, Shape};
 
 /// Sparse sampling in imaginary time
 ///
@@ -227,6 +227,101 @@ where
         // Extract result as Vec
         (0..basis_size).map(|i| coeffs_col[[i, 0]]).collect()
     }
+    
+    /// Evaluate basis coefficients at sampling points (N-dimensional)
+    ///
+    /// Evaluates along the specified dimension, keeping other dimensions intact.
+    ///
+    /// # Arguments
+    /// * `coeffs` - N-dimensional array with `coeffs.shape().dim(dim) == basis_size`
+    /// * `dim` - Dimension along which to evaluate (0-indexed)
+    ///
+    /// # Returns
+    /// N-dimensional array with `result.shape().dim(dim) == n_sampling_points`
+    ///
+    /// # Panics
+    /// Panics if `coeffs.shape().dim(dim) != basis_size` or if `dim >= rank`
+    ///
+    /// # Example
+    /// ```ignore
+    /// use mdarray::tensor;
+    /// // coeffs: (basis_size, n_k, n_omega)
+    /// // With dim=0, result: (n_sampling_points, n_k, n_omega)
+    /// let values = sampling.evaluate_nd(&coeffs, 0);
+    /// ```
+    pub fn evaluate_nd(
+        &self,
+        coeffs: &Tensor<f64, DynRank>,
+        dim: usize,
+    ) -> Tensor<f64, DynRank> {
+        let rank = coeffs.rank();
+        assert!(dim < rank, "dim={} must be < rank={}", dim, rank);
+        
+        let basis_size = self.basis_size();
+        let target_dim_size = coeffs.shape().dim(dim);
+        
+        // Check that the target dimension matches basis_size
+        assert_eq!(
+            target_dim_size,
+            basis_size,
+            "coeffs.shape().dim({}) = {} must equal basis_size = {}",
+            dim,
+            target_dim_size,
+            basis_size
+        );
+        
+        // Apply matrix operation along dimension
+        matop_along_dim(&self.matrix, coeffs, dim)
+    }
+    
+    /// Fit basis coefficients from values at sampling points (N-dimensional)
+    ///
+    /// Fits along the specified dimension, keeping other dimensions intact.
+    ///
+    /// # Arguments
+    /// * `values` - N-dimensional array with `values.shape().dim(dim) == n_sampling_points`
+    /// * `dim` - Dimension along which to fit (0-indexed)
+    ///
+    /// # Returns
+    /// N-dimensional array with `result.shape().dim(dim) == basis_size`
+    ///
+    /// # Panics
+    /// Panics if `values.shape().dim(dim) != n_sampling_points`, if `dim >= rank`, or if SVD not computed
+    ///
+    /// # Example
+    /// ```ignore
+    /// use mdarray::tensor;
+    /// // values: (n_sampling_points, n_k, n_omega)
+    /// // With dim=0, result: (basis_size, n_k, n_omega)
+    /// let coeffs = sampling.fit_nd(&values, 0);
+    /// ```
+    pub fn fit_nd(
+        &self,
+        values: &Tensor<f64, DynRank>,
+        dim: usize,
+    ) -> Tensor<f64, DynRank> {
+        let rank = values.rank();
+        assert!(dim < rank, "dim={} must be < rank={}", dim, rank);
+        
+        let svd = self.matrix_svd.as_ref()
+            .expect("SVD not computed. Create TauSampling with compute_svd=true");
+        
+        let n_points = self.n_sampling_points();
+        let target_dim_size = values.shape().dim(dim);
+        
+        // Check that the target dimension matches n_sampling_points
+        assert_eq!(
+            target_dim_size,
+            n_points,
+            "values.shape().dim({}) = {} must equal n_sampling_points = {}",
+            dim,
+            target_dim_size,
+            n_points
+        );
+        
+        // Apply SVD-based fit along dimension
+        fit_along_dim(svd, values, dim)
+    }
 }
 
 /// Evaluate the sampling matrix: A[i, l] = u_l(τ_i)
@@ -251,6 +346,181 @@ where
         let tau = sampling_points[i];
         basis.u[l].evaluate(tau)
     })
+}
+
+/// Apply matrix operation along a specific dimension
+///
+/// This is similar to Julia's `matop_along_dim!` and C++'s `evaluate_dimx`.
+/// Currently supports dim=0 only for simplicity.
+fn matop_along_dim(
+    matrix: &DTensor<f64, 2>,
+    arr: &Tensor<f64, DynRank>,
+    dim: usize,
+) -> Tensor<f64, DynRank> {
+    if dim == 0 {
+        // Get dimensions
+        let rank = arr.rank();
+        let dim0 = arr.shape().dim(0);
+        let rest: usize = (1..rank).map(|i| arr.shape().dim(i)).product();
+        
+        // Store arr_shape for later use
+        let arr_shape: Vec<usize> = arr.shape().with_dims(|dims| dims.to_vec());
+        
+        // Reshape arr: (d0, d1, d2, ...) → (d0, d1*d2*...)
+        let arr_2d = DTensor::<f64, 2>::from_fn([dim0, rest], |idx| {
+            let i = idx[0];
+            let flat_j = idx[1];
+            
+            // Convert flat_j back to multi-dimensional index
+            let mut multi_idx = vec![0; rank];
+            multi_idx[0] = i;
+            let mut remainder = flat_j;
+            for d in (1..rank).rev() {
+                multi_idx[d] = remainder % arr_shape[d];
+                remainder /= arr_shape[d];
+            }
+            arr[&multi_idx[..]]
+        });
+        
+        // result_2d = matrix @ arr_2d: (mat_rows, rest)
+        let result_2d = matmul_par(matrix, &arr_2d);
+        
+        // Reshape back: (mat_rows, rest) → (mat_rows, d1, d2, ...)
+        let mat_rows = matrix.shape().0;
+        let mut result_shape = arr_shape.clone();
+        result_shape[0] = mat_rows;
+        
+        // Create result tensor and fill element by element
+        let mut result: Tensor<f64, DynRank> = Tensor::zeros(result_shape.as_slice());
+        
+        // Generate all multi-dimensional indices and fill
+        let mut indices = vec![0; rank];
+        loop {
+            let i = indices[0];
+            let mut flat_j = 0;
+            let mut stride = 1;
+            for d in (1..rank).rev() {
+                flat_j += indices[d] * stride;
+                stride *= arr_shape[d];
+            }
+            result[indices.as_slice()] = result_2d[[i, flat_j]];
+            
+            // Increment indices
+            let mut carry = true;
+            for d in (0..rank).rev() {
+                if carry {
+                    indices[d] += 1;
+                    if indices[d] < result_shape[d] {
+                        carry = false;
+                    } else {
+                        indices[d] = 0;
+                    }
+                }
+            }
+            if carry {
+                break; // All indices exhausted
+            }
+        }
+        
+        result
+    } else {
+        // TODO: Support other dimensions by permuting axes
+        panic!("Only dim=0 is currently supported. Got dim={}", dim);
+    }
+}
+
+/// Fit operation along a specific dimension using SVD
+fn fit_along_dim(
+    svd: &SamplingMatrixSVD,
+    values: &Tensor<f64, DynRank>,
+    dim: usize,
+) -> Tensor<f64, DynRank> {
+    if dim == 0 {
+        // Get dimensions
+        let rank = values.rank();
+        let dim0 = values.shape().dim(0);
+        let rest: usize = (1..rank).map(|i| values.shape().dim(i)).product();
+        
+        // Store values_shape for later use
+        let values_shape: Vec<usize> = values.shape().with_dims(|dims| dims.to_vec());
+        
+        // Reshape values: (d0, d1, d2, ...) → (d0, d1*d2*...)
+        let values_2d = DTensor::<f64, 2>::from_fn([dim0, rest], |idx| {
+            let i = idx[0];
+            let flat_j = idx[1];
+            
+            // Convert flat_j back to multi-dimensional index
+            let mut multi_idx = vec![0; rank];
+            multi_idx[0] = i;
+            let mut remainder = flat_j;
+            for d in (1..rank).rev() {
+                multi_idx[d] = remainder % values_shape[d];
+                remainder /= values_shape[d];
+            }
+            values[&multi_idx[..]]
+        });
+        
+        // Compute U^T * values_2d
+        let ut = svd.u.transpose().to_tensor();
+        let ut_values = matmul_par(&ut, &values_2d);
+        
+        // Divide by singular values
+        let basis_size = svd.vt.shape().1;
+        let s_inv_ut_values = DTensor::<f64, 2>::from_fn([basis_size, rest], |idx| {
+            let i = idx[0];
+            let j = idx[1];
+            if i < svd.s.len() {
+                ut_values[[i, j]] / svd.s[i]
+            } else {
+                0.0
+            }
+        });
+        
+        // coeffs_2d = V * (S^{-1} * U^T * values)
+        let v = svd.vt.transpose().to_tensor();
+        let coeffs_2d = matmul_par(&v, &s_inv_ut_values);
+        
+        // Reshape back: (basis_size, rest) → (basis_size, d1, d2, ...)
+        let mut result_shape = values_shape.clone();
+        result_shape[0] = basis_size;
+        
+        // Create result tensor and fill element by element
+        let mut result: Tensor<f64, DynRank> = Tensor::zeros(result_shape.as_slice());
+        
+        // Generate all multi-dimensional indices and fill
+        let mut indices = vec![0; rank];
+        loop {
+            let i = indices[0];
+            let mut flat_j = 0;
+            let mut stride = 1;
+            for d in (1..rank).rev() {
+                flat_j += indices[d] * stride;
+                stride *= values_shape[d];
+            }
+            result[indices.as_slice()] = coeffs_2d[[i, flat_j]];
+            
+            // Increment indices
+            let mut carry = true;
+            for d in (0..rank).rev() {
+                if carry {
+                    indices[d] += 1;
+                    if indices[d] < result_shape[d] {
+                        carry = false;
+                    } else {
+                        indices[d] = 0;
+                    }
+                }
+            }
+            if carry {
+                break; // All indices exhausted
+            }
+        }
+        
+        result
+    } else {
+        // TODO: Support other dimensions by permuting axes
+        panic!("Only dim=0 is currently supported. Got dim={}", dim);
+    }
 }
 
 /// Compute SVD of the sampling matrix using Faer
