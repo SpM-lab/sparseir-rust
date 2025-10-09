@@ -8,21 +8,23 @@ use crate::precision::Precision;
 /// Checks that the SVD decomposition A = U * S * V^T is correct
 /// and that U and V are orthogonal matrices.
 pub fn validate_svd<T: Precision>(
-    original: ArrayView2<T>,
-    u: ArrayView2<T>,
-    s: ArrayView1<T>,
-    v: ArrayView2<T>,
+    original: &Tensor<T, (usize, usize)>,
+    u: &Tensor<T, (usize, usize)>,
+    s: &Tensor<T, (usize,)>,
+    v: &Tensor<T, (usize, usize)>,
     tolerance: T,
 ) -> bool {
-    let m = original.nrows();
-    let n = original.ncols();
+    let orig_shape = *original.shape();
+    let (m, n) = orig_shape;
     let k = s.len();
     
     // Check dimensions
-    if u.nrows() != m || u.ncols() != k {
+    let u_shape = *u.shape();
+    let v_shape = *v.shape();
+    if u_shape.0 != m || u_shape.1 != k {
         return false;
     }
-    if v.nrows() != n || v.ncols() != k {
+    if v_shape.0 != n || v_shape.1 != k {
         return false;
     }
     
@@ -50,26 +52,19 @@ pub fn validate_svd<T: Precision>(
 }
 
 /// Check if a matrix is orthogonal
-fn is_orthogonal<T: Precision>(matrix: ArrayView2<T>, tolerance: T) -> bool {
-    let k = matrix.ncols();
-    let mut utu = Array2::zeros((k, k));
+fn is_orthogonal<T: Precision>(matrix: &Tensor<T, (usize, usize)>, tolerance: T) -> bool {
+    let shape = *matrix.shape();
+    let k = shape.1;
     
-    // Compute U^T * U
+    // Compute U^T * U and check against identity
     for i in 0..k {
         for j in 0..k {
             let mut sum = T::zero();
-            for row in 0..matrix.nrows() {
+            for row in 0..shape.0 {
                 sum = sum + matrix[[row, i]] * matrix[[row, j]];
             }
-            utu[[i, j]] = sum;
-        }
-    }
-    
-    // Check that U^T * U = I
-    for i in 0..k {
-        for j in 0..k {
             let expected = if i == j { T::one() } else { T::zero() };
-            if Precision::abs(utu[[i, j]] - expected) > tolerance {
+            if Precision::abs(sum - expected) > tolerance {
                 return false;
             }
         }
@@ -79,18 +74,22 @@ fn is_orthogonal<T: Precision>(matrix: ArrayView2<T>, tolerance: T) -> bool {
 }
 
 /// Check if singular values are valid
-fn is_singular_values_valid<T: Precision>(s: ArrayView1<T>, tolerance: T) -> bool {
+fn is_singular_values_valid<T: Precision>(s: &Tensor<T, (usize,)>, tolerance: T) -> bool {
+    let k = s.len();
+    
     // Check that all singular values are non-negative
-    for &val in s.iter() {
-        if val < -tolerance {
+    for i in 0..k {
+        if s[[i]] < T::zero() - tolerance {
             return false;
         }
     }
     
     // Check that singular values are sorted in descending order
-    for i in 0..(s.len() - 1) {
-        if s[i] < s[i + 1] - tolerance {
-            return false;
+    if k > 1 {
+        for i in 0..(k - 1) {
+            if s[[i]] < s[[i + 1]] - tolerance {
+                return false;
+            }
         }
     }
     
@@ -99,27 +98,15 @@ fn is_singular_values_valid<T: Precision>(s: ArrayView1<T>, tolerance: T) -> boo
 
 /// Check if reconstruction is valid
 fn is_reconstruction_valid<T: Precision>(
-    original: ArrayView2<T>,
-    u: ArrayView2<T>,
-    s: ArrayView1<T>,
-    v: ArrayView2<T>,
+    original: &Tensor<T, (usize, usize)>,
+    u: &Tensor<T, (usize, usize)>,
+    s: &Tensor<T, (usize,)>,
+    v: &Tensor<T, (usize, usize)>,
     tolerance: T,
 ) -> bool {
-    let m = original.nrows();
-    let n = original.ncols();
+    let orig_shape = *original.shape();
+    let (m, n) = orig_shape;
     let k = s.len();
-    
-    // Compute reconstructed matrix
-    let mut reconstructed = Array2::zeros((m, n));
-    for i in 0..m {
-        for j in 0..n {
-            let mut sum = T::zero();
-            for l in 0..k {
-                sum = sum + u[[i, l]] * s[l] * v[[j, l]];
-            }
-            reconstructed[[i, j]] = sum;
-        }
-    }
     
     // Check that ||A - U*S*V^T||_F < tolerance * ||A||_F
     let mut diff_norm_sq = T::zero();
@@ -127,7 +114,13 @@ fn is_reconstruction_valid<T: Precision>(
     
     for i in 0..m {
         for j in 0..n {
-            let diff = original[[i, j]] - reconstructed[[i, j]];
+            // Compute reconstructed element
+            let mut reconstructed = T::zero();
+            for l in 0..k {
+                reconstructed = reconstructed + u[[i, l]] * s[[l]] * v[[j, l]];
+            }
+            
+            let diff = original[[i, j]] - reconstructed;
             diff_norm_sq = diff_norm_sq + diff * diff;
             orig_norm_sq = orig_norm_sq + original[[i, j]] * original[[i, j]];
         }

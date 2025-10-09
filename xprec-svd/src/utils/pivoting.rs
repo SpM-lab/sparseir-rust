@@ -8,10 +8,11 @@ use crate::precision::Precision;
 /// Given a permutation vector `p` and a matrix, permutes the columns
 /// according to the permutation.
 pub fn apply_column_permutation<T: Precision>(
-    matrix: &mut ndarray::Array2<T>,
-    permutation: &Array1<usize>,
+    matrix: &mut Tensor<T, (usize, usize)>,
+    permutation: &Tensor<usize, (usize,)>,
 ) {
-    let n = matrix.ncols();
+    let shape = *matrix.shape();
+    let (m, n) = shape;
     assert_eq!(permutation.len(), n);
     
     // Create a copy for reading
@@ -19,8 +20,10 @@ pub fn apply_column_permutation<T: Precision>(
     
     // Apply permutation
     for j in 0..n {
-        let new_j = permutation[j];
-        matrix.column_mut(j).assign(&original.column(new_j));
+        let new_j = permutation[[j]];
+        for i in 0..m {
+            matrix[[i, j]] = original[[i, new_j]];
+        }
     }
 }
 
@@ -29,31 +32,31 @@ pub fn apply_column_permutation<T: Precision>(
 /// Given a permutation vector `p`, creates the corresponding
 /// permutation matrix P such that P[i, p[i]] = 1.
 pub fn permutation_matrix<T: Precision>(
-    permutation: &Array1<usize>,
-) -> ndarray::Array2<T> {
+    permutation: &Tensor<usize, (usize,)>,
+) -> Tensor<T, (usize, usize)> {
     let n = permutation.len();
-    let mut p = ndarray::Array2::zeros((n, n));
-    
-    for i in 0..n {
-        p[[i, permutation[i]]] = T::one();
-    }
-    
-    p
+    Tensor::from_fn((n, n), |idx| {
+        if idx[1] == permutation[[idx[0]]] {
+            T::one()
+        } else {
+            T::zero()
+        }
+    })
 }
 
 /// Invert a permutation vector
 /// 
 /// Given a permutation vector `p`, computes the inverse permutation
 /// such that inv_p[p[i]] = i for all i.
-pub fn invert_permutation(permutation: &Array1<usize>) -> Array1<usize> {
+pub fn invert_permutation(permutation: &Tensor<usize, (usize,)>) -> Tensor<usize, (usize,)> {
     let n = permutation.len();
-    let mut inv_p = Array1::zeros(n);
+    let mut inv_p = vec![0; n];
     
     for i in 0..n {
-        inv_p[permutation[i]] = i;
+        inv_p[permutation[[i]]] = i;
     }
     
-    inv_p
+    Tensor::from_fn((n,), |idx| inv_p[idx[0]])
 }
 
 #[cfg(test)]

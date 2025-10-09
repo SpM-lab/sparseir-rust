@@ -166,58 +166,6 @@ fn apply_rotation_right<T: Precision>(m: &mut [[T; 2]; 2], p: usize, q: usize, r
     m[1][p] = temp2;
 }
 
-/// Apply Givens rotation to a matrix
-/// 
-/// Applies the rotation matrix:
-/// [c -s] to the left or [c  s] to the right
-/// [s  c]               [-s c]
-pub fn apply_givens_left<T: Precision>(
-    matrix: &mut Array2<T>,
-    i: usize,
-    j: usize,
-    c: T,
-    s: T,
-) {
-    let n = matrix.ncols();
-    
-    // Left rotation: update rows i and j
-    for k in 0..n {
-        let xi = matrix[[i, k]];
-        let yi = matrix[[j, k]];
-        let new_xi = c * xi + s * yi;
-        let new_yi = -s * xi + c * yi;
-        matrix[[i, k]] = new_xi;
-        matrix[[j, k]] = new_yi;
-    }
-}
-
-pub fn apply_givens_right<T: Precision>(
-    matrix: &mut Array2<T>,
-    i: usize,
-    j: usize,
-    c: T,
-    s: T,
-) {
-    let m = matrix.nrows();
-    
-    
-    // Right rotation: update columns i and j
-    // Note: Eigen3's applyOnTheRight applies the transpose of the rotation
-    // So we apply (c, -s) instead of (c, s)
-    for k in 0..m {
-        let xi = matrix[[k, i]];
-        let yi = matrix[[k, j]];
-        
-        // Apply transpose: (c, -s)
-        // Must use temporary variables to avoid in-place issues
-        let new_xi = c * xi - s * yi;
-        let new_yi = s * xi + c * yi;
-        matrix[[k, i]] = new_xi;
-        matrix[[k, j]] = new_yi;
-        
-    }
-}
-
 /// Jacobi SVD algorithm
 /// 
 /// Computes the SVD using two-sided Jacobi iterations.

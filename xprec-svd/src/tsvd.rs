@@ -60,11 +60,11 @@ pub enum TSVDError {
 /// # Returns
 /// * `SVDResult` - Truncated SVD result
 pub fn tsvd<T: Precision + 'static + std::fmt::Debug>(
-    matrix: &Array2<T>,
+    matrix: &Tensor<T, (usize, usize)>,
     config: TSVDConfig<T>,
 ) -> Result<crate::svd::jacobi::SVDResult<T>, TSVDError> {
-    let m = matrix.nrows();
-    let n = matrix.ncols();
+    let shape = *matrix.shape();
+    let (m, n) = shape;
     
     if m == 0 || n == 0 {
         return Err(TSVDError::EmptyMatrix);
@@ -83,9 +83,9 @@ pub fn tsvd<T: Precision + 'static + std::fmt::Debug>(
     if k == 0 {
         // Matrix has zero rank
         return Ok(crate::svd::jacobi::SVDResult {
-            u: Array2::zeros((m, 0)),
-            s: Array1::zeros(0),
-            v: Array2::zeros((n, 0)),
+            u: Tensor::from_elem((m, 0), T::zero()),
+            s: Tensor::from_elem((0,), T::zero()),
+            v: Tensor::from_elem((n, 0), T::zero()),
             rank: 0,
         });
     }
@@ -94,27 +94,34 @@ pub fn tsvd<T: Precision + 'static + std::fmt::Debug>(
     let (q_trunc, r_trunc) = truncate_qr_result(&qr, k);
     
     // Step 3: Compute SVD of R^T
-    let r_transpose = r_trunc.t().to_owned();
+    let r_shape = *r_trunc.shape();
+    let r_transpose = Tensor::from_fn((r_shape.1, r_shape.0), |idx| r_trunc[[idx[1], idx[0]]]);
     let svd_result = jacobi_svd(&r_transpose);
     
     // Step 4: Reconstruct final U and V
-    // U = Q_trunc * V_svd
-    let u = q_trunc.dot(&svd_result.v);
+    // U = Q_trunc * V_svd (manual matrix multiplication)
+    let u_shape = *q_trunc.shape();
+    let v_svd_shape = *svd_result.v.shape();
+    let u = Tensor::from_fn((u_shape.0, v_svd_shape.1), |idx| {
+        let mut sum = T::zero();
+        for l in 0..u_shape.1 {
+            sum = sum + q_trunc[[idx[0], l]] * svd_result.v[[l, idx[1]]];
+        }
+        sum
+    });
     
     // V = P^(-1) * U_svd (where P^(-1) is the inverse permutation matrix)
     // First, compute inverse permutation
     let mut inv_perm = vec![0; n];
     for i in 0..n {
-        inv_perm[qr.jpvt[i]] = i;
+        inv_perm[qr.jpvt[[i]]] = i;
     }
     
     // Apply inverse permutation: V[i, j] = U_svd[inv_perm[i], j]
-    let mut v = Array2::zeros((n, k));
-    for i in 0..n {
-        for j in 0..k {
-            v[[i, j]] = svd_result.u[[inv_perm[i], j]];
-        }
-    }
+    let u_svd_shape = *svd_result.u.shape();
+    let v = Tensor::from_fn((n, u_svd_shape.1), |idx| {
+        svd_result.u[[inv_perm[idx[0]], idx[1]]]
+    });
     
     Ok(crate::svd::jacobi::SVDResult {
         u,
@@ -126,7 +133,7 @@ pub fn tsvd<T: Precision + 'static + std::fmt::Debug>(
 
 /// Convenience function for f64 precision
 pub fn tsvd_f64(
-    matrix: &Array2<f64>,
+    matrix: &Tensor<f64, (usize, usize)>,
     rtol: f64,
 ) -> Result<crate::svd::jacobi::SVDResult<f64>, TSVDError> {
     tsvd(matrix, TSVDConfig::new(rtol))
@@ -134,7 +141,7 @@ pub fn tsvd_f64(
 
 /// Convenience function for TwoFloat precision
 pub fn tsvd_twofloat(
-    matrix: &Array2<crate::precision::TwoFloatPrecision>,
+    matrix: &Tensor<crate::precision::TwoFloatPrecision, (usize, usize)>,
     rtol: crate::precision::TwoFloatPrecision,
 ) -> Result<crate::svd::jacobi::SVDResult<crate::precision::TwoFloatPrecision>, TSVDError> {
     let config = TSVDConfig::new(rtol);
@@ -143,17 +150,15 @@ pub fn tsvd_twofloat(
 
 /// Convenience function to convert f64 matrix to TwoFloat and compute SVD
 pub fn tsvd_twofloat_from_f64(
-    matrix: &Array2<f64>,
+    matrix: &Tensor<f64, (usize, usize)>,
     rtol: f64,
 ) -> Result<crate::svd::jacobi::SVDResult<crate::precision::TwoFloatPrecision>, TSVDError> {
     // Convert f64 matrix to TwoFloatPrecision
-    let (m, n) = matrix.dim();
-    let mut matrix_tf = Array2::zeros((m, n));
-    for i in 0..m {
-        for j in 0..n {
-            matrix_tf[[i, j]] = crate::precision::TwoFloatPrecision::from_f64(matrix[[i, j]]);
-        }
-    }
+    let shape = *matrix.shape();
+    let (m, n) = shape;
+    let matrix_tf = Tensor::from_fn((m, n), |idx| {
+        crate::precision::TwoFloatPrecision::from_f64(matrix[[idx[0], idx[1]]])
+    });
     
     tsvd_twofloat(&matrix_tf, crate::precision::TwoFloatPrecision::from_f64(rtol))
 }

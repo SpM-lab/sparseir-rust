@@ -137,20 +137,13 @@ pub fn compute_r<T: Precision>(
     let (m, n) = shape;
     let k = m.min(n);
     
-    let mut r = Array2::zeros((k, n));
-    
-    for i in 0..k {
-        for j in i..n {
-            r[[i, j]] = factors[[i, j]];
+    let r = Tensor::from_fn((k, n), |idx| {
+        if idx[1] >= idx[0] {
+            factors[[idx[0], idx[1]]]
+        } else {
+            T::zero()
         }
-    }
-    
-    // Ensure lower triangular part is zero (like libsparseir)
-    for j in 0..k {
-        for i in j + 1..k {
-            r[[i, j]] = T::zero();
-        }
-    }
+    });
     
     r
 }
