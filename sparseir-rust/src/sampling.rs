@@ -323,13 +323,11 @@ where
         // 2. Reshape to 2D: (basis_size, extra_size)
         let extra_size: usize = coeffs_dim0.len() / basis_size;
         
-        // Use remap to convert DynRank view to fixed Rank<2> view (zero-copy)
-        let coeffs_2d_view_dyn = coeffs_dim0.reshape(&[basis_size, extra_size][..]);
-        let coeffs_2d_view: mdarray::View<f64, mdarray::Rank<2>, mdarray::Dense> = 
-            coeffs_2d_view_dyn.remap();
-        
-        // to_tensor() only copies once (View → Tensor)
-        let coeffs_2d = coeffs_2d_view.to_tensor();
+        // Convert DynRank to fixed Rank<2> for matmul_par
+        let coeffs_2d_dyn = coeffs_dim0.reshape(&[basis_size, extra_size][..]).to_tensor();
+        let coeffs_2d = DTensor::<f64, 2>::from_fn([basis_size, extra_size], |idx| {
+            coeffs_2d_dyn[&[idx[0], idx[1]][..]]
+        });
         
         // 3. Matrix multiply: result = A * coeffs
         //    A: (n_points, basis_size), coeffs: (basis_size, extra_size)
@@ -344,10 +342,9 @@ where
                 result_shape.push(dims[i]);
             }
         });
-        // Convert DTensor<f64, 2> to DynRank first
-        let result_2d_dyn = Tensor::<f64, DynRank>::from_fn(&[n_points, extra_size][..], |idx| {
-            result_2d[[idx[0], idx[1]]]
-        });
+        
+        // Convert DTensor<f64, 2> to DynRank using into_dyn()
+        let result_2d_dyn = result_2d.into_dyn();
         let result_dim0 = result_2d_dyn.reshape(&result_shape[..]).to_tensor();
         
         // 5. Move dimension back to original position
@@ -615,8 +612,9 @@ fn compute_matrix_svd(matrix: &DTensor<f64, 2>) -> SamplingMatrixSVD {
     let SVDDecomp { u, s, vt } = Faer.svd(&mut a)
         .expect("SVD computation failed");
     
-    // Convert s to Vec<f64>
-    let s_vec: Vec<f64> = (0..s.len()).map(|i| s[i]).collect();
+    // Convert s to Vec<f64> (mdarray-linalg stores singular values in first row: s[[0, i]])
+    let min_dim = s.shape().0.min(s.shape().1);
+    let s_vec: Vec<f64> = (0..min_dim).map(|i| s[[0, i]]).collect();
     
     SamplingMatrixSVD {
         u,
