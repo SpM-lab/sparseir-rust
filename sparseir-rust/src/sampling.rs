@@ -317,7 +317,68 @@ where
         self.fit_impl(values)
     }
     
-    /// Evaluate basis coefficients at sampling points (N-dimensional)
+    /// Internal generic evaluate_nd implementation
+    fn evaluate_nd_impl<T>(
+        &self,
+        coeffs: &Tensor<T, DynRank>,
+        dim: usize,
+    ) -> Tensor<T, DynRank>
+    where
+        T: num_complex::ComplexFloat + faer_traits::ComplexField + 'static + From<f64> + Copy,
+    {
+        let rank = coeffs.rank();
+        assert!(dim < rank, "dim={} must be < rank={}", dim, rank);
+        
+        let basis_size = self.basis_size();
+        let target_dim_size = coeffs.shape().dim(dim);
+        
+        // Check that the target dimension matches basis_size
+        assert_eq!(
+            target_dim_size,
+            basis_size,
+            "coeffs.shape().dim({}) = {} must equal basis_size = {}",
+            dim,
+            target_dim_size,
+            basis_size
+        );
+        
+        // 1. Move target dimension to position 0
+        let coeffs_dim0 = movedim(coeffs, dim, 0);
+        
+        // 2. Reshape to 2D: (basis_size, extra_size)
+        let extra_size: usize = coeffs_dim0.len() / basis_size;
+        
+        // Convert DynRank to fixed Rank<2> for matmul_par
+        let coeffs_2d_dyn = coeffs_dim0.reshape(&[basis_size, extra_size][..]).to_tensor();
+        let coeffs_2d = DTensor::<T, 2>::from_fn([basis_size, extra_size], |idx| {
+            coeffs_2d_dyn[&[idx[0], idx[1]][..]]
+        });
+        
+        // 3. Matrix multiply: result = A * coeffs
+        //    A is real, convert to type T
+        let n_points = self.n_sampling_points();
+        let matrix_t = DTensor::<T, 2>::from_fn(*self.matrix.shape(), |idx| {
+            self.matrix[idx].into()
+        });
+        let result_2d = matmul_par(&matrix_t, &coeffs_2d);
+        
+        // 4. Reshape back to N-D with n_points at position 0
+        let mut result_shape = vec![n_points];
+        coeffs_dim0.shape().with_dims(|dims| {
+            for i in 1..dims.len() {
+                result_shape.push(dims[i]);
+            }
+        });
+        
+        // Convert DTensor<T, 2> to DynRank using into_dyn()
+        let result_2d_dyn = result_2d.into_dyn();
+        let result_dim0 = result_2d_dyn.reshape(&result_shape[..]).to_tensor();
+        
+        // 5. Move dimension back to original position
+        movedim(&result_dim0, 0, dim)
+    }
+    
+    /// Evaluate basis coefficients at sampling points (N-dimensional, real)
     ///
     /// Evaluates along the specified dimension, keeping other dimensions intact.
     ///
@@ -343,86 +404,43 @@ where
         coeffs: &Tensor<f64, DynRank>,
         dim: usize,
     ) -> Tensor<f64, DynRank> {
-        let rank = coeffs.rank();
-        assert!(dim < rank, "dim={} must be < rank={}", dim, rank);
-        
-        let basis_size = self.basis_size();
-        let target_dim_size = coeffs.shape().dim(dim);
-        
-        // Check that the target dimension matches basis_size
-        assert_eq!(
-            target_dim_size,
-            basis_size,
-            "coeffs.shape().dim({}) = {} must equal basis_size = {}",
-            dim,
-            target_dim_size,
-            basis_size
-        );
-        
-        // 1. Move target dimension to position 0
-        let coeffs_dim0 = movedim(coeffs, dim, 0);
-        
-        // 2. Reshape to 2D: (basis_size, extra_size)
-        let extra_size: usize = coeffs_dim0.len() / basis_size;
-        
-        // Convert DynRank to fixed Rank<2> for matmul_par
-        let coeffs_2d_dyn = coeffs_dim0.reshape(&[basis_size, extra_size][..]).to_tensor();
-        let coeffs_2d = DTensor::<f64, 2>::from_fn([basis_size, extra_size], |idx| {
-            coeffs_2d_dyn[&[idx[0], idx[1]][..]]
-        });
-        
-        // 3. Matrix multiply: result = A * coeffs
-        //    A: (n_points, basis_size), coeffs: (basis_size, extra_size)
-        //    result: (n_points, extra_size)
-        let n_points = self.n_sampling_points();
-        let result_2d = matmul_par(&self.matrix, &coeffs_2d);
-        
-        // 4. Reshape back to N-D with n_points at position 0
-        let mut result_shape = vec![n_points];
-        coeffs_dim0.shape().with_dims(|dims| {
-            for i in 1..dims.len() {
-                result_shape.push(dims[i]);
-            }
-        });
-        
-        // Convert DTensor<f64, 2> to DynRank using into_dyn()
-        let result_2d_dyn = result_2d.into_dyn();
-        let result_dim0 = result_2d_dyn.reshape(&result_shape[..]).to_tensor();
-        
-        // 5. Move dimension back to original position
-        movedim(&result_dim0, 0, dim)
+        self.evaluate_nd_impl(coeffs, dim)
     }
     
-    /// Fit basis coefficients from values at sampling points (N-dimensional)
+    /// Evaluate basis coefficients at sampling points (N-dimensional, complex)
     ///
-    /// Fits along the specified dimension, keeping other dimensions intact.
+    /// Evaluates along the specified dimension, keeping other dimensions intact.
     ///
     /// # Arguments
-    /// * `values` - N-dimensional array with `values.shape().dim(dim) == n_sampling_points`
-    /// * `dim` - Dimension along which to fit (0-indexed)
+    /// * `coeffs` - N-dimensional complex array with `coeffs.shape().dim(dim) == basis_size`
+    /// * `dim` - Dimension along which to evaluate (0-indexed)
     ///
     /// # Returns
-    /// N-dimensional array with `result.shape().dim(dim) == basis_size`
+    /// N-dimensional complex array with `result.shape().dim(dim) == n_sampling_points`
     ///
     /// # Panics
-    /// Panics if `values.shape().dim(dim) != n_sampling_points`, if `dim >= rank`, or if SVD not computed
-    ///
-    /// # Example
-    /// ```ignore
-    /// use mdarray::tensor;
-    /// // values: (n_sampling_points, n_k, n_omega)
-    /// // With dim=0, result: (basis_size, n_k, n_omega)
-    /// let coeffs = sampling.fit_nd(&values, 0);
-    /// ```
-    pub fn fit_nd(
+    /// Panics if `coeffs.shape().dim(dim) != basis_size` or if `dim >= rank`
+    pub fn evaluate_nd_complex(
         &self,
-        values: &Tensor<f64, DynRank>,
+        coeffs: &Tensor<Complex<f64>, DynRank>,
         dim: usize,
-    ) -> Tensor<f64, DynRank> {
+    ) -> Tensor<Complex<f64>, DynRank> {
+        self.evaluate_nd_impl(coeffs, dim)
+    }
+    
+    /// Internal generic fit_nd implementation
+    fn fit_nd_impl<T>(
+        &self,
+        values: &Tensor<T, DynRank>,
+        dim: usize,
+    ) -> Tensor<T, DynRank>
+    where
+        T: num_complex::ComplexFloat + faer_traits::ComplexField + 'static + From<f64> + Copy,
+    {
         let rank = values.rank();
         assert!(dim < rank, "dim={} must be < rank={}", dim, rank);
         
-        // Compute SVD lazily on first call
+        // Compute SVD lazily on first call (always real)
         if self.matrix_svd.borrow().is_none() {
             let svd = compute_matrix_svd(&self.matrix);
             
@@ -455,7 +473,57 @@ where
         );
         
         // Apply SVD-based fit along dimension
-        fit_along_dim(svd, values, dim)
+        fit_along_dim_impl(&svd, values, dim)
+    }
+    
+    /// Fit basis coefficients from values at sampling points (N-dimensional, real)
+    ///
+    /// Fits along the specified dimension, keeping other dimensions intact.
+    ///
+    /// # Arguments
+    /// * `values` - N-dimensional array with `values.shape().dim(dim) == n_sampling_points`
+    /// * `dim` - Dimension along which to fit (0-indexed)
+    ///
+    /// # Returns
+    /// N-dimensional array with `result.shape().dim(dim) == basis_size`
+    ///
+    /// # Panics
+    /// Panics if `values.shape().dim(dim) != n_sampling_points`, if `dim >= rank`, or if SVD not computed
+    ///
+    /// # Example
+    /// ```ignore
+    /// use mdarray::tensor;
+    /// // values: (n_sampling_points, n_k, n_omega)
+    /// // With dim=0, result: (basis_size, n_k, n_omega)
+    /// let coeffs = sampling.fit_nd(&values, 0);
+    /// ```
+    pub fn fit_nd(
+        &self,
+        values: &Tensor<f64, DynRank>,
+        dim: usize,
+    ) -> Tensor<f64, DynRank> {
+        self.fit_nd_impl(values, dim)
+    }
+    
+    /// Fit basis coefficients from values at sampling points (N-dimensional, complex)
+    ///
+    /// Fits along the specified dimension, keeping other dimensions intact.
+    ///
+    /// # Arguments
+    /// * `values` - N-dimensional complex array with `values.shape().dim(dim) == n_sampling_points`
+    /// * `dim` - Dimension along which to fit (0-indexed)
+    ///
+    /// # Returns
+    /// N-dimensional complex array with `result.shape().dim(dim) == basis_size`
+    ///
+    /// # Panics
+    /// Panics if `values.shape().dim(dim) != n_sampling_points` or if `dim >= rank`
+    pub fn fit_nd_complex(
+        &self,
+        values: &Tensor<Complex<f64>, DynRank>,
+        dim: usize,
+    ) -> Tensor<Complex<f64>, DynRank> {
+        self.fit_nd_impl(values, dim)
     }
 }
 
@@ -483,98 +551,67 @@ where
     })
 }
 
-/// Fit operation along a specific dimension using SVD
-fn fit_along_dim(
+/// Generic fit operation along a specific dimension using SVD
+fn fit_along_dim_impl<T>(
     svd: &SamplingMatrixSVD,
-    values: &Tensor<f64, DynRank>,
+    values: &Tensor<T, DynRank>,
     dim: usize,
-) -> Tensor<f64, DynRank> {
-    if dim == 0 {
-        // Get dimensions
-        let rank = values.rank();
-        let dim0 = values.shape().dim(0);
-        let rest: usize = (1..rank).map(|i| values.shape().dim(i)).product();
-        
-        // Store values_shape for later use
-        let values_shape: Vec<usize> = values.shape().with_dims(|dims| dims.to_vec());
-        
-        // Reshape values: (d0, d1, d2, ...) → (d0, d1*d2*...)
-        let values_2d = DTensor::<f64, 2>::from_fn([dim0, rest], |idx| {
-            let i = idx[0];
-            let flat_j = idx[1];
-            
-            // Convert flat_j back to multi-dimensional index
-            let mut multi_idx = vec![0; rank];
-            multi_idx[0] = i;
-            let mut remainder = flat_j;
-            for d in (1..rank).rev() {
-                multi_idx[d] = remainder % values_shape[d];
-                remainder /= values_shape[d];
-            }
-            values[&multi_idx[..]]
-        });
-        
-        // Compute U^T * values_2d
-        let ut = svd.u.transpose().to_tensor();
-        let ut_values = matmul_par(&ut, &values_2d);
-        
-        // Divide by singular values
-        let basis_size = svd.vt.shape().1;
-        let s_inv_ut_values = DTensor::<f64, 2>::from_fn([basis_size, rest], |idx| {
-            let i = idx[0];
-            let j = idx[1];
-            if i < svd.s.len() {
-                ut_values[[i, j]] / svd.s[i]
-            } else {
-                0.0
-            }
-        });
-        
-        // coeffs_2d = V * (S^{-1} * U^T * values)
-        let v = svd.vt.transpose().to_tensor();
-        let coeffs_2d = matmul_par(&v, &s_inv_ut_values);
-        
-        // Reshape back: (basis_size, rest) → (basis_size, d1, d2, ...)
-        let mut result_shape = values_shape.clone();
-        result_shape[0] = basis_size;
-        
-        // Create result tensor and fill element by element
-        let mut result: Tensor<f64, DynRank> = Tensor::zeros(result_shape.as_slice());
-        
-        // Generate all multi-dimensional indices and fill
-        let mut indices = vec![0; rank];
-        loop {
-            let i = indices[0];
-            let mut flat_j = 0;
-            let mut stride = 1;
-            for d in (1..rank).rev() {
-                flat_j += indices[d] * stride;
-                stride *= values_shape[d];
-            }
-            result[indices.as_slice()] = coeffs_2d[[i, flat_j]];
-            
-            // Increment indices
-            let mut carry = true;
-            for d in (0..rank).rev() {
-                if carry {
-                    indices[d] += 1;
-                    if indices[d] < result_shape[d] {
-                        carry = false;
-                    } else {
-                        indices[d] = 0;
-                    }
-                }
-            }
-            if carry {
-                break; // All indices exhausted
-            }
+) -> Tensor<T, DynRank>
+where
+    T: num_complex::ComplexFloat + faer_traits::ComplexField + 'static + From<f64> + Copy,
+{
+    // Get dimensions
+    let dim0 = values.shape().dim(dim);
+    
+    // 1. Move target dimension to position 0
+    let values_dim0 = movedim(values, dim, 0);
+    
+    // 2. Reshape to 2D: (dim0, extra_size)
+    let extra_size: usize = values_dim0.len() / dim0;
+    
+    // Store values_shape for later use
+    let values_shape: Vec<usize> = values_dim0.shape().with_dims(|dims| dims.to_vec());
+    
+    // Reshape values: (d0, d1, d2, ...) → (d0, d1*d2*...)
+    let values_2d_dyn = values_dim0.reshape(&[dim0, extra_size][..]).to_tensor();
+    let values_2d = DTensor::<T, 2>::from_fn([dim0, extra_size], |idx| {
+        values_2d_dyn[&[idx[0], idx[1]][..]]
+    });
+    
+    // 3. Compute U^T * values_2d (convert real U to type T)
+    let ut = DTensor::<T, 2>::from_fn(*svd.u.shape(), |idx| {
+        svd.u[[idx[1], idx[0]]].into()  // transpose and convert
+    });
+    let ut_values = matmul_par(&ut, &values_2d);
+    
+    // 4. Divide by singular values: S^{-1} * (U^T * values)
+    let basis_size = svd.vt.shape().1;
+    let s_inv_ut_values = DTensor::<T, 2>::from_fn([basis_size, extra_size], |idx| {
+        let i = idx[0];
+        let j = idx[1];
+        if i < svd.s.len() {
+            ut_values[[i, j]] / svd.s[i].into()
+        } else {
+            T::zero()
         }
-        
-        result
-    } else {
-        // TODO: Support other dimensions by permuting axes
-        panic!("Only dim=0 is currently supported. Got dim={}", dim);
-    }
+    });
+    
+    // 5. coeffs_2d = V * (S^{-1} * U^T * values) (convert real V to type T)
+    let v = DTensor::<T, 2>::from_fn(*svd.vt.shape(), |idx| {
+        svd.vt[[idx[1], idx[0]]].into()  // transpose and convert
+    });
+    let coeffs_2d = matmul_par(&v, &s_inv_ut_values);
+    
+    // 6. Reshape back: (basis_size, extra_size) → (basis_size, d1, d2, ...)
+    let mut result_shape = values_shape.clone();
+    result_shape[0] = basis_size;
+    
+    // Convert coeffs_2d to DynRank and reshape
+    let coeffs_2d_dyn = coeffs_2d.into_dyn();
+    let result_dim0 = coeffs_2d_dyn.reshape(&result_shape[..]).to_tensor();
+    
+    // 7. Move dimension back to original position
+    movedim(&result_dim0, 0, dim)
 }
 
 /// Compute SVD of the sampling matrix using Faer
