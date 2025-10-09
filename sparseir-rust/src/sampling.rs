@@ -9,6 +9,53 @@ use crate::kernel::{KernelProperties, CentrosymmKernel};
 use crate::traits::StatisticsType;
 use mdarray::{DTensor, Tensor, DynRank, Shape};
 
+/// Move axis from position `src` to position `dst`
+///
+/// This is equivalent to numpy.moveaxis or libsparseir's movedim.
+/// It creates a permutation array that moves the specified axis.
+///
+/// # Arguments
+/// * `arr` - Input tensor
+/// * `src` - Source axis position
+/// * `dst` - Destination axis position
+///
+/// # Returns
+/// Tensor with axes permuted
+///
+/// # Example
+/// ```ignore
+/// // For a 4D tensor with shape (2, 3, 4, 5)
+/// // movedim(arr, 0, 2) moves axis 0 to position 2
+/// // Result shape: (3, 4, 2, 5) with axes permuted as [1, 2, 0, 3]
+/// ```
+fn movedim<T: Clone>(arr: &Tensor<T, DynRank>, src: usize, dst: usize) -> Tensor<T, DynRank> {
+    if src == dst {
+        return arr.clone();
+    }
+    
+    let rank = arr.rank();
+    assert!(src < rank, "src axis {} out of bounds for rank {}", src, rank);
+    assert!(dst < rank, "dst axis {} out of bounds for rank {}", dst, rank);
+    
+    // Generate permutation: move src to dst position
+    let mut perm = Vec::with_capacity(rank);
+    let mut pos = 0;
+    for i in 0..rank {
+        if i == dst {
+            perm.push(src);
+        } else {
+            // Skip src position
+            if pos == src {
+                pos += 1;
+            }
+            perm.push(pos);
+            pos += 1;
+        }
+    }
+    
+    arr.permute(&perm[..]).to_tensor()
+}
+
 /// Sparse sampling in imaginary time
 ///
 /// Allows transformation between the IR basis and a set of sampling points
@@ -270,8 +317,41 @@ where
             basis_size
         );
         
-        // Apply matrix operation along dimension
-        matop_along_dim(&self.matrix, coeffs, dim)
+        // 1. Move target dimension to position 0
+        let coeffs_dim0 = movedim(coeffs, dim, 0);
+        
+        // 2. Reshape to 2D: (basis_size, extra_size)
+        let extra_size: usize = coeffs_dim0.len() / basis_size;
+        
+        // Use remap to convert DynRank view to fixed Rank<2> view (zero-copy)
+        let coeffs_2d_view_dyn = coeffs_dim0.reshape(&[basis_size, extra_size][..]);
+        let coeffs_2d_view: mdarray::View<f64, mdarray::Rank<2>, mdarray::Dense> = 
+            coeffs_2d_view_dyn.remap();
+        
+        // to_tensor() only copies once (View → Tensor)
+        let coeffs_2d = coeffs_2d_view.to_tensor();
+        
+        // 3. Matrix multiply: result = A * coeffs
+        //    A: (n_points, basis_size), coeffs: (basis_size, extra_size)
+        //    result: (n_points, extra_size)
+        let n_points = self.n_sampling_points();
+        let result_2d = matmul_par(&self.matrix, &coeffs_2d);
+        
+        // 4. Reshape back to N-D with n_points at position 0
+        let mut result_shape = vec![n_points];
+        coeffs_dim0.shape().with_dims(|dims| {
+            for i in 1..dims.len() {
+                result_shape.push(dims[i]);
+            }
+        });
+        // Convert DTensor<f64, 2> to DynRank first
+        let result_2d_dyn = Tensor::<f64, DynRank>::from_fn(&[n_points, extra_size][..], |idx| {
+            result_2d[[idx[0], idx[1]]]
+        });
+        let result_dim0 = result_2d_dyn.reshape(&result_shape[..]).to_tensor();
+        
+        // 5. Move dimension back to original position
+        movedim(&result_dim0, 0, dim)
     }
     
     /// Fit basis coefficients from values at sampling points (N-dimensional)
