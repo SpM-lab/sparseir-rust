@@ -11,9 +11,9 @@ repository = "https://github.com/sparseir-rust/sparseir-rust"
 # Core linear algebra - mdarray with Faer backend (use same version as xprec-svd)
 mdarray = { git = "https://github.com/fre-hu/mdarray.git", rev = "11ce08ae30bae2269c85eab1c4620028d160591a" }
 mdarray-linalg = { path = "../mdarray-linalg/mdarray-linalg" }
-mdarray-linalg-faer = { path = "../mdarray-linalg/mdarray-linalg-faer", optional = true }
+mdarray-linalg-faer = { path = "../mdarray-linalg/mdarray-linalg-faer" }
 
-# Faer - Pure Rust high-performance linear algebra (always available)
+# Faer - Pure Rust high-performance linear algebra
 faer = "0.23"
 faer-traits = "0.23"
 
@@ -49,8 +49,8 @@ proptest = "1.0"
 libm = "0.2"
 
 [features]
-default = ["faer-backend"]
-faer-backend = ["mdarray-linalg-faer"]
+default = []
+# Future: optional BLAS/LAPACK backends for comparison
 # blas-backend = ["mdarray-linalg-blas", "openblas-src"]
 # lapack-backend = ["mdarray-linalg-lapack", "openblas-src"]
 
