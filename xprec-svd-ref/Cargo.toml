@@ -1,0 +1,40 @@
+[package]
+name = "xprec-svd"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "High-precision truncated SVD implementation"
+license = "MIT"
+repository = "https://github.com/sparseir-rust/xprec-svd"
+
+[dependencies]
+# Core linear algebra - mdarray (optional)
+mdarray = { path = "../mdarray", optional = true }
+
+# Legacy: ndarray (default for backward compatibility)
+ndarray = { version = "0.15", optional = true }
+nalgebra = "0.32"
+
+# Extended precision
+twofloat = "0.2"
+num-traits = "0.2"
+
+# Approximate equality
+approx = "0.5"
+
+# Error handling
+thiserror = "1.0"
+
+# Serialization (optional)
+serde = { version = "1.0", features = ["derive"], optional = true }
+
+[features]
+default = ["ndarray-backend"]
+ndarray-backend = ["ndarray"]
+mdarray-backend = ["mdarray"]
+f128 = []  # Enable f128 support when available
+serialize = ["serde"]
+
+[dev-dependencies]
+approx = "0.5"
+proptest = "1.0"
