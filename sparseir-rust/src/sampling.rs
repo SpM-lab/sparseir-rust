@@ -13,9 +13,8 @@ use mdarray::DTensor;
 ///
 /// Allows transformation between the IR basis and a set of sampling points
 /// in imaginary time (τ).
-pub struct TauSampling<K, S>
+pub struct TauSampling<S>
 where
-    K: KernelProperties + CentrosymmKernel + Clone + 'static,
     S: StatisticsType,
 {
     /// Sampling points in imaginary time τ ∈ [0, β]
@@ -29,7 +28,7 @@ where
     matrix_svd: Option<SamplingMatrixSVD>,
     
     /// Marker for statistics type
-    _phantom: std::marker::PhantomData<(K, S)>,
+    _phantom: std::marker::PhantomData<S>,
 }
 
 /// SVD decomposition of the sampling matrix
@@ -41,9 +40,8 @@ struct SamplingMatrixSVD {
     vt: DTensor<f64, 2>,
 }
 
-impl<K, S> TauSampling<K, S>
+impl<S> TauSampling<S>
 where
-    K: KernelProperties + CentrosymmKernel + Clone + 'static,
     S: StatisticsType,
 {
     /// Create a new TauSampling with default sampling points
@@ -56,7 +54,10 @@ where
     ///
     /// # Returns
     /// A new TauSampling object with SVD computed
-    pub fn new(basis: &FiniteTempBasis<K, S>) -> Self {
+    pub fn new<K>(basis: &FiniteTempBasis<K, S>) -> Self
+    where
+        K: KernelProperties + CentrosymmKernel + Clone + 'static,
+    {
         let sampling_points = basis.default_tau_sampling_points();
         Self::with_sampling_points(basis, sampling_points, true)
     }
@@ -73,11 +74,14 @@ where
     ///
     /// # Panics
     /// Panics if `sampling_points` is empty or if any point is outside [0, β]
-    pub fn with_sampling_points(
+    pub fn with_sampling_points<K>(
         basis: &FiniteTempBasis<K, S>,
         sampling_points: Vec<f64>,
         compute_svd: bool,
-    ) -> Self {
+    ) -> Self
+    where
+        K: KernelProperties + CentrosymmKernel + Clone + 'static,
+    {
         assert!(!sampling_points.is_empty(), "No sampling points given");
         
         let beta = basis.beta;
