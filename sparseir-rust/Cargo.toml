@@ -23,6 +23,7 @@ ndarray = "0.15"
 # Extended precision
 twofloat = "0.2"
 num-complex = "0.4"
+num-traits = "0.2"
 
 # High-precision arithmetic
 dashu-float = "0.4"
