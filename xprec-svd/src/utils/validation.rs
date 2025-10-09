@@ -139,7 +139,7 @@ fn is_reconstruction_valid<T: Precision>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::array;
+    use mdarray::tensor;
     
     #[test]
     fn test_validate_svd_identity() {
