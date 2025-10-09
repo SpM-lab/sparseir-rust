@@ -17,6 +17,7 @@ pub mod mdarray_compat;  // ndarray ↔ mdarray conversion helpers
 pub mod numeric;
 pub mod poly;
 pub mod polyfourier;
+pub mod sampling;  // Sparse sampling in imaginary time
 pub mod special_functions;
 pub mod traits;
 pub mod sve;
