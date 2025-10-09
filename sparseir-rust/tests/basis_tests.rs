@@ -98,10 +98,11 @@ fn test_default_tau_sampling_points_conditioning() {
     println!("\nSampling matrix SVD:");
     let min_dim = svd.s.shape().0.min(svd.s.shape().1);
     println!("  Rank: {}", min_dim);
+    // mdarray-linalg stores singular values in first row: s[[0, i]]
     println!("  First singular value: {:.6e}", svd.s[[0, 0]]);
-    println!("  Last singular value: {:.6e}", svd.s[[min_dim-1, min_dim-1]]);
+    println!("  Last singular value: {:.6e}", svd.s[[0, min_dim-1]]);
     
-    let condition_number = svd.s[[0, 0]] / svd.s[[min_dim-1, min_dim-1]];
+    let condition_number = svd.s[[0, 0]] / svd.s[[0, min_dim-1]];
     println!("  Condition number: {:.6e}", condition_number);
     
     // Reference condition number (from Julia/C++ for beta=1, lambda=10)

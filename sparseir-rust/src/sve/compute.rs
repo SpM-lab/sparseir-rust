@@ -156,10 +156,10 @@ fn compute_svd_f64_xprec<T: CustomNumeric>(
     let result = Faer.svd(&mut matrix_copy)
         .expect("SVD computation failed");
     
-    // Extract singular values from diagonal matrix
+    // Extract singular values from first row (mdarray-linalg stores in s[[0, i]])
     let min_dim = result.s.shape().0.min(result.s.shape().1);
     let s_vec: Vec<T> = (0..min_dim)
-        .map(|i| T::from_f64(result.s[[i, i]]))
+        .map(|i| T::from_f64(result.s[[0, i]]))  // First row, not diagonal!
         .collect();
     
     // Convert back to T
