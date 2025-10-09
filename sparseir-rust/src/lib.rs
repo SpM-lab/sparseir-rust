@@ -13,7 +13,6 @@ pub mod interpolation2d;
 pub mod kernel;
 pub mod kernelmatrix;
 pub mod kernelmatrix_mdarray;  // mdarray version for migration testing
-pub mod mdarray_compat;  // ndarray ↔ mdarray conversion helpers
 pub mod numeric;
 pub mod poly;
 pub mod polyfourier;
@@ -33,7 +32,7 @@ pub use kernel::{
     compute_logistic_kernel, CentrosymmKernel, KernelProperties, LogisticKernel, LogisticSVEHints,
     SVEHints, SymmetryType,
 };
-pub use numeric::{CustomNumeric, TwoFloatArrayOps};
+pub use numeric::CustomNumeric;
 pub use poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
 pub use polyfourier::{
     BosonicPiecewiseLegendreFT, BosonicPiecewiseLegendreFTVector, FermionicPiecewiseLegendreFT,

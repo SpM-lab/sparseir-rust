@@ -289,9 +289,9 @@ mod tests {
 
     #[test]
     fn test_truncate_by_rtol() {
-        let u = vec![Array2::from_shape_vec((3, 3), vec![1.0; 9]).unwrap()];
+        let u = vec![DTensor::<f64, 2>::from_elem([3, 3], 1.0)];
         let s = vec![vec![10.0, 5.0, 0.1]];
-        let v = vec![Array2::from_shape_vec((3, 3), vec![1.0; 9]).unwrap()];
+        let v = vec![DTensor::<f64, 2>::from_elem([3, 3], 1.0)];
         
         // rtol = 0.1, max_sval = 10.0, cutoff = 1.0
         // Keep values >= 1.0: [10.0, 5.0]
@@ -304,9 +304,9 @@ mod tests {
 
     #[test]
     fn test_truncate_by_max_size() {
-        let u = vec![Array2::from_shape_vec((3, 3), vec![1.0; 9]).unwrap()];
+        let u = vec![DTensor::<f64, 2>::from_elem([3, 3], 1.0)];
         let s = vec![vec![10.0, 5.0, 2.0]];
-        let v = vec![Array2::from_shape_vec((3, 3), vec![1.0; 9]).unwrap()];
+        let v = vec![DTensor::<f64, 2>::from_elem([3, 3], 1.0)];
         
         // max_num_svals = 2
         let (_, s_trunc, _) = truncate(u, s, v, 0.0, Some(2));
@@ -317,9 +317,9 @@ mod tests {
     #[test]
     #[should_panic(expected = "rtol must be in [0, 1]")]
     fn test_truncate_invalid_rtol() {
-        let u = vec![Array2::from_shape_vec((1, 1), vec![1.0]).unwrap()];
+        let u = vec![DTensor::<f64, 2>::from_elem([1, 1], 1.0)];
         let s = vec![vec![1.0]];
-        let v = vec![Array2::from_shape_vec((1, 1), vec![1.0]).unwrap()];
+        let v = vec![DTensor::<f64, 2>::from_elem([1, 1], 1.0)];
         
         truncate(u, s, v, 1.5, None);
     }

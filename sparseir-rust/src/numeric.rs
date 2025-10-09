@@ -3,7 +3,6 @@
 //! This module provides custom numeric traits that work with both f64 and TwoFloat
 //! for high-precision numerical computation in gauss quadrature and matrix operations.
 
-use ndarray::Array1;
 use std::fmt::Debug;
 use std::str::FromStr;
 use twofloat::TwoFloat;
@@ -285,35 +284,8 @@ impl CustomNumeric for TwoFloat {
 // We cannot implement them here due to Orphan Rules, but they are already implemented
 // in the ndarray crate for standard numeric types.
 
-/// Helper trait for array operations with TwoFloat
-pub trait TwoFloatArrayOps {
-    type Output;
-
-    /// Array-scalar multiplication
-    fn mul_scalar(&self, scalar: TwoFloat) -> Self::Output;
-
-    /// Array-scalar addition
-    fn add_scalar(&self, scalar: TwoFloat) -> Self::Output;
-
-    /// Array-scalar subtraction
-    fn sub_scalar(&self, scalar: TwoFloat) -> Self::Output;
-}
-
-impl TwoFloatArrayOps for Array1<TwoFloat> {
-    type Output = Array1<TwoFloat>;
-
-    fn mul_scalar(&self, scalar: TwoFloat) -> Self::Output {
-        self.mapv(|x| x * scalar)
-    }
-
-    fn add_scalar(&self, scalar: TwoFloat) -> Self::Output {
-        self.mapv(|x| x + scalar)
-    }
-
-    fn sub_scalar(&self, scalar: TwoFloat) -> Self::Output {
-        self.mapv(|x| x - scalar)
-    }
-}
+// Note: TwoFloatArrayOps trait and impl removed after ndarray migration
+// Array operations should now be done using mdarray Tensor methods directly
 
 #[cfg(test)]
 mod tests {
@@ -366,26 +338,7 @@ mod tests {
         assert!(eps < TwoFloat::from_f64(1.0));
     }
 
-    #[test]
-    fn test_twofloat_array_ops() {
-        let arr = Array1::from(vec![TwoFloat::from_f64(1.0), TwoFloat::from_f64(2.0)]);
-        let scalar = TwoFloat::from_f64(3.0);
-
-        // Test multiplication
-        let result = arr.mul_scalar(scalar);
-        assert_eq!(result[0], TwoFloat::from_f64(3.0));
-        assert_eq!(result[1], TwoFloat::from_f64(6.0));
-
-        // Test addition
-        let result = arr.add_scalar(scalar);
-        assert_eq!(result[0], TwoFloat::from_f64(4.0));
-        assert_eq!(result[1], TwoFloat::from_f64(5.0));
-
-        // Test subtraction
-        let result = arr.sub_scalar(scalar);
-        assert_eq!(result[0], TwoFloat::from_f64(-2.0));
-        assert_eq!(result[1], TwoFloat::from_f64(-1.0));
-    }
+    // Note: TwoFloatArrayOps tests removed after ndarray migration
 
     #[test]
     fn test_precision_comparison() {
