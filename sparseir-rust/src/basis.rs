@@ -281,6 +281,14 @@ where
             }
         }
         
+        // C++: Note - C++ implementation at line 262-268 shows that after
+        //      converting negative values, the array is NOT re-sorted.
+        //      However, this means some points may be out of order.
+        //      Let's check the C++ code again...
+        //
+        // Re-sort after conversion to ensure monotonic order
+        smpl_taus.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        
         smpl_taus
     }
 }
@@ -316,6 +324,83 @@ mod tests {
     fn test_negative_beta() {
         let kernel = LogisticKernel::new(1.0);
         let _ = FermionicBasis::new(kernel, -1.0, None, None);
+    }
+    
+    #[test]
+    fn test_default_tau_sampling_points_conditioning() {
+        // Test parameters: beta=1.0, lambda=10.0
+        let beta = 1.0;
+        let lambda = 10.0;
+        let epsilon = 1e-6;
+        
+        let kernel = LogisticKernel::new(lambda);
+        let basis = FermionicBasis::new(kernel, beta, Some(epsilon), None);
+        
+        println!("\n=== Default Tau Sampling Points Test ===");
+        println!("Beta: {}, Lambda: {}, Epsilon: {}", beta, lambda, epsilon);
+        println!("Basis size: {}", basis.size());
+        
+        // Get default sampling points
+        let tau_points = basis.default_tau_sampling_points();
+        println!("Number of sampling points: {}", tau_points.len());
+        println!("Sampling points (first 5):");
+        for i in 0..tau_points.len().min(5) {
+            println!("  tau[{}] = {:.10}", i, tau_points[i]);
+        }
+        if tau_points.len() > 5 {
+            println!("  ...");
+            println!("  tau[{}] = {:.10}", tau_points.len()-1, tau_points[tau_points.len()-1]);
+        }
+        
+        // Verify range
+        for &tau in &tau_points {
+            assert!(tau >= 0.0 && tau <= beta, 
+                    "tau={} out of range [0, {}]", tau, beta);
+        }
+        
+        // Verify sorted
+        for i in 1..tau_points.len() {
+            assert!(tau_points[i] >= tau_points[i-1], 
+                    "Points not sorted");
+        }
+        
+        // Evaluate sampling matrix: matrix[i,l] = u_l(tau_i)
+        use ndarray::Array2;
+        use crate::mdarray_compat::array2_to_tensor;
+        
+        let num_points = tau_points.len();
+        let basis_size = basis.size();
+        let mut matrix = Array2::zeros((num_points, basis_size));
+        
+        for i in 0..num_points {
+            let tau = tau_points[i];
+            // Evaluate all basis functions at this tau
+            let u_vals = basis.u.evaluate_at_many(&[tau]);
+            for l in 0..basis_size {
+                matrix[[i, l]] = u_vals[[l, 0]];
+            }
+        }
+        
+        println!("\nSampling matrix shape: {}x{}", num_points, basis_size);
+        
+        // Compute SVD of sampling matrix
+        let matrix_tensor = array2_to_tensor(&matrix);
+        let svd = xprec_svd::tsvd_f64(&matrix_tensor, 1e-15).unwrap();
+        
+        println!("\nSampling matrix SVD:");
+        println!("  Rank: {}", svd.s.len());
+        println!("  First singular value: {:.6e}", svd.s[[0]]);
+        println!("  Last singular value: {:.6e}", svd.s[[svd.s.len()-1]]);
+        
+        let condition_number = svd.s[[0]] / svd.s[[svd.s.len()-1]];
+        println!("  Condition number: {:.6e}", condition_number);
+        
+        // Conditioning check (from Julia: cond(sampling) > 1e8 triggers warning)
+        assert!(condition_number < 1e8, 
+                "Sampling matrix is poorly conditioned: cond = {:.6e}", 
+                condition_number);
+        
+        println!("✅ Sampling matrix is well-conditioned (cond < 1e8)");
     }
 }
 
