@@ -1,8 +1,7 @@
 //! Main SVE computation functions
 
-use ndarray::Array2;
+use mdarray::DTensor;
 use crate::numeric::CustomNumeric;
-use crate::mdarray_compat::{array2_to_tensor, tensor_to_array2};
 use crate::kernel::{CentrosymmKernel, KernelProperties, SVEHints};
 
 use super::result::SVEResult;
@@ -85,7 +84,7 @@ where
     let mut v_list = Vec::new();
     
     for matrix in matrices.iter() {
-        let (u, s, v) = compute_svd(&matrix);
+        let (u, s, v) = compute_svd(matrix);
         
         u_list.push(u);
         s_list.push(s);
@@ -132,8 +131,8 @@ where
 /// 
 /// Tuple of (U, singular_values, V) where A = U * S * V^T
 pub fn compute_svd<T: CustomNumeric + 'static>(
-    matrix: &Array2<T>
-) -> (Array2<T>, Vec<T>, Array2<T>) {
+    matrix: &DTensor<T, 2>
+) -> (DTensor<T, 2>, Vec<T>, DTensor<T, 2>) {
     if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
         compute_svd_f64_xprec(matrix)
     } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<twofloat::TwoFloat>() {
@@ -145,38 +144,42 @@ pub fn compute_svd<T: CustomNumeric + 'static>(
 
 /// Compute SVD for f64 using xprec-svd
 fn compute_svd_f64_xprec<T: CustomNumeric>(
-    matrix: &Array2<T>
-) -> (Array2<T>, Vec<T>, Array2<T>) {
-    let matrix_f64 = matrix.map(|&x| x.to_f64());
-    let matrix_tensor = array2_to_tensor(&matrix_f64);
-    // Use very loose rtol to avoid premature truncation
-    // The actual truncation will be done later based on user's epsilon
-    let rtol = 1e-14;
-    let result = xprec_svd::tsvd_f64(&matrix_tensor, rtol)
-        .expect("SVD computation failed");
+    matrix: &DTensor<T, 2>
+) -> (DTensor<T, 2>, Vec<T>, DTensor<T, 2>) {
+    let matrix_f64 = DTensor::<f64, 2>::from_fn(*matrix.shape(), |idx| matrix[idx].to_f64());
     
-    (
-        tensor_to_array2(&result.u).map(|&x| T::from_f64(x)),
-        result.s.iter().map(|&x| T::from_f64(x)).collect(),
-        tensor_to_array2(&result.v).map(|&x| T::from_f64(x)),
-    )
+    let result = xprec_svd::jacobi_svd(&matrix_f64);
+    
+    // Convert back to T
+    let u = DTensor::<T, 2>::from_fn(*result.u.shape(), |idx| T::from_f64(result.u[idx]));
+    let s: Vec<T> = result.s.iter().map(|&x| T::from_f64(x)).collect();
+    let v = DTensor::<T, 2>::from_fn(*result.v.shape(), |idx| T::from_f64(result.v[idx]));
+    
+    (u, s, v)
 }
 
 /// Compute SVD for TwoFloat using xprec-svd
 fn compute_svd_twofloat_xprec<T: CustomNumeric>(
-    matrix: &Array2<T>
-) -> (Array2<T>, Vec<T>, Array2<T>) {
-    let matrix_f64 = matrix.map(|&x| x.to_f64());
-    let matrix_tensor = array2_to_tensor(&matrix_f64);
-    let rtol = 1e-15;
-    let result = xprec_svd::tsvd_twofloat_from_f64(&matrix_tensor, rtol)
-        .expect("TwoFloat SVD computation failed");
+    matrix: &DTensor<T, 2>
+) -> (DTensor<T, 2>, Vec<T>, DTensor<T, 2>) {
+    let matrix_twofloat = DTensor::<xprec_svd::TwoFloatPrecision, 2>::from_fn(*matrix.shape(), |idx| {
+        xprec_svd::TwoFloatPrecision::from_f64(matrix[idx].to_f64())
+    });
     
-    (
-        tensor_to_array2(&result.u).map(|&x| T::from_f64(x.to_f64())),
-        result.s.iter().map(|&x| T::from_f64(x.to_f64())).collect(),
-        tensor_to_array2(&result.v).map(|&x| T::from_f64(x.to_f64())),
-    )
+    let result = xprec_svd::jacobi_svd(&matrix_twofloat);
+    
+    // Convert back to T (via f64 since TwoFloatPrecision needs to_f64())
+    let u = DTensor::<T, 2>::from_fn(*result.u.shape(), |idx| {
+        T::from_f64(result.u[idx].to_f64())
+    });
+    let s: Vec<T> = result.s.iter().map(|x| {
+        T::from_f64(x.to_f64())
+    }).collect();
+    let v = DTensor::<T, 2>::from_fn(*result.v.shape(), |idx| {
+        T::from_f64(result.v[idx].to_f64())
+    });
+    
+    (u, s, v)
 }
 
 /// Truncate SVD results based on cutoff and maximum size
@@ -193,12 +196,12 @@ fn compute_svd_twofloat_xprec<T: CustomNumeric>(
 /// 
 /// Tuple of (truncated_u_list, truncated_s_list, truncated_v_list)
 pub fn truncate<T: CustomNumeric>(
-    u_list: Vec<Array2<T>>,
+    u_list: Vec<DTensor<T, 2>>,
     s_list: Vec<Vec<T>>,
-    v_list: Vec<Array2<T>>,
+    v_list: Vec<DTensor<T, 2>>,
     rtol: T,
     max_num_svals: Option<usize>,
-) -> (Vec<Array2<T>>, Vec<Vec<T>>, Vec<Array2<T>>) {
+) -> (Vec<DTensor<T, 2>>, Vec<Vec<T>>, Vec<DTensor<T, 2>>) {
     let zero = T::zero();
     
     // Validate
@@ -259,9 +262,21 @@ pub fn truncate<T: CustomNumeric>(
         }
         
         if n_keep > 0 {
-            u_trunc.push(u.slice(ndarray::s![.., ..n_keep]).to_owned());
+            // Slice U: keep first n_keep columns
+            let u_shape = *u.shape();
+            let u_sliced = DTensor::<T, 2>::from_fn([u_shape.0, n_keep], |idx| {
+                u[[idx[0], idx[1]]]
+            });
+            u_trunc.push(u_sliced);
+            
             s_trunc.push(s[..n_keep].to_vec());
-            v_trunc.push(v.slice(ndarray::s![.., ..n_keep]).to_owned());
+            
+            // Slice V: keep first n_keep columns
+            let v_shape = *v.shape();
+            let v_sliced = DTensor::<T, 2>::from_fn([v_shape.0, n_keep], |idx| {
+                v[[idx[0], idx[1]]]
+            });
+            v_trunc.push(v_sliced);
         }
     }
     

@@ -78,11 +78,12 @@ impl SVEResult {
 mod tests {
     use super::*;
     use crate::poly::PiecewiseLegendrePoly;
-    use ndarray::{Array2};
     use mdarray::tensor;
 
     fn create_dummy_poly() -> PiecewiseLegendrePoly {
-        let data = Array2::from_shape_vec((2, 1), vec![1.0, 0.0]).unwrap();
+        let data = mdarray::DTensor::<f64, 2>::from_fn([2, 1], |idx| {
+            if idx[0] == 0 { 1.0 } else { 0.0 }
+        });
         let knots = vec![-1.0, 1.0];
         let delta_x = vec![2.0];
         PiecewiseLegendrePoly::new(data, knots, 0, Some(delta_x), 0)

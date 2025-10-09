@@ -1,6 +1,6 @@
 //! Utility functions for SVE computation
 
-use mdarray::{DTensor, Tensor};
+use mdarray::DTensor;
 use crate::numeric::CustomNumeric;
 use crate::poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
 use crate::kernel::SymmetryType;
@@ -108,21 +108,29 @@ pub fn extend_to_full_domain(
         });
         
         // Create negative part by reversing columns and applying signs
-        let mut neg_data = pos_data.clone();
-        // Reverse columns: ..;-1 means reverse order
-        neg_data = neg_data.slice(ndarray::s![.., ..;-1]).to_owned();
+        let pos_shape = *pos_data.shape();
+        let mut neg_data = DTensor::<f64, 2>::from_fn([pos_shape.0, pos_shape.1], |idx| {
+            // Reverse column order: map column j to column (n_cols - 1 - j)
+            let reversed_col = pos_shape.1 - 1 - idx[1];
+            pos_data[[idx[0], reversed_col]]
+        });
         
         // Apply poly_flip_x and sign to negative part
-        let neg_data_shape = *neg_data.shape();
         for (i, &flip_sign) in poly_flip_x.iter().enumerate() {
             let coeff_sign = flip_sign * sign;
-            for j in 0..neg_data_shape.1 {
+            for j in 0..pos_shape.1 {
                 neg_data[[i, j]] *= coeff_sign;
             }
         }
         
-        // Combine negative and positive parts
-        let combined_data = ndarray::concatenate![ndarray::Axis(1), neg_data, pos_data];
+        // Combine negative and positive parts (concatenate along axis 1)
+        let combined_data = DTensor::<f64, 2>::from_fn([pos_shape.0, pos_shape.1 * 2], |idx| {
+            if idx[1] < pos_shape.1 {
+                neg_data[[idx[0], idx[1]]]
+            } else {
+                pos_data[[idx[0], idx[1] - pos_shape.1]]
+            }
+        });
         
         // Create complete polynomial with full segments
         // Preserve symmetry from even/odd decomposition
@@ -195,9 +203,10 @@ pub fn svd_to_polynomials<T: CustomNumeric>(
         dsegs.push(segments[i + 1].to_f64() - segments[i].to_f64());
     }
     
+    let u_data_shape = *u_data.shape();
     for j in 0..n_segments {
         let norm = (0.5 * dsegs[j]).sqrt();
-        for i in 0..u_data.shape()[0] {
+        for i in 0..u_data_shape.0 {
             for k in 0..n_svals {
                 u_data[[i, j, k]] *= norm;
             }

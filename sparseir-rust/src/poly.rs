@@ -3,8 +3,6 @@
 //! This module provides high-performance piecewise Legendre polynomial
 //! functionality compatible with the C++ implementation.
 
-use ndarray;
-
 /// A single piecewise Legendre polynomial
 #[derive(Debug, Clone)]
 pub struct PiecewiseLegendrePoly {
