@@ -13,8 +13,8 @@ fn test_matrix_from_gauss_basic() {
     let gauss_y = legendre::<f64>(2).reseat(0.0, 1.0);
     let matrix = matrix_from_gauss(&kernel, &gauss_x, &gauss_y, SymmetryType::Even);
     
-    assert_eq!(matrix.nrows(), 2);
-    assert_eq!(matrix.ncols(), 2);
+    assert_eq!(matrix.matrix.shape().0, 2);
+    assert_eq!(matrix.matrix.shape().1, 2);
 }
 
 #[test]
@@ -26,7 +26,7 @@ fn test_matrix_from_gauss_sizes() {
         let gauss_y = legendre::<f64>(n).reseat(0.0, 1.0);
         let matrix = matrix_from_gauss(&kernel, &gauss_x, &gauss_y, SymmetryType::Even);
         
-        assert_eq!(matrix.nrows(), n);
-        assert_eq!(matrix.ncols(), n);
+        assert_eq!(matrix.matrix.shape().0, n);
+        assert_eq!(matrix.matrix.shape().1, n);
     }
 }

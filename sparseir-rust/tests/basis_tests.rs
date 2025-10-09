@@ -73,12 +73,11 @@ fn test_default_tau_sampling_points_conditioning() {
     println!("✅ Sampling points are symmetric around beta/2");
     
     // Evaluate sampling matrix: matrix[i,l] = u_l(tau_i)
-    use ndarray::Array2;
-    use sparseir_rust::mdarray_compat::array2_to_tensor;
+    use mdarray::DTensor;
     
     let num_points = tau_points.len();
     let basis_size = basis.size();
-    let mut matrix = Array2::zeros((num_points, basis_size));
+    let mut matrix = DTensor::<f64, 2>::from_elem([num_points, basis_size], 0.0);
     
     for i in 0..num_points {
         let tau = tau_points[i];
