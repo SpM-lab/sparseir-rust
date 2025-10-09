@@ -1,7 +1,7 @@
 //! Comparison tests between Rust and Julia SVE implementations
 
 use sparseir_rust::{compute_sve, LogisticKernel, TworkType};
-use ndarray::{Array1, Array2};
+// No ndarray imports needed
 
 // ============================================================================
 // Reference data for λ=5.0, ε=1.0e-6
@@ -57,7 +57,7 @@ fn test_sve_singular_values_lambda_5() {
     );
     
     // Load reference values
-    let s_ref = Array1::from(REFERENCE_SVALS.to_vec());
+    let s_ref: Vec<f64> = REFERENCE_SVALS.to_vec();
     
     println!("Rust: {} singular values", result.s.len());
     println!("Julia: {} singular values", s_ref.len());
@@ -126,16 +126,14 @@ fn test_sve_singular_functions_lambda_5() {
     let x_test = vec![-0.9, -0.5, 0.0, 0.5, 0.9];
     
     // Load reference u and v values
-    let u_ref = Array2::from_shape_vec(
-        (5, 8),
-        REFERENCE_U.iter().flat_map(|row| row.iter().copied()).collect(),
-    ).unwrap();
-    let v_ref = Array2::from_shape_vec(
-        (5, 8),
-        REFERENCE_V.iter().flat_map(|row| row.iter().copied()).collect(),
-    ).unwrap();
+    let u_ref = mdarray::DTensor::<f64, 2>::from_fn([5, 8], |idx| {
+        REFERENCE_U[idx[0]][idx[1]]
+    });
+    let v_ref = mdarray::DTensor::<f64, 2>::from_fn([5, 8], |idx| {
+        REFERENCE_V[idx[0]][idx[1]]
+    });
     
-    let n_funcs = u_ref.ncols();
+    let n_funcs = u_ref.shape().1;
     println!("Comparing first {} singular functions", n_funcs);
     
     // Compare u functions

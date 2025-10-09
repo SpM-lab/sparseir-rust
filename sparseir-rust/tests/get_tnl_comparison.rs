@@ -1,4 +1,4 @@
-use ndarray::arr2;
+use mdarray::tensor;
 use sparseir_rust::poly::PiecewiseLegendrePoly;
 use sparseir_rust::polyfourier::{FermionicPiecewiseLegendreFT, PiecewiseLegendreFT};
 use sparseir_rust::special_functions::spherical_bessel_j;
@@ -9,7 +9,7 @@ use sparseir_rust::traits::Fermionic;
 #[test]
 fn test_get_tnl_basic_values() {
     // Create a simple polynomial for testing
-    let data = arr2(&[[1.0, 0.0], [0.0, 1.0]]);
+    let data = tensor![[1.0, 0.0], [0.0, 1.0]];
     let knots = vec![-1.0, 0.0, 1.0];
     let poly = PiecewiseLegendrePoly::new(data, knots, 1, None, 0);
 
@@ -62,7 +62,7 @@ fn test_get_tnl_basic_values() {
 /// Test spherical Bessel function implementation
 #[test]
 fn test_spherical_bessel_basic() {
-    let data = arr2(&[[1.0]]);
+    let data = tensor![[1.0]];
     let knots = vec![-1.0, 1.0];
     let poly = PiecewiseLegendrePoly::new(data, knots, 0, None, 0);
     let _ft_poly = FermionicPiecewiseLegendreFT::new(poly, Fermionic, None);
@@ -94,7 +94,7 @@ fn test_spherical_bessel_basic() {
 #[test]
 fn test_constant_polynomial_fourier_transform() {
     // Create constant polynomial f(x) = 1
-    let data = arr2(&[[1.0], [0.0]]);
+    let data = tensor![[1.0], [0.0]];
     let knots = vec![-1.0, 1.0];
     let poly = PiecewiseLegendrePoly::new(data, knots, 0, None, 0);
 

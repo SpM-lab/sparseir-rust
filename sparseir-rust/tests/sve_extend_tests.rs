@@ -3,14 +3,14 @@
 use sparseir_rust::kernel::SymmetryType;
 use sparseir_rust::poly::PiecewiseLegendrePoly;
 use sparseir_rust::sve::utils::extend_to_full_domain;
-use ndarray::Array2;
+use mdarray::DTensor;
 
 /// Create a simple polynomial on positive domain [0, 1]
 fn create_simple_poly_on_positive_domain() -> PiecewiseLegendrePoly {
     // Create a simple polynomial: f(x) = 1 + 2x on [0, 1]
     // Legendre basis: P_0(x) = 1, P_1(x) = x
     // On [0, 1], we need to map to [-1, 1] internally
-    let data = Array2::from_shape_vec((2, 1), vec![1.0, 2.0]).unwrap();
+    let data = DTensor::<f64, 2>::from_fn([2, 1], |idx| if idx[0] == 0 { 1.0 } else { 2.0 });
     let knots = vec![0.0, 1.0];
     let delta_x = vec![1.0];
     PiecewiseLegendrePoly::new(data, knots, 0, Some(delta_x), 0)
@@ -19,10 +19,8 @@ fn create_simple_poly_on_positive_domain() -> PiecewiseLegendrePoly {
 /// Create polynomial with multiple segments [0, 0.5, 1.0]
 fn create_poly_with_segments() -> PiecewiseLegendrePoly {
     // Two segments: [0, 0.5] and [0.5, 1.0]
-    let data = Array2::from_shape_vec((2, 2), vec![
-        1.0, 1.5,  // P_0 coefficients
-        0.5, 1.0,  // P_1 coefficients
-    ]).unwrap();
+    let data_vec = vec![1.0, 1.5, 0.5, 1.0];
+    let data = DTensor::<f64, 2>::from_fn([2, 2], |idx| data_vec[idx[0] * 2 + idx[1]]);
     let knots = vec![0.0, 0.5, 1.0];
     let delta_x = vec![0.5, 0.5];
     PiecewiseLegendrePoly::new(data, knots, 0, Some(delta_x), 0)

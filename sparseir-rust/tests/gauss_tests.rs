@@ -1,12 +1,12 @@
-use ndarray::{Array1, Array2};
+use mdarray::DTensor;
 use sparseir_rust::{legendre, legendre_custom, legendre_twofloat, CustomNumeric, Rule, TwoFloat};
 use sparseir_rust::gauss::{legendre_vandermonde, legendre_generic};
 use sparseir_rust::interpolation1d::{legendre_collocation_matrix, interpolate_1d_legendre, evaluate_interpolated_polynomial};
 
 #[test]
 fn test_rule_constructor() {
-    let x = Array1::from(vec![0.0, 1.0]);
-    let w = Array1::from(vec![0.5, 0.5]);
+    let x = vec![0.0, 1.0];
+    let w = vec![0.5, 0.5];
 
     let rule = Rule::new(x.clone(), w.clone(), -1.0, 1.0);
     assert_eq!(rule.x, x);
@@ -21,8 +21,8 @@ fn test_rule_from_vectors() {
     let w = vec![0.5, 0.5];
 
     let rule = Rule::from_vectors(x.clone(), w.clone(), -1.0, 1.0);
-    assert_eq!(rule.x.to_vec(), x);
-    assert_eq!(rule.w.to_vec(), w);
+    assert_eq!(rule.x, x);
+    assert_eq!(rule.w, w);
 }
 
 #[test]
@@ -36,8 +36,8 @@ fn test_rule_empty() {
 
 #[test]
 fn test_rule_validation() {
-    let x = Array1::from(vec![0.0, 1.0]);
-    let w = Array1::from(vec![0.5, 0.5]);
+    let x = vec![0.0, 1.0];
+    let w = vec![0.5, 0.5];
 
     let rule = Rule::new(x, w, -1.0, 1.0);
     assert!(rule.validate());
@@ -68,8 +68,8 @@ fn test_rule_reseat() {
 
 #[test]
 fn test_rule_scale() {
-    let x = Array1::from(vec![0.0, 1.0]);
-    let w = Array1::from(vec![1.0, 1.0]);
+    let x = vec![0.0, 1.0];
+    let w = vec![1.0, 1.0];
 
     let rule = Rule::new(x, w, -1.0, 1.0);
     let scaled = rule.scale(2.0);
@@ -122,8 +122,8 @@ fn test_gauss_validation_like_cpp() {
 #[test]
 fn test_rule_constructor_with_defaults() {
     // Test like C++ Rule constructor with default a, b
-    let x = Array1::from(vec![0.0, 1.0]);
-    let w = Array1::from(vec![0.5, 0.5]);
+    let x = vec![0.0, 1.0];
+    let w = vec![0.5, 0.5];
 
     let rule1 = Rule::new(x.clone(), w.clone(), -1.0, 1.0);
     let rule2 = Rule::new(x, w, -1.0, 1.0);
@@ -235,8 +235,8 @@ fn test_legendre_twofloat() {
 #[test]
 fn test_rule_custom_methods() {
     // Test Rule custom methods with f64
-    let x = Array1::from(vec![0.0, 1.0]);
-    let w = Array1::from(vec![0.5, 0.5]);
+    let x = vec![0.0, 1.0];
+    let w = vec![0.5, 0.5];
 
     let rule = Rule::new_custom(x.clone(), w.clone(), -1.0, 1.0);
     assert!(rule.validate_custom());
@@ -255,8 +255,8 @@ fn test_rule_custom_methods() {
 #[test]
 fn test_rule_twofloat_methods() {
     // Test with TwoFloat
-    let x_tf = Array1::from(vec![TwoFloat::from(0.0), TwoFloat::from(1.0)]);
-    let w_tf = Array1::from(vec![TwoFloat::from(0.5), TwoFloat::from(0.5)]);
+    let x_tf = vec![TwoFloat::from(0.0), TwoFloat::from(1.0)];
+    let w_tf = vec![TwoFloat::from(0.5), TwoFloat::from(0.5)];
 
     let rule_tf = Rule::new_twofloat(x_tf, w_tf, TwoFloat::from(-1.0), TwoFloat::from(1.0));
     assert!(rule_tf.validate_twofloat());
@@ -389,8 +389,8 @@ fn test_legendre_vandermonde_basic() {
     let v = legendre_vandermonde(&x, 2);
     
     // Check dimensions
-    assert_eq!(v.nrows(), 3);
-    assert_eq!(v.ncols(), 3);
+    assert_eq!(v.shape().0, 3);
+    assert_eq!(v.shape().1, 3);
     
     // Check first column (P_0 = 1)
     for i in 0..3 {
@@ -496,7 +496,7 @@ fn _test_legendre_collocation_matrix_inverse() {
         let collocation = legendre_collocation_matrix(&gauss_rule);
         
         // Compute V * C and check if it's approximately the identity matrix
-        let mut product = Array2::zeros((n, n));
+        let mut product = DTensor::<f64, 2>::from_elem([n, n], 0.0);
         for i in 0..n {
             for j in 0..n {
                 for k in 0..n {
@@ -506,8 +506,14 @@ fn _test_legendre_collocation_matrix_inverse() {
         }
         
         // Check that V * C ≈ I
-        let identity: Array2<f64> = Array2::eye(n);
-        let error = (&product - &identity).mapv(|x: f64| x.abs()).sum() / (n * n) as f64;
+        let mut error = 0.0;
+        for i in 0..n {
+            for j in 0..n {
+                let expected = if i == j { 1.0 } else { 0.0 };
+                error += (product[[i, j]] - expected).abs();
+            }
+        }
+        error /= (n * n) as f64;
         
         println!("n={}, error={}", n, error);
         assert!(error < 1e-10, 
