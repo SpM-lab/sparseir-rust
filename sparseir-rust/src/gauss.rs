@@ -10,7 +10,6 @@
 //! with the number of quadrature points.
 
 use crate::numeric::CustomNumeric;
-use ndarray::{Array1, Array2};
 use std::fmt::Debug;
 
 /// Quadrature rule for numerical integration.
@@ -21,13 +20,13 @@ use std::fmt::Debug;
 #[derive(Debug, Clone)]
 pub struct Rule<T> {
     /// Quadrature points
-    pub x: Array1<T>, //COMMENT: ADD CHECK CODE TO MAKE SURE x is in non-decreasing order
+    pub x: Vec<T>, //COMMENT: ADD CHECK CODE TO MAKE SURE x is in non-decreasing order
     /// Quadrature weights
-    pub w: Array1<T>,
+    pub w: Vec<T>,
     /// Distance from left endpoint: x - a
-    pub x_forward: Array1<T>,
+    pub x_forward: Vec<T>,
     /// Distance from right endpoint: b - x
-    pub x_backward: Array1<T>,
+    pub x_backward: Vec<T>,
     /// Left endpoint of integration interval
     pub a: T,
     /// Right endpoint of integration interval
@@ -48,11 +47,11 @@ where
     ///
     /// # Panics
     /// Panics if x and w have different lengths.
-    pub fn new(x: Array1<T>, w: Array1<T>, a: T, b: T) -> Self {
+    pub fn new(x: Vec<T>, w: Vec<T>, a: T, b: T) -> Self {
         assert_eq!(x.len(), w.len(), "x and w must have the same length");
 
-        let x_forward = x.mapv(|xi| xi - a);
-        let x_backward = x.mapv(|xi| b - xi);
+        let x_forward: Vec<T> = x.iter().map(|&xi| xi - a).collect();
+        let x_backward: Vec<T> = x.iter().map(|&xi| b - xi).collect();
 
         Self {
             x,
@@ -66,16 +65,16 @@ where
 
     /// Create a new quadrature rule from vectors.
     pub fn from_vectors(x: Vec<T>, w: Vec<T>, a: T, b: T) -> Self {
-        Self::new(Array1::from(x), Array1::from(w), a, b)
+        Self::new(x, w, a, b)
     }
 
     /// Create a default rule with empty arrays.
     pub fn empty() -> Self {
         Self {
-            x: Array1::from(vec![]),
-            w: Array1::from(vec![]),
-            x_forward: Array1::from(vec![]),
-            x_backward: Array1::from(vec![]),
+            x: vec![],
+            w: vec![],
+            x_forward: vec![],
+            x_backward: vec![],
             a: <T as CustomNumeric>::from_f64(-1.0),
             b: <T as CustomNumeric>::from_f64(1.0),
         }
@@ -90,12 +89,12 @@ where
         let midpoint_new = (b + a) * <T as CustomNumeric>::from_f64(0.5);
 
         // Transform x: scaling * (xi - midpoint_old) + midpoint_new
-        let new_x = self
-            .x
-            .mapv(|xi| scaling * (xi - midpoint_old) + midpoint_new);
-        let new_w = self.w.mapv(|wi| wi * scaling);
-        let new_x_forward = self.x_forward.mapv(|xi| xi * scaling);
-        let new_x_backward = self.x_backward.mapv(|xi| xi * scaling);
+        let new_x: Vec<T> = self.x.iter()
+            .map(|&xi| scaling * (xi - midpoint_old) + midpoint_new)
+            .collect();
+        let new_w: Vec<T> = self.w.iter().map(|&wi| wi * scaling).collect();
+        let new_x_forward: Vec<T> = self.x_forward.iter().map(|&xi| xi * scaling).collect();
+        let new_x_backward: Vec<T> = self.x_backward.iter().map(|&xi| xi * scaling).collect();
 
         Self {
             x: new_x,
@@ -111,7 +110,7 @@ where
     pub fn scale(&self, factor: T) -> Self {
         Self {
             x: self.x.clone(),
-            w: self.w.mapv(|wi| wi * factor),
+            w: self.w.iter().map(|&wi| wi * factor).collect(),
             x_forward: self.x_forward.clone(),
             x_backward: self.x_backward.clone(),
             a: self.a,
@@ -177,8 +176,8 @@ where
 
         for rule in rules {
             // Adjust x_forward and x_backward for global coordinates
-            let x_forward_adj = rule.x_forward.mapv(|xi| xi + (rule.a - a));
-            let x_backward_adj = rule.x_backward.mapv(|xi| xi + (b - rule.b));
+            let x_forward_adj: Vec<T> = rule.x_forward.iter().map(|&xi| xi + (rule.a - a)).collect();
+            let x_backward_adj: Vec<T> = rule.x_backward.iter().map(|&xi| xi + (b - rule.b)).collect();
 
             x_vec.extend(rule.x.iter().cloned());
             w_vec.extend(rule.w.iter().cloned());
@@ -197,16 +196,11 @@ where
         let sorted_x_forward: Vec<T> = sorted_x.iter().map(|&xi| xi - a).collect();
         let sorted_x_backward: Vec<T> = sorted_x.iter().map(|&xi| b - xi).collect();
 
-        let x = Array1::from(sorted_x);
-        let w = Array1::from(sorted_w);
-        let x_forward = Array1::from(sorted_x_forward);
-        let x_backward = Array1::from(sorted_x_backward);
-
         Self {
-            x,
-            w,
-            x_forward,
-            x_backward,
+            x: sorted_x,
+            w: sorted_w,
+            x_forward: sorted_x_forward,
+            x_backward: sorted_x_backward,
             a,
             b,
         }
@@ -217,22 +211,22 @@ where
     where
         U: CustomNumeric + Copy + Debug + std::fmt::Display,
     {
-        let x: Array1<U> = self
+        let x: Vec<U> = self
             .x
             .iter()
             .map(|&xi| <U as CustomNumeric>::from_f64(xi.to_f64()))
             .collect();
-        let w: Array1<U> = self
+        let w: Vec<U> = self
             .w
             .iter()
             .map(|&wi| <U as CustomNumeric>::from_f64(wi.to_f64()))
             .collect();
-        let x_forward: Array1<U> = self
+        let x_forward: Vec<U> = self
             .x_forward
             .iter()
             .map(|&xi| <U as CustomNumeric>::from_f64(xi.to_f64()))
             .collect();
-        let x_backward: Array1<U> = self
+        let x_backward: Vec<U> = self
             .x_backward
             .iter()
             .map(|&xi| <U as CustomNumeric>::from_f64(xi.to_f64()))
@@ -306,11 +300,11 @@ where
     T: CustomNumeric,
 {
     /// Create a new quadrature rule from points and weights (CustomNumeric version).
-    pub fn new_custom(x: Array1<T>, w: Array1<T>, a: T, b: T) -> Self {
+    pub fn new_custom(x: Vec<T>, w: Vec<T>, a: T, b: T) -> Self {
         assert_eq!(x.len(), w.len(), "x and w must have the same length");
 
-        let x_forward = x.mapv(|xi| xi - a);
-        let x_backward = x.mapv(|xi| b - xi);
+        let x_forward: Vec<T> = x.iter().map(|&xi| xi - a).collect();
+        let x_backward: Vec<T> = x.iter().map(|&xi| b - xi).collect();
 
         Self {
             x,
@@ -324,7 +318,7 @@ where
 
     /// Create a new quadrature rule from vectors (CustomNumeric version).
     pub fn from_vectors_custom(x: Vec<T>, w: Vec<T>, a: T, b: T) -> Self {
-        Self::new_custom(Array1::from(x), Array1::from(w), a, b)
+        Self::new_custom(x, w, a, b)
     }
 
     /// Reseat the rule to a new interval [a, b] (CustomNumeric version).
@@ -334,12 +328,12 @@ where
         let midpoint_new = (b + a) * <T as CustomNumeric>::from_f64(0.5);
 
         // Transform x: scaling * (xi - midpoint_old) + midpoint_new
-        let new_x = self
-            .x
-            .mapv(|xi| scaling * (xi - midpoint_old) + midpoint_new);
-        let new_w = self.w.mapv(|wi| wi * scaling);
-        let new_x_forward = self.x_forward.mapv(|xi| xi * scaling);
-        let new_x_backward = self.x_backward.mapv(|xi| xi * scaling);
+        let new_x: Vec<T> = self.x.iter()
+            .map(|&xi| scaling * (xi - midpoint_old) + midpoint_new)
+            .collect();
+        let new_w: Vec<T> = self.w.iter().map(|&wi| wi * scaling).collect();
+        let new_x_forward: Vec<T> = self.x_forward.iter().map(|&xi| xi * scaling).collect();
+        let new_x_backward: Vec<T> = self.x_backward.iter().map(|&xi| xi * scaling).collect();
 
         Self {
             x: new_x,
@@ -355,7 +349,7 @@ where
     pub fn scale_custom(&self, factor: T) -> Self {
         Self {
             x: self.x.clone(),
-            w: self.w.mapv(|wi| wi * factor),
+            w: self.w.iter().map(|&wi| wi * factor).collect(),
             x_forward: self.x_forward.clone(),
             x_backward: self.x_backward.clone(),
             a: self.a,
@@ -414,15 +408,15 @@ where
 impl Rule<twofloat::TwoFloat> {
     /// Create a new quadrature rule from points and weights (TwoFloat version).
     pub fn new_twofloat(
-        x: Array1<twofloat::TwoFloat>,
-        w: Array1<twofloat::TwoFloat>,
+        x: Vec<twofloat::TwoFloat>,
+        w: Vec<twofloat::TwoFloat>,
         a: twofloat::TwoFloat,
         b: twofloat::TwoFloat,
     ) -> Self {
         assert_eq!(x.len(), w.len(), "x and w must have the same length");
 
-        let x_forward = x.mapv(|xi| xi - a);
-        let x_backward = x.mapv(|xi| b - xi);
+        let x_forward: Vec<twofloat::TwoFloat> = x.iter().map(|&xi| xi - a).collect();
+        let x_backward: Vec<twofloat::TwoFloat> = x.iter().map(|&xi| b - xi).collect();
 
         Self {
             x,
@@ -441,7 +435,7 @@ impl Rule<twofloat::TwoFloat> {
         a: twofloat::TwoFloat,
         b: twofloat::TwoFloat,
     ) -> Self {
-        Self::new_twofloat(Array1::from(x), Array1::from(w), a, b)
+        Self::new_twofloat(x, w, a, b)
     }
 
     /// Reseat the rule to a new interval [a, b] (TwoFloat version).
@@ -451,12 +445,12 @@ impl Rule<twofloat::TwoFloat> {
         let midpoint_new = (b + a) * <twofloat::TwoFloat as CustomNumeric>::from_f64(0.5);
 
         // Transform x: scaling * (xi - midpoint_old) + midpoint_new
-        let new_x = self
-            .x
-            .mapv(|xi| scaling * (xi - midpoint_old) + midpoint_new);
-        let new_w = self.w.mapv(|wi| wi * scaling);
-        let new_x_forward = self.x_forward.mapv(|xi| xi * scaling);
-        let new_x_backward = self.x_backward.mapv(|xi| xi * scaling);
+        let new_x: Vec<twofloat::TwoFloat> = self.x.iter()
+            .map(|&xi| scaling * (xi - midpoint_old) + midpoint_new)
+            .collect();
+        let new_w: Vec<twofloat::TwoFloat> = self.w.iter().map(|&wi| wi * scaling).collect();
+        let new_x_forward: Vec<twofloat::TwoFloat> = self.x_forward.iter().map(|&xi| xi * scaling).collect();
+        let new_x_backward: Vec<twofloat::TwoFloat> = self.x_backward.iter().map(|&xi| xi * scaling).collect();
 
         Self {
             x: new_x,
@@ -472,7 +466,7 @@ impl Rule<twofloat::TwoFloat> {
     pub fn scale_twofloat(&self, factor: twofloat::TwoFloat) -> Self {
         Self {
             x: self.x.clone(),
-            w: self.w.mapv(|wi| wi * factor),
+            w: self.w.iter().map(|&wi| wi * factor).collect(),
             x_forward: self.x_forward.clone(),
             x_backward: self.x_backward.clone(),
             a: self.a,
@@ -784,8 +778,8 @@ where
 {
     if n == 0 {
         return Rule::new_custom(
-            Array1::from(vec![]),
-            Array1::from(vec![]),
+            vec![],
+            vec![],
             <T as CustomNumeric>::from_f64(-1.0),
             <T as CustomNumeric>::from_f64(1.0),
         );
@@ -805,8 +799,8 @@ where
 pub fn legendre_twofloat(n: usize) -> Rule<twofloat::TwoFloat> {
     if n == 0 {
         return Rule::new_twofloat(
-            Array1::from(vec![]),
-            Array1::from(vec![]),
+            vec![],
+            vec![],
             <twofloat::TwoFloat as CustomNumeric>::from_f64(-1.0),
             <twofloat::TwoFloat as CustomNumeric>::from_f64(1.0),
         );
@@ -830,9 +824,11 @@ pub fn legendre_twofloat(n: usize) -> Rule<twofloat::TwoFloat> {
 ///
 /// # Returns
 /// Matrix V where V[i,j] = P_j(x_i), with P_j being the j-th Legendre polynomial
-pub fn legendre_vandermonde<T: CustomNumeric>(x: &[T], degree: usize) -> Array2<T> {
+pub fn legendre_vandermonde<T: CustomNumeric>(x: &[T], degree: usize) -> mdarray::DTensor<T, 2> {
+    use mdarray::DTensor;
+    
     let n = x.len();
-    let mut v = Array2::from_elem((n, degree + 1), T::zero());
+    let mut v = DTensor::<T, 2>::from_elem([n, degree + 1], T::zero());
     
     // First column is all ones (P_0(x) = 1)
     for i in 0..n {
@@ -868,8 +864,8 @@ pub fn legendre_generic<T: CustomNumeric + 'static>(n: usize) -> Rule<T> {
         // For f64, use the existing legendre function
         let rule_f64 = legendre::<f64>(n);
         Rule::new(
-            rule_f64.x.mapv(|x| T::from_f64(x)),
-            rule_f64.w.mapv(|w| T::from_f64(w)),
+            rule_f64.x.iter().map(|&x| T::from_f64(x)).collect(),
+            rule_f64.w.iter().map(|&w| T::from_f64(w)).collect(),
             T::from_f64(rule_f64.a),
             T::from_f64(rule_f64.b),
         )
@@ -877,8 +873,8 @@ pub fn legendre_generic<T: CustomNumeric + 'static>(n: usize) -> Rule<T> {
         // For TwoFloat, use legendre_twofloat
         let rule_tf = legendre_twofloat(n);
         Rule::new(
-            rule_tf.x.mapv(|x| T::convert_from(x)),
-            rule_tf.w.mapv(|w| T::convert_from(w)),
+            rule_tf.x.iter().map(|&x| T::convert_from(x)).collect(),
+            rule_tf.w.iter().map(|&w| T::convert_from(w)).collect(),
             T::from_f64(rule_tf.a.into()),
             T::from_f64(rule_tf.b.into()),
         )

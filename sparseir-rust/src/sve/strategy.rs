@@ -85,8 +85,8 @@ where
     ) -> (PiecewiseLegendrePolyVector, Vec<f64>, PiecewiseLegendrePolyVector) {
         // 1. Remove weights
         // Both U and V have rows corresponding to Gauss points, so is_row=true for both
-        let u_unweighted = remove_weights(u, self.gauss_x.w.as_slice().unwrap(), true);
-        let v_unweighted = remove_weights(v, self.gauss_y.w.as_slice().unwrap(), true);
+        let u_unweighted = remove_weights(u, self.gauss_x.w.as_slice(), true);
+        let v_unweighted = remove_weights(v, self.gauss_y.w.as_slice(), true);
         
         // 2. Convert to polynomials
         let gauss_rule_f64 = legendre_generic::<f64>(self.n_gauss);

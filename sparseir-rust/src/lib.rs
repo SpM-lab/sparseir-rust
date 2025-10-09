@@ -47,5 +47,5 @@ pub use sve::{SVEResult, TworkType, SVDStrategy, SamplingSVE, CentrosymmSVE, SVE
 pub use basis::{FiniteTempBasis, FermionicBasis, BosonicBasis};
 
 // Re-export external dependencies for convenience
-pub use ndarray::Array2;
 pub use twofloat::TwoFloat;
+pub use mdarray::{DTensor, Tensor, DynRank};
