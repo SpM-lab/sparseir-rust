@@ -2,6 +2,8 @@ use approx::{assert_abs_diff_eq, AbsDiffEq};
 use mdarray::Tensor;
 use xprec_svd::svd::jacobi::jacobi_svd;
 use xprec_svd::precision::{Precision, TwoFloatPrecision};
+use mdarray_linalg::{MatMul, MatMulBuilder};
+use mdarray_linalg_faer::Faer;
 
 /// Convert f64 matrix to TwoFloatPrecision matrix
 fn to_twofloat_matrix(matrix: &Tensor<f64, (usize, usize)>) -> Tensor<TwoFloatPrecision, (usize, usize)> {
@@ -16,6 +18,78 @@ fn to_f64_matrix(matrix: &Tensor<TwoFloatPrecision, (usize, usize)>) -> Tensor<f
     let shape = *matrix.shape();
     Tensor::from_fn(shape, |idx| {
         matrix[[idx[0], idx[1]]].to_f64()
+    })
+}
+
+/// Create diagonal matrix from vector
+fn diag_matrix<T: Precision>(v: &Tensor<T, (usize,)>) -> Tensor<T, (usize, usize)> {
+    let n = v.len();
+    Tensor::from_fn((n, n), |idx| {
+        if idx[0] == idx[1] {
+            v[[idx[0]]]
+        } else {
+            T::zero()
+        }
+    })
+}
+
+/// Matrix multiplication: C = A * B (using Faer backend)
+fn matmul_f64(a: &Tensor<f64, (usize, usize)>, b: &Tensor<f64, (usize, usize)>) -> Tensor<f64, (usize, usize)> {
+    Faer.matmul(a, b).eval()
+}
+
+/// Matrix multiplication for generic types (fallback)
+fn matmul<T: Precision>(a: &Tensor<T, (usize, usize)>, b: &Tensor<T, (usize, usize)>) -> Tensor<T, (usize, usize)> {
+    let a_shape = *a.shape();
+    let b_shape = *b.shape();
+    assert_eq!(a_shape.1, b_shape.0);
+    
+    Tensor::from_fn((a_shape.0, b_shape.1), |idx| {
+        let mut sum = T::zero();
+        for k in 0..a_shape.1 {
+            sum = sum + a[[idx[0], k]] * b[[k, idx[1]]];
+        }
+        sum
+    })
+}
+
+/// Matrix transpose
+fn transpose<T: Precision>(m: &Tensor<T, (usize, usize)>) -> Tensor<T, (usize, usize)> {
+    let shape = *m.shape();
+    Tensor::from_fn((shape.1, shape.0), |idx| m[[idx[1], idx[0]]])
+}
+
+/// Reconstruct matrix from SVD: A = U * S * V^T (for f64 using Faer)
+fn reconstruct_svd_f64(
+    u: &Tensor<f64, (usize, usize)>,
+    s: &Tensor<f64, (usize,)>,
+    v: &Tensor<f64, (usize, usize)>,
+) -> Tensor<f64, (usize, usize)> {
+    // U * diag(S)
+    let u_shape = *u.shape();
+    let us = Tensor::from_fn(u_shape, |idx| u[[idx[0], idx[1]]] * s[[idx[1]]]);
+    // (U*S) * V^T
+    let v_t = transpose(v);
+    matmul_f64(&us, &v_t)
+}
+
+/// Reconstruct matrix from SVD: A = U * S * V^T (generic version)
+/// Note: v is V matrix (not V^T), so we need v[[idx[1], k]] for V^T[k,j] = V[j,k]
+fn reconstruct_svd<T: Precision>(
+    u: &Tensor<T, (usize, usize)>,
+    s: &Tensor<T, (usize,)>,
+    v: &Tensor<T, (usize, usize)>,
+) -> Tensor<T, (usize, usize)> {
+    let u_shape = *u.shape();
+    let v_shape = *v.shape();
+    
+    Tensor::from_fn((u_shape.0, v_shape.0), |idx| {
+        let mut sum = T::zero();
+        for k in 0..s.len() {
+            // A[i,j] = Σ_k U[i,k] * S[k] * V^T[k,j] = Σ_k U[i,k] * S[k] * V[j,k]
+            sum = sum + u[[idx[0], k]] * s[[k]] * v[[idx[1], k]];
+        }
+        sum
     })
 }
 
@@ -70,21 +144,16 @@ where
     T: From<f64> + Into<f64>,
 {
     // Create rank-one matrix directly in target precision
-    let mut a = ndarray::Array2::zeros((3, 3));
-    for i in 0..3 {
-        for j in 0..3 {
-            a[[i, j]] = <T as From<f64>>::from(1.0);
-        }
-    }
+    let a = Tensor::from_fn((3, 3), |_idx| <T as From<f64>>::from(1.0));
     
     let result: xprec_svd::svd::SVDResult<T> = jacobi_svd(&a);
     
     // Should have only one non-zero singular value (around 3.0)
     let epsilon = <T as Precision>::epsilon().into();
-    let s0: f64 = result.s[0].into();
+    let s0: f64 = result.s[[0]].into();
     assert!(s0 > 1.0_f64);
-    let s1: f64 = result.s[1].into();
-    let s2: f64 = result.s[2].into();
+    let s1: f64 = result.s[[1]].into();
+    let s2: f64 = result.s[[2]].into();
     assert_abs_diff_eq!(s1, 0.0, epsilon = 100.0 * epsilon);
     assert_abs_diff_eq!(s2, 0.0, epsilon = 100.0 * epsilon);
 }
@@ -105,7 +174,7 @@ where
     T: From<f64> + Into<f64> + AbsDiffEq<Epsilon = T>,
 {
     // Create 2x2 rank-one matrix directly in target precision
-    let mut a = ndarray::Array2::zeros((2, 2));
+    let mut a = Tensor::from_elem((2, 2), T::zero());
     for i in 0..2 {
         for j in 0..2 {
             a[[i, j]] = <T as From<f64>>::from(1.0);
@@ -116,16 +185,16 @@ where
     
     // First singular value should be around 2.0
     let epsilon = <T as Precision>::epsilon().into();
-    let s0: f64 = result.s[0].into();
+    let s0: f64 = result.s[[0]].into();
     assert_abs_diff_eq!(s0, 2.0, epsilon = 100.0 * epsilon);
     
     // Second singular value should be zero
-    let s1: f64 = result.s[1].into();
+    let s1: f64 = result.s[[1]].into();
     assert_abs_diff_eq!(s1, 0.0, epsilon = 100.0 * epsilon);
     
     // Check reconstruction: A = U * S * V^T
-    let s_diag = Array2::from_diag(&result.s);
-    let reconstructed = result.u.dot(&s_diag).dot(&result.v.t());
+    
+    let reconstructed = reconstruct_svd(&result.u, &result.s, &result.v);
     
     for i in 0..2 {
         for j in 0..2 {
@@ -154,7 +223,7 @@ where
     T: From<f64> + Into<f64> + AbsDiffEq<Epsilon = T>,
 {
     // Create diagonal matrix directly in target precision
-    let mut a = ndarray::Array2::zeros((3, 3));
+    let mut a = Tensor::from_elem((3, 3), T::zero());
     a[[0, 0]] = <T as From<f64>>::from(3.0);
     a[[1, 1]] = <T as From<f64>>::from(2.0);
     a[[2, 2]] = <T as From<f64>>::from(1.0);
@@ -163,16 +232,16 @@ where
     
     // Singular values should be [3, 2, 1] in descending order
     let epsilon = <T as Precision>::epsilon().into();
-    let s0: f64 = result.s[0].into();
-    let s1: f64 = result.s[1].into();
-    let s2: f64 = result.s[2].into();
+    let s0: f64 = result.s[[0]].into();
+    let s1: f64 = result.s[[1]].into();
+    let s2: f64 = result.s[[2]].into();
     assert_abs_diff_eq!(s0, 3.0, epsilon = 100.0 * epsilon);
     assert_abs_diff_eq!(s1, 2.0, epsilon = 100.0 * epsilon);
     assert_abs_diff_eq!(s2, 1.0, epsilon = 100.0 * epsilon);
     
     // Check reconstruction: A = U * S * V^T
-    let s_diag = Array2::from_diag(&result.s);
-    let reconstructed = result.u.dot(&s_diag).dot(&result.v.t());
+    
+    let reconstructed = reconstruct_svd(&result.u, &result.s, &result.v);
     
     for i in 0..3 {
         for j in 0..3 {
@@ -211,7 +280,7 @@ where
     T: From<f64> + Into<f64>,
 {
     // Create test matrix directly in target precision
-    let mut a = ndarray::Array2::zeros((3, 3));
+    let mut a = Tensor::from_elem((3, 3), T::zero());
     let values = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]];
     for i in 0..3 {
         for j in 0..3 {
@@ -224,7 +293,7 @@ where
     let epsilon = <T as Precision>::epsilon().into();
     
     // Check U^T * U = I
-    let utu = result.u.t().dot(&result.u);
+    let utu = matmul(&transpose(&result.u), &result.u);
     for i in 0..3 {
         for j in 0..3 {
             let expected = if i == j { 1.0 } else { 0.0 };
@@ -234,7 +303,7 @@ where
     }
     
     // Check V^T * V = I
-    let vtv = result.v.t().dot(&result.v);
+    let vtv = matmul(&transpose(&result.v), &result.v);
     for i in 0..3 {
         for j in 0..3 {
             let expected = if i == j { 1.0 } else { 0.0 };
@@ -260,7 +329,7 @@ where
     T: From<f64> + Into<f64>,
 {
     // Create zero matrix directly in target precision
-    let a = ndarray::Array2::zeros((3, 3));
+    let a = Tensor::from_elem((3, 3), T::zero());
     let result: xprec_svd::svd::SVDResult<T> = jacobi_svd(&a);
     
     let epsilon = <T as Precision>::epsilon().into();
@@ -288,14 +357,14 @@ where
     T: From<f64> + Into<f64>,
 {
     // Create 1x1 matrix directly in target precision
-    let mut a = ndarray::Array2::zeros((1, 1));
+    let mut a = Tensor::from_elem((1, 1), T::zero());
     a[[0, 0]] = <T as From<f64>>::from(5.0);
     let result: xprec_svd::svd::SVDResult<T> = jacobi_svd(&a);
     
     let epsilon = <T as Precision>::epsilon().into();
     
     // Singular value should be 5.0
-    let s_val: f64 = result.s[0].into();
+    let s_val: f64 = result.s[[0]].into();
     assert_abs_diff_eq!(s_val, 5.0, epsilon = 100.0 * epsilon);
     
     // U and V should be [[1]] or [[-1]]
@@ -321,7 +390,7 @@ where
     T: From<f64> + Into<f64> + AbsDiffEq<Epsilon = T>,
 {
     // Create test matrix directly in target precision
-    let mut a = ndarray::Array2::zeros((3, 2));
+    let mut a = Tensor::from_elem((3, 2), T::zero());
     let values = [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]];
     for i in 0..3 {
         for j in 0..2 {
@@ -334,8 +403,8 @@ where
     let epsilon = <T as Precision>::epsilon().into();
     
     // Check that singular values are positive and in descending order
-    let s0: f64 = result.s[0].into();
-    let s1: f64 = result.s[1].into();
+    let s0: f64 = result.s[[0]].into();
+    let s1: f64 = result.s[[1]].into();
     assert!(s0 >= s1);
     for i in 0..2 {
         let s_val: f64 = result.s[i].into();
@@ -343,8 +412,8 @@ where
     }
     
     // Check reconstruction: A = U * S * V^T
-    let s_diag = Array2::from_diag(&result.s);
-    let reconstructed = result.u.dot(&s_diag).dot(&result.v.t());
+    
+    let reconstructed = reconstruct_svd(&result.u, &result.s, &result.v);
     
     for i in 0..3 {
         for j in 0..2 {
@@ -375,7 +444,7 @@ where
     let epsilon = <T as Precision>::epsilon().into();
     
     // Test 1: General 3x3 matrix
-    let mut a1 = ndarray::Array2::zeros((3, 3));
+    let mut a1 = Tensor::from_elem((3, 3), T::zero());
     let values1 = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]];
     for i in 0..3 {
         for j in 0..3 {
@@ -383,8 +452,7 @@ where
         }
     }
     let result1 = jacobi_svd(&a1);
-    let s_diag1 = Array2::from_diag(&result1.s);
-    let reconstructed1 = result1.u.dot(&s_diag1).dot(&result1.v.t());
+    let reconstructed1 = reconstruct_svd(&result1.u, &result1.s, &result1.v);
     
     for i in 0..3 {
         for j in 0..3 {
@@ -395,7 +463,7 @@ where
     }
     
     // Test 2: Symmetric matrix
-    let mut a2 = ndarray::Array2::zeros((3, 3));
+    let mut a2 = Tensor::from_elem((3, 3), T::zero());
     let values2 = [[4.0, 2.0, 1.0], [2.0, 3.0, 1.0], [1.0, 1.0, 2.0]];
     for i in 0..3 {
         for j in 0..3 {
@@ -403,8 +471,7 @@ where
         }
     }
     let result2 = jacobi_svd(&a2);
-    let s_diag2 = Array2::from_diag(&result2.s);
-    let reconstructed2 = result2.u.dot(&s_diag2).dot(&result2.v.t());
+    let reconstructed2 = reconstruct_svd(&result2.u, &result2.s, &result2.v);
     
     for i in 0..3 {
         for j in 0..3 {
@@ -415,7 +482,7 @@ where
     }
     
     // Test 3: Off-diagonal 2x2 matrix
-    let mut a3 = ndarray::Array2::zeros((2, 2));
+    let mut a3 = Tensor::from_elem((2, 2), T::zero());
     let values3 = [[0.0, 1.0], [1.0, 0.0]];
     for i in 0..2 {
         for j in 0..2 {
@@ -423,8 +490,7 @@ where
         }
     }
     let result3 = jacobi_svd(&a3);
-    let s_diag3 = Array2::from_diag(&result3.s);
-    let reconstructed3 = result3.u.dot(&s_diag3).dot(&result3.v.t());
+    let reconstructed3 = reconstruct_svd(&result3.u, &result3.s, &result3.v);
     
     for i in 0..2 {
         for j in 0..2 {
@@ -451,7 +517,7 @@ where
     T: From<f64> + Into<f64> + AbsDiffEq<Epsilon = T>,
 {
     // Create 3x2 rectangular matrix directly in target precision
-    let mut a = ndarray::Array2::zeros((3, 2));
+    let mut a = Tensor::from_elem((3, 2), T::zero());
     let values = [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]];
     for i in 0..3 {
         for j in 0..2 {
@@ -464,8 +530,8 @@ where
     let epsilon = <T as Precision>::epsilon().into();
     
     // Check that singular values are in descending order
-    let s0: f64 = result.s[0].into();
-    let s1: f64 = result.s[1].into();
+    let s0: f64 = result.s[[0]].into();
+    let s1: f64 = result.s[[1]].into();
     assert!(s0 >= s1);
     
     // Check that singular values are positive
@@ -475,8 +541,8 @@ where
     }
     
     // Check reconstruction: A = U * S * V^T
-    let s_diag = Array2::from_diag(&result.s);
-    let reconstructed = result.u.dot(&s_diag).dot(&result.v.t());
+    
+    let reconstructed = reconstruct_svd(&result.u, &result.s, &result.v);
     
     for i in 0..3 {
         for j in 0..2 {
@@ -489,7 +555,7 @@ where
     }
     
     // Check orthogonality: U^T * U = I
-    let utu = result.u.t().dot(&result.u);
+    let utu = matmul(&transpose(&result.u), &result.u);
     for i in 0..2 {
         for j in 0..2 {
             let expected = if i == j { 1.0 } else { 0.0 };
@@ -499,7 +565,7 @@ where
     }
     
     // Check orthogonality: V^T * V = I
-    let vtv = result.v.t().dot(&result.v);
+    let vtv = matmul(&transpose(&result.v), &result.v);
     for i in 0..2 {
         for j in 0..2 {
             let expected = if i == j { 1.0 } else { 0.0 };
@@ -525,7 +591,7 @@ where
     T: From<f64> + Into<f64> + AbsDiffEq<Epsilon = T>,
 {
     // Create 4x2 rectangular matrix directly in target precision
-    let mut a = ndarray::Array2::zeros((4, 2));
+    let mut a = Tensor::from_elem((4, 2), T::zero());
     let values = [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]];
     for i in 0..4 {
         for j in 0..2 {
@@ -538,8 +604,8 @@ where
     let epsilon = <T as Precision>::epsilon().into();
     
     // Check reconstruction
-    let s_diag = Array2::from_diag(&result.s);
-    let reconstructed = result.u.dot(&s_diag).dot(&result.v.t());
+    
+    let reconstructed = reconstruct_svd(&result.u, &result.s, &result.v);
     
     for i in 0..4 {
         for j in 0..2 {

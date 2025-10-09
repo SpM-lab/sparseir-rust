@@ -8,8 +8,11 @@ license = "MIT"
 repository = "https://github.com/sparseir-rust/xprec-svd"
 
 [dependencies]
-# Core linear algebra - mdarray only
-mdarray = { path = "../mdarray" }
+# Core linear algebra - mdarray only (use same version as mdarray-linalg)
+mdarray = { git = "https://github.com/fre-hu/mdarray.git", rev = "11ce08ae30bae2269c85eab1c4620028d160591a" }
+mdarray-linalg = { path = "../mdarray-linalg/mdarray-linalg" }
+mdarray-linalg-faer = { path = "../mdarray-linalg/mdarray-linalg-faer" }
+faer = "0.19"
 nalgebra = "0.32"
 
 # Extended precision
