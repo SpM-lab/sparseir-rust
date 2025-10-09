@@ -1,6 +1,6 @@
 //! Utility functions for SVE computation
 
-use ndarray::{Array1, Array2, Array3};
+use ndarray::{Array2, Array3};
 use crate::numeric::CustomNumeric;
 use crate::poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
 use crate::kernel::SymmetryType;
@@ -293,8 +293,8 @@ fn canonicalize_signs(
 /// 
 /// Merged SVEResult with singular values sorted in decreasing order
 pub fn merge_results(
-    result_even: (PiecewiseLegendrePolyVector, Array1<f64>, PiecewiseLegendrePolyVector),
-    result_odd: (PiecewiseLegendrePolyVector, Array1<f64>, PiecewiseLegendrePolyVector),
+    result_even: (PiecewiseLegendrePolyVector, Vec<f64>, PiecewiseLegendrePolyVector),
+    result_odd: (PiecewiseLegendrePolyVector, Vec<f64>, PiecewiseLegendrePolyVector),
     epsilon: f64,
 ) -> crate::sve::SVEResult {
     use crate::sve::SVEResult;
@@ -343,7 +343,7 @@ pub fn merge_results(
         1.0,
     );
     
-    SVEResult::new(canonical_u, Array1::from(s_sorted), canonical_v, epsilon)
+    SVEResult::new(canonical_u, s_sorted, canonical_v, epsilon)
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
 //! SVE computation strategies
 
-use ndarray::{Array1, Array2};
+use ndarray::Array2;
 use crate::numeric::CustomNumeric;
 use crate::kernel::{CentrosymmKernel, KernelProperties, SVEHints, SymmetryType};
 use crate::poly::{PiecewiseLegendrePolyVector};
@@ -19,7 +19,7 @@ pub trait SVEStrategy<T: CustomNumeric> {
     fn postprocess(
         &self,
         u_list: Vec<Array2<T>>,
-        s_list: Vec<Array1<T>>,
+        s_list: Vec<Vec<T>>,
         v_list: Vec<Array2<T>>,
     ) -> SVEResult;
 }
@@ -80,9 +80,9 @@ where
     pub fn postprocess_single(
         &self,
         u: &Array2<T>,
-        s: &Array1<T>,
+        s: &[T],
         v: &Array2<T>,
-    ) -> (PiecewiseLegendrePolyVector, Array1<f64>, PiecewiseLegendrePolyVector) {
+    ) -> (PiecewiseLegendrePolyVector, Vec<f64>, PiecewiseLegendrePolyVector) {
         // 1. Remove weights
         // Both U and V have rows corresponding to Gauss points, so is_row=true for both
         let u_unweighted = remove_weights(u, self.gauss_x.w.as_slice().unwrap(), true);
@@ -106,7 +106,7 @@ where
         // Note: No domain extension here - that's the caller's responsibility
         (
             PiecewiseLegendrePolyVector::new(u_polys),
-            s.map(|&x| x.to_f64()),
+            s.iter().map(|&x| x.to_f64()).collect(),
             PiecewiseLegendrePolyVector::new(v_polys),
         )
     }
@@ -203,9 +203,9 @@ where
     /// Extend polynomials from [0, xmax] to [-xmax, xmax]
     fn extend_result_to_full_domain(
         &self,
-        result: (PiecewiseLegendrePolyVector, Array1<f64>, PiecewiseLegendrePolyVector),
+        result: (PiecewiseLegendrePolyVector, Vec<f64>, PiecewiseLegendrePolyVector),
         symmetry: SymmetryType,
-    ) -> (PiecewiseLegendrePolyVector, Array1<f64>, PiecewiseLegendrePolyVector) {
+    ) -> (PiecewiseLegendrePolyVector, Vec<f64>, PiecewiseLegendrePolyVector) {
         let (u, s, v) = result;
         
         // Extend u and v from [0, xmax] to [-xmax, xmax]
@@ -245,7 +245,7 @@ where
     fn postprocess(
         &self,
         u_list: Vec<Array2<T>>,
-        s_list: Vec<Array1<T>>,
+        s_list: Vec<Vec<T>>,
         v_list: Vec<Array2<T>>,
     ) -> SVEResult {
         // Process even and odd results using SamplingSVE (which doesn't know about symmetry)

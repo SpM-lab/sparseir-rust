@@ -1,8 +1,8 @@
 //! Main SVE computation functions
 
-use ndarray::{Array1, Array2};
+use ndarray::Array2;
 use crate::numeric::CustomNumeric;
-use crate::mdarray_compat::{array2_to_tensor, tensor_to_array1, tensor_to_array2};
+use crate::mdarray_compat::{array2_to_tensor, tensor_to_array2};
 use crate::kernel::{CentrosymmKernel, KernelProperties, SVEHints};
 
 use super::result::SVEResult;
@@ -133,7 +133,7 @@ where
 /// Tuple of (U, singular_values, V) where A = U * S * V^T
 pub fn compute_svd<T: CustomNumeric + 'static>(
     matrix: &Array2<T>
-) -> (Array2<T>, Array1<T>, Array2<T>) {
+) -> (Array2<T>, Vec<T>, Array2<T>) {
     if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
         compute_svd_f64_xprec(matrix)
     } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<twofloat::TwoFloat>() {
@@ -146,7 +146,7 @@ pub fn compute_svd<T: CustomNumeric + 'static>(
 /// Compute SVD for f64 using xprec-svd
 fn compute_svd_f64_xprec<T: CustomNumeric>(
     matrix: &Array2<T>
-) -> (Array2<T>, Array1<T>, Array2<T>) {
+) -> (Array2<T>, Vec<T>, Array2<T>) {
     let matrix_f64 = matrix.map(|&x| x.to_f64());
     let matrix_tensor = array2_to_tensor(&matrix_f64);
     // Use very loose rtol to avoid premature truncation
@@ -157,7 +157,7 @@ fn compute_svd_f64_xprec<T: CustomNumeric>(
     
     (
         tensor_to_array2(&result.u).map(|&x| T::from_f64(x)),
-        tensor_to_array1(&result.s).map(|&x| T::from_f64(x)),
+        result.s.iter().map(|&x| T::from_f64(x)).collect(),
         tensor_to_array2(&result.v).map(|&x| T::from_f64(x)),
     )
 }
@@ -165,7 +165,7 @@ fn compute_svd_f64_xprec<T: CustomNumeric>(
 /// Compute SVD for TwoFloat using xprec-svd
 fn compute_svd_twofloat_xprec<T: CustomNumeric>(
     matrix: &Array2<T>
-) -> (Array2<T>, Array1<T>, Array2<T>) {
+) -> (Array2<T>, Vec<T>, Array2<T>) {
     let matrix_f64 = matrix.map(|&x| x.to_f64());
     let matrix_tensor = array2_to_tensor(&matrix_f64);
     let rtol = 1e-15;
@@ -174,7 +174,7 @@ fn compute_svd_twofloat_xprec<T: CustomNumeric>(
     
     (
         tensor_to_array2(&result.u).map(|&x| T::from_f64(x.to_f64())),
-        tensor_to_array1(&result.s).map(|&x| T::from_f64(x.to_f64())),
+        result.s.iter().map(|&x| T::from_f64(x.to_f64())).collect(),
         tensor_to_array2(&result.v).map(|&x| T::from_f64(x.to_f64())),
     )
 }
@@ -194,11 +194,11 @@ fn compute_svd_twofloat_xprec<T: CustomNumeric>(
 /// Tuple of (truncated_u_list, truncated_s_list, truncated_v_list)
 pub fn truncate<T: CustomNumeric>(
     u_list: Vec<Array2<T>>,
-    s_list: Vec<Array1<T>>,
+    s_list: Vec<Vec<T>>,
     v_list: Vec<Array2<T>>,
     rtol: T,
     max_num_svals: Option<usize>,
-) -> (Vec<Array2<T>>, Vec<Array1<T>>, Vec<Array2<T>>) {
+) -> (Vec<Array2<T>>, Vec<Vec<T>>, Vec<Array2<T>>) {
     let zero = T::zero();
     
     // Validate
@@ -260,7 +260,7 @@ pub fn truncate<T: CustomNumeric>(
         
         if n_keep > 0 {
             u_trunc.push(u.slice(ndarray::s![.., ..n_keep]).to_owned());
-            s_trunc.push(s.slice(ndarray::s![..n_keep]).to_owned());
+            s_trunc.push(s[..n_keep].to_vec());
             v_trunc.push(v.slice(ndarray::s![.., ..n_keep]).to_owned());
         }
     }
@@ -275,7 +275,7 @@ mod tests {
     #[test]
     fn test_truncate_by_rtol() {
         let u = vec![Array2::from_shape_vec((3, 3), vec![1.0; 9]).unwrap()];
-        let s = vec![ndarray::array![10.0, 5.0, 0.1]];
+        let s = vec![vec![10.0, 5.0, 0.1]];
         let v = vec![Array2::from_shape_vec((3, 3), vec![1.0; 9]).unwrap()];
         
         // rtol = 0.1, max_sval = 10.0, cutoff = 1.0
@@ -290,7 +290,7 @@ mod tests {
     #[test]
     fn test_truncate_by_max_size() {
         let u = vec![Array2::from_shape_vec((3, 3), vec![1.0; 9]).unwrap()];
-        let s = vec![ndarray::array![10.0, 5.0, 2.0]];
+        let s = vec![vec![10.0, 5.0, 2.0]];
         let v = vec![Array2::from_shape_vec((3, 3), vec![1.0; 9]).unwrap()];
         
         // max_num_svals = 2
@@ -303,7 +303,7 @@ mod tests {
     #[should_panic(expected = "rtol must be in [0, 1]")]
     fn test_truncate_invalid_rtol() {
         let u = vec![Array2::from_shape_vec((1, 1), vec![1.0]).unwrap()];
-        let s = vec![ndarray::array![1.0]];
+        let s = vec![vec![1.0]];
         let v = vec![Array2::from_shape_vec((1, 1), vec![1.0]).unwrap()];
         
         truncate(u, s, v, 1.5, None);

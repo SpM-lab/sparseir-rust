@@ -3,7 +3,6 @@
 //! This module provides the `FiniteTempBasis` type which represents the
 //! intermediate representation (IR) basis for a given temperature.
 
-use ndarray::Array1;
 use std::sync::Arc;
 
 use crate::kernel::{KernelProperties, CentrosymmKernel, LogisticKernel};
@@ -54,7 +53,7 @@ where
     pub v: PiecewiseLegendrePolyVector,
     
     /// Singular values
-    pub s: Array1<f64>,
+    pub s: Vec<f64>,
     
     /// Left singular functions on Matsubara frequency axis (Fourier transform of u)
     pub uhat: PiecewiseLegendreFTVector<S>,
@@ -165,7 +164,7 @@ where
         let ypower = kernel.ypower();
         let scale_factor = (beta / 2.0 * omega_max).sqrt() 
                          * omega_max.powi(-ypower);
-        let s = s_sve.mapv(|x| scale_factor * x);
+        let s: Vec<f64> = s_sve.iter().map(|&x| scale_factor * x).collect();
         
         // Construct uhat (Fourier transform of u)
         // HACK: Fourier transforms only work on unit interval, so we scale the data
@@ -219,9 +218,9 @@ where
     }
     
     /// Get significance of each singular value (s[i] / s[0])
-    pub fn significance(&self) -> Array1<f64> {
+    pub fn significance(&self) -> Vec<f64> {
         let s0 = self.s[0];
-        self.s.mapv(|s| s / s0)
+        self.s.iter().map(|&s| s / s0).collect()
     }
     
     /// Get default tau sampling points
