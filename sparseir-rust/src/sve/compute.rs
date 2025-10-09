@@ -2,6 +2,7 @@
 
 use ndarray::{Array1, Array2};
 use crate::numeric::CustomNumeric;
+use crate::mdarray_compat::{array2_to_tensor, tensor_to_array1, tensor_to_array2};
 use crate::kernel::{CentrosymmKernel, KernelProperties, SVEHints};
 
 use super::result::SVEResult;
@@ -147,16 +148,17 @@ fn compute_svd_f64_xprec<T: CustomNumeric>(
     matrix: &Array2<T>
 ) -> (Array2<T>, Array1<T>, Array2<T>) {
     let matrix_f64 = matrix.map(|&x| x.to_f64());
+    let matrix_tensor = array2_to_tensor(&matrix_f64);
     // Use very loose rtol to avoid premature truncation
     // The actual truncation will be done later based on user's epsilon
     let rtol = 1e-14;
-    let result = xprec_svd::tsvd_f64(&matrix_f64, rtol)
+    let result = xprec_svd::tsvd_f64(&matrix_tensor, rtol)
         .expect("SVD computation failed");
     
     (
-        result.u.map(|&x| T::from_f64(x)),
-        result.s.map(|&x| T::from_f64(x)),
-        result.v.map(|&x| T::from_f64(x)),
+        tensor_to_array2(&result.u).map(|&x| T::from_f64(x)),
+        tensor_to_array1(&result.s).map(|&x| T::from_f64(x)),
+        tensor_to_array2(&result.v).map(|&x| T::from_f64(x)),
     )
 }
 
@@ -165,14 +167,15 @@ fn compute_svd_twofloat_xprec<T: CustomNumeric>(
     matrix: &Array2<T>
 ) -> (Array2<T>, Array1<T>, Array2<T>) {
     let matrix_f64 = matrix.map(|&x| x.to_f64());
+    let matrix_tensor = array2_to_tensor(&matrix_f64);
     let rtol = 1e-15;
-    let result = xprec_svd::tsvd_twofloat_from_f64(&matrix_f64, rtol)
+    let result = xprec_svd::tsvd_twofloat_from_f64(&matrix_tensor, rtol)
         .expect("TwoFloat SVD computation failed");
     
     (
-        result.u.map(|&x| T::from_f64(x.to_f64())),
-        result.s.map(|&x| T::from_f64(x.to_f64())),
-        result.v.map(|&x| T::from_f64(x.to_f64())),
+        tensor_to_array2(&result.u).map(|&x| T::from_f64(x.to_f64())),
+        tensor_to_array1(&result.s).map(|&x| T::from_f64(x.to_f64())),
+        tensor_to_array2(&result.v).map(|&x| T::from_f64(x.to_f64())),
     )
 }
 

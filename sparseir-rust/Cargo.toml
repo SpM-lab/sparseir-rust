@@ -8,14 +8,17 @@ license = "MIT"
 repository = "https://github.com/sparseir-rust/sparseir-rust"
 
 [dependencies]
-# Core linear algebra - mdarray with Faer backend
-mdarray = { path = "../mdarray" }
+# Core linear algebra - mdarray with Faer backend (use same version as xprec-svd)
+mdarray = { git = "https://github.com/fre-hu/mdarray.git", rev = "11ce08ae30bae2269c85eab1c4620028d160591a" }
 mdarray-linalg = { path = "../mdarray-linalg/mdarray-linalg" }
 mdarray-linalg-faer = { path = "../mdarray-linalg/mdarray-linalg-faer", optional = true }
 
 # Faer - Pure Rust high-performance linear algebra (always available)
 faer = "0.23"
 faer-traits = "0.23"
+
+# ndarray (legacy - being migrated to mdarray)
+ndarray = "0.15"
 
 # nalgebra (still needed for some numeric operations)
 nalgebra = "0.32"
