@@ -8,6 +8,7 @@ use crate::gemm::matmul_par;
 use crate::kernel::{KernelProperties, CentrosymmKernel};
 use crate::traits::StatisticsType;
 use mdarray::{DTensor, Tensor, DynRank, Shape};
+use num_complex::Complex;
 use std::cell::RefCell;
 
 /// Move axis from position `src` to position `dst`
@@ -207,22 +208,14 @@ where
         (0..n).map(|i| result[[i, 0]]).collect()
     }
     
-    /// Fit basis coefficients from values at sampling points
+    /// Internal generic fit implementation
     ///
-    /// Solves the least-squares problem: min ||A * coeffs - values||
-    /// using the SVD pseudoinverse: coeffs = Vᵀ * S⁻¹ * Uᵀ * values
-    ///
-    /// SVD is computed lazily on first call to `fit` or `fit_nd`.
-    ///
-    /// # Arguments
-    /// * `values` - Values at sampling points (length = n_sampling_points)
-    ///
-    /// # Returns
-    /// Fitted basis coefficients (length = basis_size)
-    ///
-    /// # Panics
-    /// Panics if `values.len() != n_sampling_points`
-    pub fn fit(&self, values: &[f64]) -> Vec<f64> {
+    /// Solves: min ||A * coeffs - values|| using SVD pseudoinverse
+    /// where A is real but values and coeffs can be complex
+    fn fit_impl<T>(&self, values: &[T]) -> Vec<T>
+    where
+        T: num_complex::ComplexFloat + faer_traits::ComplexField + num_traits::One + 'static + From<f64>,
+    {
         let n_points = self.n_sampling_points();
         assert_eq!(
             values.len(),
@@ -232,7 +225,7 @@ where
             n_points
         );
         
-        // Compute SVD lazily on first call
+        // Compute SVD lazily on first call (always real, since matrix is real)
         if self.matrix_svd.borrow().is_none() {
             let svd = compute_matrix_svd(&self.matrix);
             
@@ -251,30 +244,77 @@ where
         let svd = self.matrix_svd.borrow();
         let svd = svd.as_ref().unwrap();
         
-        // Convert values to column vector
-        let values_col = DTensor::<f64, 2>::from_fn([n_points, 1], |idx| values[idx[0]]);
+        // Convert real SVD matrices to type T
+        // U, V are real orthogonal matrices, convert to complex if needed
+        let basis_size = self.basis_size();
         
-        // Compute U^T * values
-        let ut = svd.u.transpose().to_tensor();
+        // Convert values to column vector (type T)
+        let values_col = DTensor::<T, 2>::from_fn([n_points, 1], |idx| values[idx[0]]);
+        
+        // U^T (real) as type T
+        let ut = DTensor::<T, 2>::from_fn(*svd.u.shape(), |idx| {
+            svd.u[[idx[1], idx[0]]].into()  // transpose and convert
+        });
+        
+        // Compute U^T * values (real matrix × T vector = T vector)
         let ut_values = matmul_par(&ut, &values_col);
         
         // Divide by singular values: S^{-1} * (U^T * values)
-        let basis_size = self.basis_size();
-        let s_inv_ut_values = DTensor::<f64, 2>::from_fn([basis_size, 1], |idx| {
+        let s_inv_ut_values = DTensor::<T, 2>::from_fn([basis_size, 1], |idx| {
             let i = idx[0];
             if i < svd.s.len() {
-                ut_values[[i, 0]] / svd.s[i]
+                ut_values[[i, 0]] / svd.s[i].into()
             } else {
-                0.0
+                T::zero()
             }
         });
         
-        // coeffs = V^T^T * (S^{-1} * U^T * values) = V * (S^{-1} * U^T * values)
-        let v = svd.vt.transpose().to_tensor();
+        // V (real) as type T
+        let v = DTensor::<T, 2>::from_fn(*svd.vt.shape(), |idx| {
+            svd.vt[[idx[1], idx[0]]].into()  // transpose and convert
+        });
+        
+        // coeffs = V * (S^{-1} * U^T * values)
         let coeffs_col = matmul_par(&v, &s_inv_ut_values);
         
         // Extract result as Vec
         (0..basis_size).map(|i| coeffs_col[[i, 0]]).collect()
+    }
+    
+    /// Fit basis coefficients from real values at sampling points
+    ///
+    /// Solves the least-squares problem: min ||A * coeffs - values||
+    /// using the SVD pseudoinverse: coeffs = Vᵀ * S⁻¹ * Uᵀ * values
+    ///
+    /// SVD is computed lazily on first call to `fit` or `fit_nd`.
+    ///
+    /// # Arguments
+    /// * `values` - Real values at sampling points (length = n_sampling_points)
+    ///
+    /// # Returns
+    /// Fitted basis coefficients (length = basis_size)
+    ///
+    /// # Panics
+    /// Panics if `values.len() != n_sampling_points`
+    pub fn fit(&self, values: &[f64]) -> Vec<f64> {
+        self.fit_impl(values)
+    }
+    
+    /// Fit basis coefficients from complex values at sampling points
+    ///
+    /// Solves the least-squares problem: min ||A * coeffs - values||
+    /// using the SVD pseudoinverse, where A is the real sampling matrix.
+    ///
+    /// # Arguments
+    /// * `values` - Complex values at sampling points (length = n_sampling_points)
+    ///
+    /// # Returns
+    /// Fitted complex basis coefficients (length = basis_size)
+    ///
+    /// # Panics
+    /// Panics if `values.len() != n_sampling_points`
+    pub fn fit_complex(&self, values: &[Complex<f64>]) -> Vec<Complex<f64>> {
+        self.fit_impl(values)
     }
     
     /// Evaluate basis coefficients at sampling points (N-dimensional)
