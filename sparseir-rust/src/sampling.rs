@@ -26,7 +26,7 @@ use mdarray::{DTensor, Tensor, DynRank, Shape};
 /// // movedim(arr, 0, 2) moves axis 0 to position 2
 /// // Result shape: (3, 4, 2, 5) with axes permuted as [1, 2, 0, 3]
 /// ```
-fn movedim<T: Clone>(arr: &Tensor<T, DynRank>, src: usize, dst: usize) -> Tensor<T, DynRank> {
+pub fn movedim<T: Clone>(arr: &Tensor<T, DynRank>, src: usize, dst: usize) -> Tensor<T, DynRank> {
     if src == dst {
         return arr.clone();
     }

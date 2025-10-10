@@ -126,6 +126,19 @@ pub trait Basis<S: StatisticsType> {
     where
         S: 'static;
     
+    /// Evaluate spectral basis functions at real frequencies
+    ///
+    /// Computes the value of spectral basis functions at given real frequencies.
+    /// For IR basis: V_l(ω)
+    /// For DLR basis: may return identity or specific representation
+    ///
+    /// # Arguments
+    /// * `omega` - Real frequency points in [-ωmax, ωmax]
+    ///
+    /// # Returns
+    /// Matrix of shape [omega.len(), self.size()] where result[i, l] = V_l(ω_i)
+    fn evaluate_omega(&self, omega: &[f64]) -> mdarray::DTensor<f64, 2>;
+    
     /// Get default omega (real frequency) sampling points
     ///
     /// Returns sampling points on the real-frequency axis ω ∈ [-ωmax, ωmax].

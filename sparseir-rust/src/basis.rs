@@ -450,6 +450,21 @@ where
         })
     }
     
+    fn evaluate_omega(&self, omega: &[f64]) -> mdarray::DTensor<f64, 2> {
+        use mdarray::DTensor;
+        
+        let n_points = omega.len();
+        let basis_size = self.size();
+        
+        // Evaluate each spectral basis function at all omega points
+        // Result: matrix[i, l] = V_l(omega[i])
+        DTensor::<f64, 2>::from_fn([n_points, basis_size], |idx| {
+            let i = idx[0];  // omega index
+            let l = idx[1];  // basis function index
+            self.v[l].evaluate(omega[i])
+        })
+    }
+    
     fn default_omega_sampling_points(&self) -> Vec<f64> {
         self.default_omega_sampling_points()
     }
