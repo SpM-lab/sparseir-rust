@@ -351,6 +351,27 @@ where
         
         omega_n
     }
+    
+    /// Get default omega (real frequency) sampling points
+    ///
+    /// Returns sampling points on the real-frequency axis ω ∈ [-ωmax, ωmax].
+    /// These are used as pole locations for the Discrete Lehmann Representation (DLR).
+    ///
+    /// The sampling points are chosen as the roots of the L-th basis function
+    /// in the spectral domain (v), which provides near-optimal conditioning.
+    ///
+    /// # Returns
+    /// Vector of real-frequency sampling points in [-ωmax, ωmax]
+    pub fn default_omega_sampling_points(&self) -> Vec<f64> {
+        let sz = self.size();
+        
+        // Get sampling points in [-1, 1] from spectral basis functions
+        let y = default_sampling_points(&self.sve_result.v, sz);
+        
+        // Scale to [-ωmax, ωmax]
+        let wmax = self.kernel.lambda() / self.beta;
+        y.into_iter().map(|yi| wmax * yi).collect()
+    }
 }
 
 /// Type alias for fermionic basis with LogisticKernel
