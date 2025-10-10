@@ -1,4 +1,4 @@
-use sparseir_rust::fitter::{RealMatrixFitter, ComplexToRealFitter};
+use sparseir_rust::fitter::{RealMatrixFitter, ComplexToRealFitter, ComplexMatrixFitter};
 use num_complex::Complex;
 use mdarray::DTensor;
 
@@ -223,4 +223,79 @@ fn test_complex_fitter_real_matrix_equivalence() {
         assert!((real - complex).abs() < 1e-12, "Fitted coeffs mismatch");
     }
 }
+
+#[test]
+fn test_complex_matrix_fitter_roundtrip() {
+    // Create a complex matrix with both real and imaginary parts
+    let n_points = 10;
+    let basis_size = 5;
+    
+    // Vandermonde-like matrix with phase
+    let matrix = DTensor::<Complex<f64>, 2>::from_fn([n_points, basis_size], |idx| {
+        let i = idx[0] as f64 / (n_points as f64);
+        let j = idx[1] as i32;
+        let mag = i.powi(j);
+        let phase = (j as f64) * 0.5;  // Simpler phase
+        Complex::new(mag * phase.cos(), mag * phase.sin())
+    });
+    
+    let fitter = ComplexMatrixFitter::new(matrix);
+    
+    // Create complex coefficients
+    let coeffs: Vec<Complex<f64>> = (0..basis_size)
+        .map(|i| Complex::new((i as f64 + 1.0) * 0.5, (i as f64) * 0.3))
+        .collect();
+    
+    // Evaluate
+    let values = fitter.evaluate(&coeffs);
+    assert_eq!(values.len(), n_points);
+    
+    // Fit back
+    let fitted_coeffs = fitter.fit(&values);
+    assert_eq!(fitted_coeffs.len(), basis_size);
+    
+    // Check roundtrip
+    for (i, (orig, fitted)) in coeffs.iter().zip(fitted_coeffs.iter()).enumerate() {
+        let error = (orig - fitted).error_norm();
+        assert!(error < 1e-8, "Complex matrix roundtrip error at {}: orig={}, fitted={}, error={}", 
+            i, orig, fitted, error);
+    }
+}
+
+#[test]
+fn test_complex_matrix_fitter_vs_complex_to_real() {
+    // When coefficients are real, ComplexMatrixFitter should give
+    // complex coefficients with negligible imaginary part
+    
+    let n_points = 8;
+    let basis_size = 4;
+    
+    let matrix = DTensor::<Complex<f64>, 2>::from_fn([n_points, basis_size], |idx| {
+        let i = idx[0] as f64 / (n_points as f64);
+        let j = idx[1] as i32;
+        Complex::new(i.powi(j), (i * (j as f64) * 0.1).sin())
+    });
+    
+    let fitter_c2r = ComplexToRealFitter::new(&matrix);
+    let fitter_complex = ComplexMatrixFitter::new(matrix);
+    
+    // Real coefficients
+    let coeffs_real: Vec<f64> = (0..basis_size).map(|i| i as f64 * 0.4).collect();
+    
+    // Evaluate with ComplexToRealFitter
+    let values = fitter_c2r.evaluate(&coeffs_real);
+    
+    // Fit with ComplexMatrixFitter (should give complex coeffs with small imaginary)
+    let fitted_complex = fitter_complex.fit(&values);
+    
+    // Real parts should match, imaginary parts should be small
+    for (i, &coeff_real) in coeffs_real.iter().enumerate() {
+        let diff_re = (coeff_real - fitted_complex[i].re).abs();
+        let im = fitted_complex[i].im.abs();
+        
+        assert!(diff_re < 1e-10, "Real part mismatch at {}: {}", i, diff_re);
+        assert!(im < 1e-10, "Imaginary part should be small at {}: {}", i, im);
+    }
+}
+
 

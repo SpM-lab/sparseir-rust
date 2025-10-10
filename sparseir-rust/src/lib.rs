@@ -15,6 +15,7 @@ pub mod numeric;
 pub mod poly;
 pub mod polyfourier;
 pub mod sampling;  // Sparse sampling in imaginary time
+pub mod matsubara_sampling;  // Sparse sampling in Matsubara frequencies
 pub mod special_functions;
 pub mod traits;
 pub mod sve;
@@ -45,7 +46,7 @@ pub use kernelmatrix::{DiscretizedKernel, InterpolatedKernel, matrix_from_gauss,
 pub use sve::{SVEResult, TworkType, SVDStrategy, SamplingSVE, CentrosymmSVE, SVEStrategy, compute_sve, compute_svd, truncate};
 pub use basis::{FiniteTempBasis, FermionicBasis, BosonicBasis};
 pub use dlr::{gtau_single_pole, fermionic_single_pole, bosonic_single_pole};
-pub use fitter::{RealMatrixFitter, ComplexToRealFitter};
+pub use fitter::{RealMatrixFitter, ComplexToRealFitter, ComplexMatrixFitter};
 
 // Re-export external dependencies for convenience
 pub use twofloat::TwoFloat;
