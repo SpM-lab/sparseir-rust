@@ -103,6 +103,11 @@ impl PiecewiseLegendrePoly {
         }
     }
 
+    /// Get the symmetry parameter
+    pub fn symm(&self) -> i32 {
+        self.symm
+    }
+    
     /// Create a new PiecewiseLegendrePoly with new data and symmetry
     pub fn with_data_and_symmetry(&self, new_data: mdarray::DTensor<f64, 2>, new_symm: i32) -> Self {
         Self {

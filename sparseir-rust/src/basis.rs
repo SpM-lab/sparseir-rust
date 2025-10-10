@@ -290,6 +290,67 @@ where
         
         smpl_taus
     }
+    
+    /// Get default Matsubara frequency sampling points
+    ///
+    /// Returns sampling points as MatsubaraFreq objects based on extrema
+    /// of the Matsubara basis functions (same algorithm as C++/Julia).
+    ///
+    /// # Arguments
+    /// * `positive_only` - If true, returns only non-negative frequencies
+    ///
+    /// # Returns
+    /// Vector of Matsubara frequency sampling points
+    pub fn default_matsubara_sampling_points(&self, positive_only: bool) -> Vec<crate::freq::MatsubaraFreq<S>>
+    where
+        S: 'static,
+    {
+        use crate::freq::MatsubaraFreq;
+        use crate::polyfourier::{sign_changes, find_extrema};
+        use std::collections::BTreeSet;
+        
+        let l = self.size();
+        let mut l_requested = l;
+        
+        // Adjust l_requested based on statistics (same as C++)
+        if S::STATISTICS == crate::traits::Statistics::Fermionic && l_requested % 2 != 0 {
+            l_requested += 1;
+        } else if S::STATISTICS == crate::traits::Statistics::Bosonic && l_requested % 2 == 0 {
+            l_requested += 1;
+        }
+        
+        // Choose sign_changes or find_extrema based on l_requested
+        let mut omega_n = if l_requested < self.uhat_full.len() {
+            sign_changes(&self.uhat_full[l_requested], positive_only)
+        } else {
+            find_extrema(&self.uhat_full[self.uhat_full.len() - 1], positive_only)
+        };
+        
+        // For bosons, include zero frequency explicitly to prevent conditioning issues
+        if S::STATISTICS == crate::traits::Statistics::Bosonic {
+            omega_n.push(MatsubaraFreq::<S>::new(0).unwrap());
+        }
+        
+        // Sort and remove duplicates using BTreeSet
+        let omega_n_set: BTreeSet<MatsubaraFreq<S>> = omega_n.into_iter().collect();
+        let omega_n: Vec<MatsubaraFreq<S>> = omega_n_set.into_iter().collect();
+        
+        // Check expected size
+        let expected_size = if positive_only {
+            (l_requested + 1) / 2
+        } else {
+            l_requested
+        };
+        
+        if omega_n.len() != expected_size {
+            eprintln!(
+                "Warning: Requested {} sampling frequencies for basis size L = {}, but got {}.",
+                expected_size, l, omega_n.len()
+            );
+        }
+        
+        omega_n
+    }
 }
 
 /// Type alias for fermionic basis with LogisticKernel

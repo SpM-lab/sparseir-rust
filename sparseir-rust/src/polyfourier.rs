@@ -539,6 +539,16 @@ impl<S: StatisticsType> PiecewiseLegendreFTVector<S> {
             _phantom: std::marker::PhantomData,
         }
     }
+    
+    /// Get the number of polynomials in the vector
+    pub fn len(&self) -> usize {
+        self.polyvec.len()
+    }
+    
+    /// Check if the vector is empty
+    pub fn is_empty(&self) -> bool {
+        self.polyvec.is_empty()
+    }
 
     /// Create from PiecewiseLegendrePolyVector and statistics
     pub fn from_poly_vector(
@@ -628,4 +638,153 @@ impl<S: StatisticsType> Default for PiecewiseLegendreFTVector<S> {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// ===== Matsubara sampling point selection =====
+
+/// Default grid for finding extrema/sign changes
+const DEFAULT_GRID: i64 = 1 << 23;  // 2^23, same as C++
+
+/// Find sign changes of a Matsubara basis function
+///
+/// Returns Matsubara frequencies where the function changes sign.
+pub fn sign_changes<S: StatisticsType + 'static>(
+    u_hat: &PiecewiseLegendreFT<S>,
+    positive_only: bool,
+) -> Vec<MatsubaraFreq<S>> {
+    let f = func_for_part(u_hat);
+    let x0 = find_all(&f, DEFAULT_GRID);
+    
+    // Convert to Matsubara indices: n = 2*x + zeta
+    let mut indices: Vec<i64> = x0.iter()
+        .map(|&x| 2 * x + u_hat.zeta())
+        .collect();
+    
+    if !positive_only {
+        symmetrize_matsubara_inplace(&mut indices);
+    }
+    
+    indices.iter()
+        .filter_map(|&n| MatsubaraFreq::<S>::new(n).ok())
+        .collect()
+}
+
+/// Find extrema of a Matsubara basis function
+///
+/// Returns Matsubara frequencies where the function has local extrema.
+pub fn find_extrema<S: StatisticsType + 'static>(
+    u_hat: &PiecewiseLegendreFT<S>,
+    positive_only: bool,
+) -> Vec<MatsubaraFreq<S>> {
+    let f = func_for_part(u_hat);
+    let x0 = discrete_extrema(&f, DEFAULT_GRID);
+    
+    // Convert to Matsubara indices: n = 2*x + zeta
+    let mut indices: Vec<i64> = x0.iter()
+        .map(|&x| 2 * x + u_hat.zeta())
+        .collect();
+    
+    if !positive_only {
+        symmetrize_matsubara_inplace(&mut indices);
+    }
+    
+    indices.iter()
+        .filter_map(|&n| MatsubaraFreq::<S>::new(n).ok())
+        .collect()
+}
+
+/// Create a function that extracts the appropriate part (real/imag) based on parity
+fn func_for_part<S: StatisticsType + 'static>(
+    poly_ft: &PiecewiseLegendreFT<S>,
+) -> Box<dyn Fn(i64) -> f64> {
+    let parity = poly_ft.poly.symm();
+    let zeta = poly_ft.zeta();
+    
+    // Clone what we need
+    let poly_ft_clone = poly_ft.clone();
+    
+    Box::new(move |n: i64| {
+        let omega = MatsubaraFreq::<S>::new(2 * n + zeta).unwrap();
+        let value = poly_ft_clone.evaluate(&omega);
+        
+        // Select real or imaginary part based on parity and statistics
+        if parity == 1 {
+            // Even parity
+            if S::STATISTICS == Statistics::Bosonic {
+                value.re
+            } else {
+                value.im
+            }
+        } else if parity == -1 {
+            // Odd parity
+            if S::STATISTICS == Statistics::Bosonic {
+                value.im
+            } else {
+                value.re
+            }
+        } else {
+            panic!("Cannot detect parity");
+        }
+    })
+}
+
+/// Find all sign changes of a function on a grid
+fn find_all(f: &dyn Fn(i64) -> f64, grid_size: i64) -> Vec<i64> {
+    let mut results = Vec::new();
+    let mut prev_val = f(0);
+    
+    for n in 1..grid_size {
+        let val = f(n);
+        if prev_val.signum() != val.signum() && val != 0.0 {
+            results.push(n - 1);
+        }
+        prev_val = val;
+    }
+    
+    results
+}
+
+/// Find discrete extrema of a function on a grid
+fn discrete_extrema(f: &dyn Fn(i64) -> f64, grid_size: i64) -> Vec<i64> {
+    let mut results = Vec::new();
+    
+    if grid_size < 3 {
+        return results;
+    }
+    
+    let mut prev_val = f(0);
+    let mut curr_val = f(1);
+    
+    for n in 2..grid_size {
+        let next_val = f(n);
+        
+        // Check if curr_val is a local extremum
+        if (curr_val > prev_val && curr_val > next_val) ||
+           (curr_val < prev_val && curr_val < next_val) {
+            results.push((n - 1) as i64);
+        }
+        
+        prev_val = curr_val;
+        curr_val = next_val;
+    }
+    
+    results
+}
+
+/// Symmetrize Matsubara indices by adding negative frequencies
+fn symmetrize_matsubara_inplace(xs: &mut Vec<i64>) {
+    if xs.is_empty() {
+        return;
+    }
+    
+    // Remove zero if present
+    xs.retain(|&x| x != 0);
+    
+    // Add negative frequencies
+    let positives: Vec<i64> = xs.iter().filter(|&&x| x > 0).copied().collect();
+    let mut negatives: Vec<i64> = positives.iter().map(|&x| -x).collect();
+    
+    xs.append(&mut negatives);
+    xs.sort();
+    xs.dedup();
 }

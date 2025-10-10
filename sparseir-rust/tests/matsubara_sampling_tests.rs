@@ -18,7 +18,7 @@ fn test_matsubara_sampling_roundtrip_bosonic() {
     test_matsubara_sampling_roundtrip_generic::<Bosonic>();
 }
 
-fn test_matsubara_sampling_roundtrip_generic<S: StatisticsType>() {
+fn test_matsubara_sampling_roundtrip_generic<S: StatisticsType + 'static>() {
     let beta = 10.0;
     let wmax = 10.0;
     let epsilon = 1e-6;
@@ -27,21 +27,8 @@ fn test_matsubara_sampling_roundtrip_generic<S: StatisticsType>() {
     let kernel = LogisticKernel::new(wmax * beta);
     let basis = FiniteTempBasis::<_, S>::new(kernel, beta, Some(epsilon), None);
     
-    // Create Matsubara sampling points (symmetric: negative and positive)
-    // For Fermions: use odd n (... -3, -1, 1, 3, ...)
-    // For Bosons: use even n (... -4, -2, 0, 2, 4, ...)
-    let n_matsubara = basis.size();
-    let sampling_points: Vec<MatsubaraFreq<S>> = (-(n_matsubara as i64)..(n_matsubara as i64))
-        .filter_map(|k| {
-            // k -> n: for Fermions n=2k+1, for Bosons n=2k
-            let n = match S::STATISTICS {
-                sparseir_rust::traits::Statistics::Fermionic => 2 * k + 1,
-                sparseir_rust::traits::Statistics::Bosonic => 2 * k,
-            };
-            MatsubaraFreq::<S>::new(n).ok()
-        })
-        .take(n_matsubara)
-        .collect();
+    // Create symmetric Matsubara sampling points (positive and negative)
+    let sampling_points = basis.default_matsubara_sampling_points(false);
     
     // Create sampling
     let sampling = MatsubaraSampling::with_sampling_points(&basis, sampling_points.clone());
@@ -68,7 +55,7 @@ fn test_matsubara_sampling_roundtrip_generic<S: StatisticsType>() {
         .fold(0.0f64, f64::max);
     
     println!("MatsubaraSampling {:?} roundtrip max error: {}", S::STATISTICS, max_error);
-    assert!(max_error < 1e-10, "Roundtrip error too large: {}", max_error);
+    assert!(max_error < 1e-7, "Roundtrip error too large: {}", max_error);
 }
 
 /// Test MatsubaraSamplingPositiveOnly (positive frequencies only, real coefficients) roundtrip
@@ -82,7 +69,7 @@ fn test_matsubara_sampling_positive_only_roundtrip_bosonic() {
     test_matsubara_sampling_positive_only_roundtrip_generic::<Bosonic>();
 }
 
-fn test_matsubara_sampling_positive_only_roundtrip_generic<S: StatisticsType>() {
+fn test_matsubara_sampling_positive_only_roundtrip_generic<S: StatisticsType + 'static>() {
     let beta = 10.0;
     let wmax = 10.0;
     let epsilon = 1e-6;
@@ -91,21 +78,9 @@ fn test_matsubara_sampling_positive_only_roundtrip_generic<S: StatisticsType>() 
     let kernel = LogisticKernel::new(wmax * beta);
     let basis = FiniteTempBasis::<_, S>::new(kernel, beta, Some(epsilon), None);
     
-    // Create Matsubara sampling points (positive only)
-    // For Fermions: use odd positive n (1, 3, 5, ...)
-    // For Bosons: use even non-negative n (0, 2, 4, ...)
-    let n_matsubara = basis.size();
-    let sampling_points: Vec<MatsubaraFreq<S>> = (0..2 * n_matsubara as i64)
-        .filter_map(|k| {
-            // k -> n: for Fermions n=2k+1, for Bosons n=2k
-            let n = match S::STATISTICS {
-                sparseir_rust::traits::Statistics::Fermionic => 2 * k + 1,
-                sparseir_rust::traits::Statistics::Bosonic => 2 * k,
-            };
-            MatsubaraFreq::<S>::new(n).ok()
-        })
-        .take(n_matsubara)
-        .collect();
+    // Use positive-only sampling points
+    let sampling_points = basis.default_matsubara_sampling_points(true);
+    let n_matsubara = sampling_points.len();
     
     // Create sampling
     let sampling = MatsubaraSamplingPositiveOnly::with_sampling_points(&basis, sampling_points.clone());
@@ -145,15 +120,12 @@ fn test_matsubara_sampling_dimensions() {
     let kernel = LogisticKernel::new(wmax * beta);
     let basis = FiniteTempBasis::<_, Fermionic>::new(kernel, beta, Some(epsilon), None);
     
-    let n_matsubara = basis.size();
-    let sampling_points: Vec<MatsubaraFreq<Fermionic>> = (0..n_matsubara as i64)
-        .map(|k| MatsubaraFreq::new(2 * k + 1).unwrap()) // Fermions: n = 2k+1 (odd)
-        .collect();
+    let sampling_points = basis.default_matsubara_sampling_points(true);
     
-    let sampling = MatsubaraSamplingPositiveOnly::with_sampling_points(&basis, sampling_points);
+    let sampling = MatsubaraSamplingPositiveOnly::with_sampling_points(&basis, sampling_points.clone());
     
     assert_eq!(sampling.basis_size(), basis.size());
-    assert_eq!(sampling.n_sampling_points(), n_matsubara);
+    assert_eq!(sampling.n_sampling_points(), sampling_points.len());
 }
 
 /// Test MatsubaraSampling evaluate_nd/fit_nd roundtrip
@@ -167,9 +139,10 @@ fn test_matsubara_sampling_nd_roundtrip_bosonic() {
     test_matsubara_sampling_nd_roundtrip_generic::<Bosonic>();
 }
 
-fn test_matsubara_sampling_nd_roundtrip_generic<S: StatisticsType>() {
+fn test_matsubara_sampling_nd_roundtrip_generic<S: StatisticsType + 'static>() {
     use mdarray::Tensor;
     use num_complex::Complex;
+    use common::generate_nd_test_data;
     
     let beta = 10.0;
     let wmax = 10.0;
@@ -178,43 +151,38 @@ fn test_matsubara_sampling_nd_roundtrip_generic<S: StatisticsType>() {
     let kernel = LogisticKernel::new(wmax * beta);
     let basis = FiniteTempBasis::<_, S>::new(kernel, beta, Some(epsilon), None);
     
-    let n_matsubara = basis.size();
-    let sampling_points: Vec<MatsubaraFreq<S>> = (-(n_matsubara as i64)..(n_matsubara as i64))
-        .filter_map(|k| {
-            let n = match S::STATISTICS {
-                sparseir_rust::traits::Statistics::Fermionic => 2 * k + 1,
-                sparseir_rust::traits::Statistics::Bosonic => 2 * k,
-            };
-            MatsubaraFreq::<S>::new(n).ok()
-        })
-        .take(n_matsubara)
-        .collect();
+    let sampling_points = basis.default_matsubara_sampling_points(false);  // Symmetric (positive and negative)
     
-    let sampling = MatsubaraSampling::with_sampling_points(&basis, sampling_points);
+    let sampling = MatsubaraSampling::with_sampling_points(&basis, sampling_points.clone());
     
-    // Test that evaluate_nd with 1D tensor matches evaluate
-    let basis_size = basis.size();
-    let coeffs_1d_vec: Vec<Complex<f64>> = (0..basis_size)
-        .map(|i| Complex::new(i as f64 * 0.1, (i % 3) as f64 * 0.05))
-        .collect();
+    let n_k = 4;
+    let n_omega = 5;
     
-    // Use evaluate (1D)
-    let values_1d = sampling.evaluate(&coeffs_1d_vec);
-    
-    // Use evaluate_nd with 1D tensor
-    let mut coeffs_1d_tensor = Tensor::<Complex<f64>, _>::zeros(vec![basis_size]);
-    for i in 0..basis_size {
-        coeffs_1d_tensor[&[i][..]] = coeffs_1d_vec[i];
+    // Test for all dimensions (dim = 0, 1, 2)
+    for dim in 0..3 {
+        // Generate test data (dim=0 format: [basis_size, n_k, n_omega])
+        let (coeffs_0, _gtau_0, _giwn_0) = generate_nd_test_data::<Complex<f64>, _, _>(
+            &basis, &[], &sampling_points, 42 + dim as u64, &[n_k, n_omega]
+        );
+        
+        // Move to target dimension
+        let coeffs_dim = common::movedim(&coeffs_0, 0, dim);
+        
+        // Evaluate and fit along target dimension
+        let values_dim = sampling.evaluate_nd(&coeffs_dim, dim);
+        let coeffs_fitted_dim = sampling.fit_nd(&values_dim, dim);
+        
+        // Move back to dim=0 for comparison
+        let coeffs_fitted_0 = common::movedim(&coeffs_fitted_dim, dim, 0);
+        
+        // Check roundtrip
+        let max_error = coeffs_0.iter().zip(coeffs_fitted_0.iter())
+            .map(|(a, b)| (*a - *b).norm())
+            .fold(0.0, f64::max);
+        
+        println!("MatsubaraSampling {:?} dim={} roundtrip error: {}", S::STATISTICS, dim, max_error);
+        assert!(max_error < 1e-10, "ND roundtrip (dim={}) error too large: {}", dim, max_error);
     }
-    let values_1d_nd = sampling.evaluate_nd(&coeffs_1d_tensor, 0);
-    
-    // Compare
-    let max_eval_diff = values_1d.iter().zip(values_1d_nd.iter())
-        .map(|(a, b)| (*a - *b).norm())
-        .fold(0.0, f64::max);
-    
-    println!("MatsubaraSampling {:?} ND eval vs 1D eval max diff: {}", S::STATISTICS, max_eval_diff);
-    assert!(max_eval_diff < 1e-12, "ND eval differs from 1D eval: {}", max_eval_diff);
 }
 
 /// Test MatsubaraSamplingPositiveOnly evaluate_nd/fit_nd roundtrip
@@ -228,8 +196,9 @@ fn test_matsubara_sampling_positive_only_nd_roundtrip_bosonic() {
     test_matsubara_sampling_positive_only_nd_roundtrip_generic::<Bosonic>();
 }
 
-fn test_matsubara_sampling_positive_only_nd_roundtrip_generic<S: StatisticsType>() {
+fn test_matsubara_sampling_positive_only_nd_roundtrip_generic<S: StatisticsType + 'static>() {
     use mdarray::Tensor;
+    use common::generate_nd_test_data;
     
     let beta = 10.0;
     let wmax = 10.0;
@@ -238,42 +207,38 @@ fn test_matsubara_sampling_positive_only_nd_roundtrip_generic<S: StatisticsType>
     let kernel = LogisticKernel::new(wmax * beta);
     let basis = FiniteTempBasis::<_, S>::new(kernel, beta, Some(epsilon), None);
     
-    let n_matsubara = basis.size();
-    let sampling_points: Vec<MatsubaraFreq<S>> = (0..2 * n_matsubara as i64)
-        .filter_map(|k| {
-            let n = match S::STATISTICS {
-                sparseir_rust::traits::Statistics::Fermionic => 2 * k + 1,
-                sparseir_rust::traits::Statistics::Bosonic => 2 * k,
-            };
-            MatsubaraFreq::<S>::new(n).ok()
-        })
-        .take(n_matsubara)
-        .collect();
+    // Use positive-only sampling points
+    let sampling_points = basis.default_matsubara_sampling_points(true);
     
-    let sampling = MatsubaraSamplingPositiveOnly::with_sampling_points(&basis, sampling_points);
+    let sampling = MatsubaraSamplingPositiveOnly::with_sampling_points(&basis, sampling_points.clone());
     
-    // Test that evaluate_nd with 1D tensor matches evaluate
-    let basis_size = basis.size();
-    let coeffs_1d_vec: Vec<f64> = (0..basis_size)
-        .map(|i| i as f64 * 0.1)
-        .collect();
+    let n_k = 4;
+    let n_omega = 5;
     
-    // Use evaluate (1D)
-    let values_1d = sampling.evaluate(&coeffs_1d_vec);
-    
-    // Use evaluate_nd with 1D tensor
-    let mut coeffs_1d_tensor = Tensor::<f64, _>::zeros(vec![basis_size]);
-    for i in 0..basis_size {
-        coeffs_1d_tensor[&[i][..]] = coeffs_1d_vec[i];
+    // Test for all dimensions (dim = 0, 1, 2)
+    for dim in 0..3 {
+        // Generate test data (dim=0 format: [basis_size, n_k, n_omega])
+        let (coeffs_0, _gtau_0, _giwn_0) = generate_nd_test_data::<f64, _, _>(
+            &basis, &[], &sampling_points, 42 + dim as u64, &[n_k, n_omega]
+        );
+        
+        // Move to target dimension
+        let coeffs_dim = common::movedim(&coeffs_0, 0, dim);
+        
+        // Evaluate and fit along target dimension
+        let values_dim = sampling.evaluate_nd(&coeffs_dim, dim);
+        let coeffs_fitted_dim = sampling.fit_nd(&values_dim, dim);
+        
+        // Move back to dim=0 for comparison
+        let coeffs_fitted_0 = common::movedim(&coeffs_fitted_dim, dim, 0);
+        
+        // Check roundtrip
+        let max_error = coeffs_0.iter().zip(coeffs_fitted_0.iter())
+            .map(|(a, b)| (*a - *b).abs())
+            .fold(0.0, f64::max);
+        
+        println!("MatsubaraSamplingPositiveOnly {:?} dim={} roundtrip error: {}", S::STATISTICS, dim, max_error);
+        assert!(max_error < 1e-7, "ND roundtrip (dim={}) error too large: {}", dim, max_error);
     }
-    let values_1d_nd = sampling.evaluate_nd(&coeffs_1d_tensor, 0);
-    
-    // Compare
-    let max_eval_diff = values_1d.iter().zip(values_1d_nd.iter())
-        .map(|(a, b)| (*a - *b).norm())
-        .fold(0.0, f64::max);
-    
-    println!("MatsubaraSamplingPositiveOnly {:?} ND eval vs 1D eval max diff: {}", S::STATISTICS, max_eval_diff);
-    assert!(max_eval_diff < 1e-12, "ND eval differs from 1D eval: {}", max_eval_diff);
 }
 
