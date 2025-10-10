@@ -75,6 +75,23 @@ pub trait ErrorNorm {
     fn error_norm(self) -> f64;
 }
 
+/// Trait for converting f64 to T (identity for f64, promote for Complex<f64>)
+pub trait ConvertFromReal {
+    fn from_real(value: f64) -> Self;
+}
+
+impl ConvertFromReal for f64 {
+    fn from_real(value: f64) -> Self {
+        value
+    }
+}
+
+impl ConvertFromReal for Complex<f64> {
+    fn from_real(value: f64) -> Self {
+        Complex::new(value, 0.0)
+    }
+}
+
 impl ErrorNorm for f64 {
     fn error_norm(self) -> f64 {
         self.abs()
@@ -85,5 +102,66 @@ impl ErrorNorm for Complex<f64> {
     fn error_norm(self) -> f64 {
         self.norm()  // sqrt(re^2 + im^2)
     }
+}
+
+/// Generate test data for both τ and Matsubara sampling
+///
+/// Creates random coefficients and computes corresponding Green's function values
+/// at both τ sampling points and Matsubara frequencies using a single-pole model.
+///
+/// # Type Parameters
+/// * `T` - Element type for coefficients (f64 or Complex<f64>)
+/// * `S` - Statistics type (Fermionic or Bosonic)
+///
+/// # Arguments
+/// * `basis` - Finite temperature basis
+/// * `tau_points` - τ sampling points
+/// * `matsubara_freqs` - Matsubara frequency sampling points
+/// * `seed` - Random seed for reproducible test data
+///
+/// # Returns
+/// Tuple of (coefficients, τ values, Matsubara values)
+pub fn generate_test_data_tau_and_matsubara<T, S, K>(
+    basis: &sparseir_rust::FiniteTempBasis<K, S>,
+    tau_points: &[f64],
+    matsubara_freqs: &[sparseir_rust::freq::MatsubaraFreq<S>],
+    seed: u64,
+) -> (Vec<T>, Vec<T>, Vec<Complex<f64>>)
+where
+    T: RandomGenerate + ConvertFromReal + Clone + std::ops::Mul<f64, Output = T>,
+    S: sparseir_rust::traits::StatisticsType,
+    K: sparseir_rust::kernel::KernelProperties + sparseir_rust::kernel::CentrosymmKernel + Clone + 'static,
+{
+    use sparseir_rust::giwn_single_pole;
+    
+    let mut rng = SimpleRng::new(seed);
+    let basis_size = basis.size();
+    let beta = basis.beta;
+    let wmax = basis.kernel.lambda() / beta;
+    
+    // Choose a pole position (arbitrary choice within reasonable range)
+    let omega = wmax * 0.5; // Pole at half of wmax
+    
+    // Generate random coefficients scaled by singular values
+    let coeffs: Vec<T> = (0..basis_size)
+        .map(|l| rng.next::<T>() * basis.s[l])
+        .collect();
+    
+    // Compute G(τ) at τ sampling points
+    let gtau_values: Vec<T> = tau_points
+        .iter()
+        .map(|&tau| {
+            let g = sparseir_rust::gtau_single_pole::<S>(tau, omega, beta);
+            T::from_real(g)
+        })
+        .collect();
+    
+    // Compute G(iωn) at Matsubara frequencies
+    let giwn_values: Vec<Complex<f64>> = matsubara_freqs
+        .iter()
+        .map(|freq| giwn_single_pole::<S>(freq, omega, beta))
+        .collect();
+    
+    (coeffs, gtau_values, giwn_values)
 }
 

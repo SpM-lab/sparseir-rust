@@ -4,6 +4,8 @@
 //! and spectral representations.
 
 use crate::traits::{StatisticsType, Statistics};
+use crate::freq::MatsubaraFreq;
+use num_complex::Complex;
 
 /// Generic single-pole Green's function at imaginary time τ
 ///
@@ -115,4 +117,29 @@ pub fn bosonic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
     };
     
     (-omega * tau_normalized).exp() / (1.0 - (-beta * omega).exp())
+}
+
+/// Generic single-pole Green's function at Matsubara frequency
+///
+/// Computes G(iωn) = 1/(iωn - ω) for a single pole at frequency ω.
+///
+/// # Type Parameters
+/// * `S` - Statistics type (Fermionic or Bosonic)
+///
+/// # Arguments
+/// * `matsubara_freq` - Matsubara frequency
+/// * `omega` - Pole position (real frequency)
+/// * `beta` - Inverse temperature
+///
+/// # Returns
+/// Complex-valued Green's function G(iωn)
+pub fn giwn_single_pole<S: StatisticsType>(
+    matsubara_freq: &MatsubaraFreq<S>,
+    omega: f64,
+    beta: f64,
+) -> Complex<f64> {
+    // G(iωn) = 1/(iωn - ω)
+    let iwn = matsubara_freq.value(beta);
+    let denominator = Complex::new(0.0, 1.0) * iwn - Complex::new(omega, 0.0);
+    Complex::new(1.0, 0.0) / denominator
 }

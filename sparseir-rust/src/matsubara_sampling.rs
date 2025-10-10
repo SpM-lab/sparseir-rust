@@ -4,7 +4,7 @@
 //! IR basis coefficients and values at sparse Matsubara frequencies.
 
 use crate::basis::FiniteTempBasis;
-use crate::fitter::ComplexToRealFitter;
+use crate::fitter::{ComplexMatrixFitter, ComplexToRealFitter};
 use crate::freq::MatsubaraFreq;
 use crate::kernel::{KernelProperties, CentrosymmKernel};
 use crate::traits::StatisticsType;
@@ -14,10 +14,10 @@ use std::marker::PhantomData;
 
 /// Matsubara sampling for full frequency range (positive and negative)
 ///
-/// Supports symmetric sampling: {..., -3, -2, -1, 0, 1, 2, 3, ...}
+/// General complex problem without symmetry → complex coefficients
 pub struct MatsubaraSampling<S: StatisticsType> {
     sampling_points: Vec<MatsubaraFreq<S>>,
-    fitter: ComplexToRealFitter,
+    fitter: ComplexMatrixFitter,
     _phantom: PhantomData<S>,
 }
 
@@ -39,8 +39,8 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
         // Evaluate matrix at sampling points
         let matrix = eval_matrix_matsubara(basis, &sampling_points);
         
-        // Create fitter
-        let fitter = ComplexToRealFitter::new(&matrix);
+        // Create fitter (complex → complex, no symmetry)
+        let fitter = ComplexMatrixFitter::new(matrix);
         
         Self {
             sampling_points,
@@ -64,31 +64,32 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
         self.fitter.basis_size()
     }
     
-    /// Evaluate basis coefficients at sampling points
+    /// Evaluate complex basis coefficients at sampling points
     ///
     /// # Arguments
-    /// * `coeffs` - Real basis coefficients (length = basis_size)
+    /// * `coeffs` - Complex basis coefficients (length = basis_size)
     ///
     /// # Returns
     /// Complex values at Matsubara frequencies (length = n_sampling_points)
-    pub fn evaluate(&self, coeffs: &[f64]) -> Vec<Complex<f64>> {
+    pub fn evaluate(&self, coeffs: &[Complex<f64>]) -> Vec<Complex<f64>> {
         self.fitter.evaluate(coeffs)
     }
     
-    /// Fit basis coefficients from values at sampling points
+    /// Fit complex basis coefficients from values at sampling points
     ///
     /// # Arguments
     /// * `values` - Complex values at Matsubara frequencies (length = n_sampling_points)
     ///
     /// # Returns
-    /// Fitted real basis coefficients (length = basis_size)
-    pub fn fit(&self, values: &[Complex<f64>]) -> Vec<f64> {
+    /// Fitted complex basis coefficients (length = basis_size)
+    pub fn fit(&self, values: &[Complex<f64>]) -> Vec<Complex<f64>> {
         self.fitter.fit(values)
     }
 }
 
 /// Matsubara sampling for positive frequencies only
 ///
+/// Exploits symmetry to reconstruct real coefficients from positive frequencies only.
 /// Supports: {0, 1, 2, 3, ...} (no negative frequencies)
 pub struct MatsubaraSamplingPositiveOnly<S: StatisticsType> {
     sampling_points: Vec<MatsubaraFreq<S>>,
@@ -116,7 +117,7 @@ impl<S: StatisticsType> MatsubaraSamplingPositiveOnly<S> {
         // Evaluate matrix at sampling points
         let matrix = eval_matrix_matsubara(basis, &sampling_points);
         
-        // Create fitter
+        // Create fitter (complex → real, exploits symmetry)
         let fitter = ComplexToRealFitter::new(&matrix);
         
         Self {

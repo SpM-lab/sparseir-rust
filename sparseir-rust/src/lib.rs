@@ -45,7 +45,7 @@ pub use interpolation2d::Interpolate2D;
 pub use kernelmatrix::{DiscretizedKernel, InterpolatedKernel, matrix_from_gauss, matrix_from_gauss_with_segments};
 pub use sve::{SVEResult, TworkType, SVDStrategy, SamplingSVE, CentrosymmSVE, SVEStrategy, compute_sve, compute_svd, truncate};
 pub use basis::{FiniteTempBasis, FermionicBasis, BosonicBasis};
-pub use dlr::{gtau_single_pole, fermionic_single_pole, bosonic_single_pole};
+pub use dlr::{gtau_single_pole, fermionic_single_pole, bosonic_single_pole, giwn_single_pole};
 pub use fitter::{RealMatrixFitter, ComplexToRealFitter, ComplexMatrixFitter};
 
 // Re-export external dependencies for convenience
