@@ -156,3 +156,124 @@ fn test_matsubara_sampling_dimensions() {
     assert_eq!(sampling.n_sampling_points(), n_matsubara);
 }
 
+/// Test MatsubaraSampling evaluate_nd/fit_nd roundtrip
+#[test]
+fn test_matsubara_sampling_nd_roundtrip_fermionic() {
+    test_matsubara_sampling_nd_roundtrip_generic::<Fermionic>();
+}
+
+#[test]
+fn test_matsubara_sampling_nd_roundtrip_bosonic() {
+    test_matsubara_sampling_nd_roundtrip_generic::<Bosonic>();
+}
+
+fn test_matsubara_sampling_nd_roundtrip_generic<S: StatisticsType>() {
+    use mdarray::Tensor;
+    use num_complex::Complex;
+    
+    let beta = 10.0;
+    let wmax = 10.0;
+    let epsilon = 1e-6;
+    
+    let kernel = LogisticKernel::new(wmax * beta);
+    let basis = FiniteTempBasis::<_, S>::new(kernel, beta, Some(epsilon), None);
+    
+    let n_matsubara = basis.size();
+    let sampling_points: Vec<MatsubaraFreq<S>> = (-(n_matsubara as i64)..(n_matsubara as i64))
+        .filter_map(|k| {
+            let n = match S::STATISTICS {
+                sparseir_rust::traits::Statistics::Fermionic => 2 * k + 1,
+                sparseir_rust::traits::Statistics::Bosonic => 2 * k,
+            };
+            MatsubaraFreq::<S>::new(n).ok()
+        })
+        .take(n_matsubara)
+        .collect();
+    
+    let sampling = MatsubaraSampling::with_sampling_points(&basis, sampling_points);
+    
+    // Test that evaluate_nd with 1D tensor matches evaluate
+    let basis_size = basis.size();
+    let coeffs_1d_vec: Vec<Complex<f64>> = (0..basis_size)
+        .map(|i| Complex::new(i as f64 * 0.1, (i % 3) as f64 * 0.05))
+        .collect();
+    
+    // Use evaluate (1D)
+    let values_1d = sampling.evaluate(&coeffs_1d_vec);
+    
+    // Use evaluate_nd with 1D tensor
+    let mut coeffs_1d_tensor = Tensor::<Complex<f64>, _>::zeros(vec![basis_size]);
+    for i in 0..basis_size {
+        coeffs_1d_tensor[&[i][..]] = coeffs_1d_vec[i];
+    }
+    let values_1d_nd = sampling.evaluate_nd(&coeffs_1d_tensor, 0);
+    
+    // Compare
+    let max_eval_diff = values_1d.iter().zip(values_1d_nd.iter())
+        .map(|(a, b)| (*a - *b).norm())
+        .fold(0.0, f64::max);
+    
+    println!("MatsubaraSampling {:?} ND eval vs 1D eval max diff: {}", S::STATISTICS, max_eval_diff);
+    assert!(max_eval_diff < 1e-12, "ND eval differs from 1D eval: {}", max_eval_diff);
+}
+
+/// Test MatsubaraSamplingPositiveOnly evaluate_nd/fit_nd roundtrip
+#[test]
+fn test_matsubara_sampling_positive_only_nd_roundtrip_fermionic() {
+    test_matsubara_sampling_positive_only_nd_roundtrip_generic::<Fermionic>();
+}
+
+#[test]
+fn test_matsubara_sampling_positive_only_nd_roundtrip_bosonic() {
+    test_matsubara_sampling_positive_only_nd_roundtrip_generic::<Bosonic>();
+}
+
+fn test_matsubara_sampling_positive_only_nd_roundtrip_generic<S: StatisticsType>() {
+    use mdarray::Tensor;
+    
+    let beta = 10.0;
+    let wmax = 10.0;
+    let epsilon = 1e-6;
+    
+    let kernel = LogisticKernel::new(wmax * beta);
+    let basis = FiniteTempBasis::<_, S>::new(kernel, beta, Some(epsilon), None);
+    
+    let n_matsubara = basis.size();
+    let sampling_points: Vec<MatsubaraFreq<S>> = (0..2 * n_matsubara as i64)
+        .filter_map(|k| {
+            let n = match S::STATISTICS {
+                sparseir_rust::traits::Statistics::Fermionic => 2 * k + 1,
+                sparseir_rust::traits::Statistics::Bosonic => 2 * k,
+            };
+            MatsubaraFreq::<S>::new(n).ok()
+        })
+        .take(n_matsubara)
+        .collect();
+    
+    let sampling = MatsubaraSamplingPositiveOnly::with_sampling_points(&basis, sampling_points);
+    
+    // Test that evaluate_nd with 1D tensor matches evaluate
+    let basis_size = basis.size();
+    let coeffs_1d_vec: Vec<f64> = (0..basis_size)
+        .map(|i| i as f64 * 0.1)
+        .collect();
+    
+    // Use evaluate (1D)
+    let values_1d = sampling.evaluate(&coeffs_1d_vec);
+    
+    // Use evaluate_nd with 1D tensor
+    let mut coeffs_1d_tensor = Tensor::<f64, _>::zeros(vec![basis_size]);
+    for i in 0..basis_size {
+        coeffs_1d_tensor[&[i][..]] = coeffs_1d_vec[i];
+    }
+    let values_1d_nd = sampling.evaluate_nd(&coeffs_1d_tensor, 0);
+    
+    // Compare
+    let max_eval_diff = values_1d.iter().zip(values_1d_nd.iter())
+        .map(|(a, b)| (*a - *b).norm())
+        .fold(0.0, f64::max);
+    
+    println!("MatsubaraSamplingPositiveOnly {:?} ND eval vs 1D eval max diff: {}", S::STATISTICS, max_eval_diff);
+    assert!(max_eval_diff < 1e-12, "ND eval differs from 1D eval: {}", max_eval_diff);
+}
+

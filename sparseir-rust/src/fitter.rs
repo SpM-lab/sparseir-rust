@@ -124,6 +124,7 @@ pub struct ComplexToRealFitter {
     // A_real[2i,   :] = Re(A[i, :])
     // A_real[2i+1, :] = Im(A[i, :])
     matrix_real: DTensor<f64, 2>,  // (2*n_points, basis_size)
+    pub matrix: DTensor<Complex<f64>, 2>,  // (n_points, basis_size) - original complex matrix
     svd: RefCell<Option<RealSVD>>,
     n_points: usize,      // Original complex point count
 }
@@ -153,6 +154,7 @@ impl ComplexToRealFitter {
         
         Self {
             matrix_real,
+            matrix: matrix_complex.clone(),
             svd: RefCell::new(None),
             n_points,
         }
@@ -237,7 +239,7 @@ impl ComplexToRealFitter {
 /// let fitted_coeffs = fitter.fit(&values);  // ← Vec<Complex<f64>>, → Vec<Complex<f64>>
 /// ```
 pub struct ComplexMatrixFitter {
-    matrix: DTensor<Complex<f64>, 2>,  // (n_points, basis_size)
+    pub matrix: DTensor<Complex<f64>, 2>,  // (n_points, basis_size)
     svd: RefCell<Option<ComplexSVD>>,
 }
 
