@@ -14,7 +14,7 @@ fn test_evaluate_nd_roundtrip<T, S>()
 where
     T: RandomGenerate + num_complex::ComplexFloat + faer_traits::ComplexField + From<f64> + Copy + Default + ErrorNorm + 'static
         + ConvertFromReal + std::ops::Mul<f64, Output = T> + std::ops::Sub<Output = T> + std::ops::Mul<Output = T>,
-    S: StatisticsType,
+    S: StatisticsType + 'static,
     LogisticKernel: KernelProperties + CentrosymmKernel + Clone + 'static,
 {
     let beta = 1.0;

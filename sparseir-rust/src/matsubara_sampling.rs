@@ -3,12 +3,9 @@
 //! This module provides Matsubara frequency sampling for transforming between
 //! IR basis coefficients and values at sparse Matsubara frequencies.
 
-use crate::basis::FiniteTempBasis;
 use crate::fitter::{ComplexMatrixFitter, ComplexToRealFitter};
 use crate::freq::MatsubaraFreq;
-use crate::kernel::{KernelProperties, CentrosymmKernel};
 use crate::traits::StatisticsType;
-use crate::gemm::matmul_par;
 use mdarray::{DTensor, Tensor, DynRank, Shape};
 use num_complex::Complex;
 use std::marker::PhantomData;
@@ -56,9 +53,8 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
     /// Create Matsubara sampling with default sampling points
     ///
     /// Uses extrema-based sampling point selection (symmetric: positive and negative frequencies).
-    pub fn new<K>(basis: &FiniteTempBasis<K, S>) -> Self
+    pub fn new(basis: &impl crate::basis_trait::Basis<S>) -> Self
     where
-        K: KernelProperties + CentrosymmKernel + Clone + 'static,
         S: 'static,
     {
         let sampling_points = basis.default_matsubara_sampling_points(false);
@@ -66,18 +62,19 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
     }
     
     /// Create Matsubara sampling with custom sampling points
-    pub fn with_sampling_points<K>(
-        basis: &FiniteTempBasis<K, S>,
+    pub fn with_sampling_points(
+        basis: &impl crate::basis_trait::Basis<S>,
         mut sampling_points: Vec<MatsubaraFreq<S>>,
     ) -> Self
     where
-        K: KernelProperties + CentrosymmKernel + Clone + 'static,
+        S: 'static,
     {
         // Sort sampling points
         sampling_points.sort();
         
         // Evaluate matrix at sampling points
-        let matrix = eval_matrix_matsubara(basis, &sampling_points);
+        // Use Basis trait's evaluate_matsubara method
+        let matrix = basis.evaluate_matsubara(&sampling_points);
         
         // Create fitter (complex → complex, no symmetry)
         let fitter = ComplexMatrixFitter::new(matrix);
@@ -259,9 +256,8 @@ impl<S: StatisticsType> MatsubaraSamplingPositiveOnly<S> {
     ///
     /// Uses extrema-based sampling point selection (positive frequencies only).
     /// Exploits symmetry to reconstruct real coefficients.
-    pub fn new<K>(basis: &FiniteTempBasis<K, S>) -> Self
+    pub fn new(basis: &impl crate::basis_trait::Basis<S>) -> Self
     where
-        K: KernelProperties + CentrosymmKernel + Clone + 'static,
         S: 'static,
     {
         let sampling_points = basis.default_matsubara_sampling_points(true);
@@ -269,12 +265,12 @@ impl<S: StatisticsType> MatsubaraSamplingPositiveOnly<S> {
     }
     
     /// Create Matsubara sampling with custom positive-only sampling points
-    pub fn with_sampling_points<K>(
-        basis: &FiniteTempBasis<K, S>,
+    pub fn with_sampling_points(
+        basis: &impl crate::basis_trait::Basis<S>,
         mut sampling_points: Vec<MatsubaraFreq<S>>,
     ) -> Self
     where
-        K: KernelProperties + CentrosymmKernel + Clone + 'static,
+        S: 'static,
     {
         // Sort and validate (all n >= 0)
         sampling_points.sort();
@@ -282,7 +278,8 @@ impl<S: StatisticsType> MatsubaraSamplingPositiveOnly<S> {
         // TODO: Validate that all points are non-negative
         
         // Evaluate matrix at sampling points
-        let matrix = eval_matrix_matsubara(basis, &sampling_points);
+        // Use Basis trait's evaluate_matsubara method
+        let matrix = basis.evaluate_matsubara(&sampling_points);
         
         // Create fitter (complex → real, exploits symmetry)
         let fitter = ComplexToRealFitter::new(&matrix);
@@ -437,23 +434,4 @@ impl<S: StatisticsType> MatsubaraSamplingPositiveOnly<S> {
     }
 }
 
-/// Evaluate the sampling matrix at Matsubara frequencies: A[i, l] = û_l(iωn_i)
-fn eval_matrix_matsubara<K, S>(
-    basis: &FiniteTempBasis<K, S>,
-    sampling_points: &[MatsubaraFreq<S>],
-) -> DTensor<Complex<f64>, 2>
-where
-    K: KernelProperties + CentrosymmKernel + Clone + 'static,
-    S: StatisticsType,
-{
-    let n_points = sampling_points.len();
-    let basis_size = basis.size();
-    
-    // A[i, l] = û_l(iωn_i)
-    DTensor::<Complex<f64>, 2>::from_fn([n_points, basis_size], |idx| {
-        let (i, l) = (idx[0], idx[1]);
-        let freq = &sampling_points[i];
-        basis.uhat[l].evaluate(freq)
-    })
-}
 

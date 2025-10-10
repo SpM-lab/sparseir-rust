@@ -3,12 +3,9 @@
 //! This module provides `TauSampling` for transforming between IR basis coefficients
 //! and values at sparse sampling points in imaginary time.
 
-use crate::basis::FiniteTempBasis;
-use crate::gemm::matmul_par;
-use crate::kernel::{KernelProperties, CentrosymmKernel};
 use crate::traits::StatisticsType;
+use crate::gemm::matmul_par;
 use mdarray::{DTensor, Tensor, DynRank, Shape};
-use std::cell::RefCell;
 
 /// Move axis from position `src` to position `dst`
 ///
@@ -86,13 +83,13 @@ where
     /// SVD is computed lazily on first call to `fit` or `fit_nd`.
     ///
     /// # Arguments
-    /// * `basis` - The finite temperature basis
+    /// * `basis` - Any basis implementing the `Basis` trait
     ///
     /// # Returns
     /// A new TauSampling object
-    pub fn new<K>(basis: &FiniteTempBasis<K, S>) -> Self
+    pub fn new(basis: &impl crate::basis_trait::Basis<S>) -> Self
     where
-        K: KernelProperties + CentrosymmKernel + Clone + 'static,
+        S: 'static,
     {
         let sampling_points = basis.default_tau_sampling_points();
         Self::with_sampling_points(basis, sampling_points)
@@ -103,7 +100,7 @@ where
     /// SVD is computed lazily on first call to `fit` or `fit_nd`.
     ///
     /// # Arguments
-    /// * `basis` - The finite temperature basis
+    /// * `basis` - Any basis implementing the `Basis` trait
     /// * `sampling_points` - Custom sampling points in τ ∈ [0, β]
     ///
     /// # Returns
@@ -111,16 +108,16 @@ where
     ///
     /// # Panics
     /// Panics if `sampling_points` is empty or if any point is outside [0, β]
-    pub fn with_sampling_points<K>(
-        basis: &FiniteTempBasis<K, S>,
+    pub fn with_sampling_points(
+        basis: &impl crate::basis_trait::Basis<S>,
         sampling_points: Vec<f64>,
     ) -> Self
     where
-        K: KernelProperties + CentrosymmKernel + Clone + 'static,
+        S: 'static,
     {
         assert!(!sampling_points.is_empty(), "No sampling points given");
         
-        let beta = basis.beta;
+        let beta = basis.beta();
         for &tau in &sampling_points {
             assert!(
                 tau >= 0.0 && tau <= beta,
@@ -131,7 +128,8 @@ where
         }
         
         // Compute sampling matrix: A[i, l] = u_l(τ_i)
-        let matrix = eval_matrix_tau(basis, &sampling_points);
+        // Use Basis trait's evaluate_tau method
+        let matrix = basis.evaluate_tau(&sampling_points);
         
         // Create fitter
         let fitter = crate::fitter::RealMatrixFitter::new(matrix);
@@ -397,28 +395,3 @@ where
         self.fit_nd_impl(values, dim)
     }
 }
-
-/// Evaluate the sampling matrix: A[i, l] = u_l(τ_i)
-///
-/// # Arguments
-/// * `basis` - The finite temperature basis
-/// * `sampling_points` - Sampling points in τ ∈ [0, β]
-///
-/// # Returns
-/// Sampling matrix of shape (n_sampling_points, basis_size)
-fn eval_matrix_tau<K, S>(basis: &FiniteTempBasis<K, S>, sampling_points: &[f64]) -> DTensor<f64, 2>
-where
-    K: KernelProperties + CentrosymmKernel + Clone + 'static,
-    S: StatisticsType,
-{
-    let n_points = sampling_points.len();
-    let basis_size = basis.size();
-    
-    // A[i, l] = u_l(τ_i)
-    DTensor::<f64, 2>::from_fn([n_points, basis_size], |idx| {
-        let (i, l) = (idx[0], idx[1]);
-        let tau = sampling_points[i];
-        basis.u[l].evaluate(tau)
-    })
-}
-
