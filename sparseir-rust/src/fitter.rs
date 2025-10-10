@@ -150,7 +150,9 @@ impl RealMatrixFitter {
             .collect()
     }
     
-    /// Fit 2D real tensor (along dim=0)
+    /// Fit 2D real tensor (along dim=0) using matrix multiplication
+    ///
+    /// Efficiently computes: coeffs_2d = V * S^{-1} * U^T * values_2d
     ///
     /// # Arguments
     /// * `values_2d` - Shape: [n_points, extra_size]
@@ -158,25 +160,44 @@ impl RealMatrixFitter {
     /// # Returns
     /// Coefficients tensor, shape: [basis_size, extra_size]
     pub fn fit_2d(&self, values_2d: &mdarray::DTensor<f64, 2>) -> mdarray::DTensor<f64, 2> {
+        use crate::gemm::matmul_par;
+        
         let (n_points, extra_size) = *values_2d.shape();
         assert_eq!(n_points, self.n_points(),
             "values_2d.shape().0={} must equal n_points={}", n_points, self.n_points());
         
-        let basis_size = self.basis_size();
-        let mut coeffs_2d = mdarray::DTensor::<f64, 2>::from_fn([basis_size, extra_size], |_| 0.0);
-        
-        for j in 0..extra_size {
-            let column: Vec<f64> = (0..n_points).map(|i| values_2d[[i, j]]).collect();
-            let fitted = self.fit(&column);
-            for i in 0..basis_size {
-                coeffs_2d[[i, j]] = fitted[i];
-            }
+        // Compute SVD lazily
+        if self.svd.borrow().is_none() {
+            let svd = compute_real_svd(&self.matrix);
+            *self.svd.borrow_mut() = Some(svd);
         }
         
-        coeffs_2d
+        let svd = self.svd.borrow();
+        let svd = svd.as_ref().unwrap();
+        
+        // coeffs_2d = V * S^{-1} * U^T * values_2d
+        
+        // 1. U^T * values_2d
+        let ut = DTensor::<f64, 2>::from_fn(*svd.u.shape(), |idx| {
+            svd.u[[idx[1], idx[0]]]  // transpose
+        });
+        let ut_values = matmul_par(&ut, values_2d);  // [min_dim, extra_size]
+        
+        // 2. S^{-1} * (U^T * values_2d)
+        let min_dim = svd.s.len();
+        let s_inv_ut_values = DTensor::<f64, 2>::from_fn([min_dim, extra_size], |idx| {
+            ut_values[[idx[0], idx[1]]] / svd.s[idx[0]]
+        });
+        
+        // 3. V * (S^{-1} * U^T * values_2d)
+        let v = svd.vt.transpose().to_tensor();  // [basis_size, min_dim]
+        matmul_par(&v, &s_inv_ut_values)  // [basis_size, extra_size]
     }
     
-    /// Fit 2D complex tensor (along dim=0)
+    /// Fit 2D complex tensor (along dim=0) using matrix multiplication
+    ///
+    /// Fits real and imaginary parts separately, then combines.
+    /// Efficiently computes using GEMM operations.
     ///
     /// # Arguments
     /// * `values_2d` - Shape: [n_points, extra_size]
@@ -188,18 +209,23 @@ impl RealMatrixFitter {
         assert_eq!(n_points, self.n_points(),
             "values_2d.shape().0={} must equal n_points={}", n_points, self.n_points());
         
+        // Extract real and imaginary parts
+        let values_re = DTensor::<f64, 2>::from_fn([n_points, extra_size], |idx| {
+            values_2d[idx].re
+        });
+        let values_im = DTensor::<f64, 2>::from_fn([n_points, extra_size], |idx| {
+            values_2d[idx].im
+        });
+        
+        // Fit real and imaginary parts separately using matrix multiplication
+        let coeffs_re = self.fit_2d(&values_re);
+        let coeffs_im = self.fit_2d(&values_im);
+        
+        // Combine back to complex
         let basis_size = self.basis_size();
-        let mut coeffs_2d = mdarray::DTensor::<Complex<f64>, 2>::from_fn([basis_size, extra_size], |_| Complex::new(0.0, 0.0));
-        
-        for j in 0..extra_size {
-            let column: Vec<Complex<f64>> = (0..n_points).map(|i| values_2d[[i, j]]).collect();
-            let fitted = self.fit_complex(&column);
-            for i in 0..basis_size {
-                coeffs_2d[[i, j]] = fitted[i];
-            }
-        }
-        
-        coeffs_2d
+        DTensor::<Complex<f64>, 2>::from_fn([basis_size, extra_size], |idx| {
+            Complex::new(coeffs_re[idx], coeffs_im[idx])
+        })
     }
 }
 
@@ -324,6 +350,84 @@ impl ComplexToRealFitter {
         // Solve: coeffs = V * S^{-1} * U^T * values_flat
         solve_real_svd(svd, &values_flat)
     }
+    
+    /// Evaluate 2D real tensor to complex (along dim=0) using matrix multiplication
+    ///
+    /// # Arguments
+    /// * `coeffs_2d` - Shape: [basis_size, extra_size]
+    ///
+    /// # Returns
+    /// Complex values tensor, shape: [n_points, extra_size]
+    pub fn evaluate_2d(&self, coeffs_2d: &DTensor<f64, 2>) -> DTensor<Complex<f64>, 2> {
+        let (basis_size, extra_size) = *coeffs_2d.shape();
+        assert_eq!(basis_size, self.basis_size(),
+            "coeffs_2d.shape().0={} must equal basis_size={}", basis_size, self.basis_size());
+        
+        // values_2d = A * coeffs_2d (complex matrix * real coeffs)
+        // Split into real and imaginary parts for GEMM
+        use crate::gemm::matmul_par;
+        
+        let n_points = self.n_points();
+        let matrix_re = DTensor::<f64, 2>::from_fn(*self.matrix.shape(), |idx| self.matrix[idx].re);
+        let matrix_im = DTensor::<f64, 2>::from_fn(*self.matrix.shape(), |idx| self.matrix[idx].im);
+        
+        // Compute real and imaginary parts separately using GEMM
+        let values_re = matmul_par(&matrix_re, coeffs_2d);
+        let values_im = matmul_par(&matrix_im, coeffs_2d);
+        
+        // Combine to complex
+        DTensor::<Complex<f64>, 2>::from_fn([n_points, extra_size], |idx| {
+            Complex::new(values_re[idx], values_im[idx])
+        })
+    }
+    
+    /// Fit 2D complex tensor to real coefficients (along dim=0) using matrix multiplication
+    ///
+    /// # Arguments
+    /// * `values_2d` - Shape: [n_points, extra_size]
+    ///
+    /// # Returns
+    /// Real coefficients tensor, shape: [basis_size, extra_size]
+    pub fn fit_2d(&self, values_2d: &DTensor<Complex<f64>, 2>) -> DTensor<f64, 2> {
+        use crate::gemm::matmul_par;
+        
+        let (n_points, extra_size) = *values_2d.shape();
+        assert_eq!(n_points, self.n_points(),
+            "values_2d.shape().0={} must equal n_points={}", n_points, self.n_points());
+        
+        // Compute SVD lazily
+        if self.svd.borrow().is_none() {
+            let svd = compute_real_svd(&self.matrix_real);
+            *self.svd.borrow_mut() = Some(svd);
+        }
+        
+        // Flatten complex values to real: [n_points, extra_size] → [2*n_points, extra_size]
+        let values_flat = DTensor::<f64, 2>::from_fn([2 * n_points, extra_size], |idx| {
+            let i = idx[0] / 2;
+            let j = idx[1];
+            let val = values_2d[[i, j]];
+            if idx[0] % 2 == 0 { val.re } else { val.im }
+        });
+        
+        let svd = self.svd.borrow();
+        let svd = svd.as_ref().unwrap();
+        
+        // coeffs_2d = V * S^{-1} * U^T * values_flat
+        
+        // 1. U^T * values_flat
+        let ut = svd.u.transpose().to_tensor();
+        let ut_values = matmul_par(&ut, &values_flat);
+        
+        // 2. S^{-1} * (U^T * values_flat)
+        let min_dim = svd.s.len();
+        let s_inv_ut_values = DTensor::<f64, 2>::from_fn([min_dim, extra_size], |idx| {
+            ut_values[[idx[0], idx[1]]] / svd.s[idx[0]]
+        });
+        
+        // 3. V * (S^{-1} * U^T * values_flat)
+        let v = svd.vt.transpose().to_tensor();
+        matmul_par(&v, &s_inv_ut_values)
+    }
 }
 
 /// Fitter for complex matrix with complex coefficients: A ∈ C^{n×m}
@@ -366,23 +470,24 @@ impl ComplexMatrixFitter {
     
     /// Evaluate: coeffs (complex) → values (complex)
     ///
-    /// Computes: values = A * coeffs
+    /// Computes: values = A * coeffs using GEMM
     pub fn evaluate(&self, coeffs: &[Complex<f64>]) -> Vec<Complex<f64>> {
+        use crate::gemm::matmul_par;
+        
         assert_eq!(coeffs.len(), self.basis_size(),
             "coeffs.len()={} must equal basis_size={}", coeffs.len(), self.basis_size());
         
+        let basis_size = self.basis_size();
         let n_points = self.n_points();
-        let mut values = vec![Complex::new(0.0, 0.0); n_points];
         
-        for i in 0..n_points {
-            let mut sum = Complex::new(0.0, 0.0);
-            for j in 0..self.basis_size() {
-                sum += self.matrix[[i, j]] * coeffs[j];
-            }
-            values[i] = sum;
-        }
+        // Convert coeffs to column vector
+        let coeffs_col = DTensor::<Complex<f64>, 2>::from_fn([basis_size, 1], |idx| coeffs[idx[0]]);
         
-        values
+        // values = A * coeffs
+        let values_col = matmul_par(&self.matrix, &coeffs_col);
+        
+        // Extract as Vec
+        (0..n_points).map(|i| values_col[[i, 0]]).collect()
     }
     
     /// Fit: values (complex) → coeffs (complex)
@@ -403,6 +508,67 @@ impl ComplexMatrixFitter {
         
         // Solve: coeffs = V * S^{-1} * U^H * values
         solve_complex_svd(svd, values)
+    }
+    
+    /// Evaluate 2D complex tensor (along dim=0) using matrix multiplication
+    ///
+    /// # Arguments
+    /// * `coeffs_2d` - Shape: [basis_size, extra_size]
+    ///
+    /// # Returns
+    /// Values tensor, shape: [n_points, extra_size]
+    pub fn evaluate_2d(&self, coeffs_2d: &DTensor<Complex<f64>, 2>) -> DTensor<Complex<f64>, 2> {
+        use crate::gemm::matmul_par;
+        
+        let (basis_size, extra_size) = *coeffs_2d.shape();
+        assert_eq!(basis_size, self.basis_size(),
+            "coeffs_2d.shape().0={} must equal basis_size={}", basis_size, self.basis_size());
+        
+        // values_2d = A * coeffs_2d
+        matmul_par(&self.matrix, coeffs_2d)
+    }
+    
+    /// Fit 2D complex tensor (along dim=0) using matrix multiplication
+    ///
+    /// # Arguments
+    /// * `values_2d` - Shape: [n_points, extra_size]
+    ///
+    /// # Returns
+    /// Complex coefficients tensor, shape: [basis_size, extra_size]
+    pub fn fit_2d(&self, values_2d: &DTensor<Complex<f64>, 2>) -> DTensor<Complex<f64>, 2> {
+        use crate::gemm::matmul_par;
+        
+        let (n_points, extra_size) = *values_2d.shape();
+        assert_eq!(n_points, self.n_points(),
+            "values_2d.shape().0={} must equal n_points={}", n_points, self.n_points());
+        
+        // Compute SVD lazily
+        if self.svd.borrow().is_none() {
+            let svd = compute_complex_svd(&self.matrix);
+            *self.svd.borrow_mut() = Some(svd);
+        }
+        
+        let svd = self.svd.borrow();
+        let svd = svd.as_ref().unwrap();
+        
+        // coeffs_2d = V * S^{-1} * U^H * values_2d
+        
+        // 1. U^H * values_2d (conjugate transpose)
+        let (u_rows, u_cols) = *svd.u.shape();
+        let uh = DTensor::<Complex<f64>, 2>::from_fn([u_cols, u_rows], |idx| {
+            svd.u[[idx[1], idx[0]]].conj()
+        });
+        let uh_values = matmul_par(&uh, values_2d);  // [min_dim, extra_size]
+        
+        // 2. S^{-1} * (U^H * values_2d)
+        let min_dim = svd.s.len();
+        let s_inv_uh_values = DTensor::<Complex<f64>, 2>::from_fn([min_dim, extra_size], |idx| {
+            uh_values[[idx[0], idx[1]]] / svd.s[idx[0]]
+        });
+        
+        // 3. V * (S^{-1} * U^H * values_2d)
+        let v = svd.vt.transpose().to_tensor();  // [basis_size, min_dim]
+        matmul_par(&v, &s_inv_uh_values)  // [basis_size, extra_size]
     }
 }
 

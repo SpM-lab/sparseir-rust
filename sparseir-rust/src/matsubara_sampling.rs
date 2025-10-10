@@ -161,13 +161,15 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
         let extra_size: usize = coeffs_dim0.len() / basis_size;
         
         let coeffs_2d_dyn = coeffs_dim0.reshape(&[basis_size, extra_size][..]).to_tensor();
+        
+        // 3. Convert to DTensor and evaluate using GEMM
         let coeffs_2d = DTensor::<Complex<f64>, 2>::from_fn([basis_size, extra_size], |idx| {
             coeffs_2d_dyn[&[idx[0], idx[1]][..]]
         });
         
-        // 3. Matrix multiply: result = A * coeffs (both complex)
+        // Use fitter's efficient 2D evaluate (GEMM-based)
         let n_points = self.n_sampling_points();
-        let result_2d = matmul_par(&self.fitter.matrix, &coeffs_2d);
+        let result_2d = self.fitter.evaluate_2d(&coeffs_2d);
         
         // 4. Reshape back to N-D with n_points at position 0
         let mut result_shape = vec![n_points];
@@ -216,26 +218,18 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
         
         // 2. Reshape to 2D: (n_points, extra_size)
         let extra_size: usize = values_dim0.len() / n_points;
-        
         let values_2d_dyn = values_dim0.reshape(&[n_points, extra_size][..]).to_tensor();
         
-        // 3. Fit each column using the fitter
-        let basis_size = self.basis_size();
-        let mut coeffs_2d = DTensor::<Complex<f64>, 2>::from_fn([basis_size, extra_size], |_| {
-            Complex::new(0.0, 0.0)
+        // 3. Convert to DTensor and fit using GEMM
+        let values_2d = DTensor::<Complex<f64>, 2>::from_fn([n_points, extra_size], |idx| {
+            values_2d_dyn[&[idx[0], idx[1]][..]]
         });
         
-        for j in 0..extra_size {
-            let column: Vec<Complex<f64>> = (0..n_points)
-                .map(|i| values_2d_dyn[&[i, j][..]])
-                .collect();
-            let fitted = self.fitter.fit(&column);
-            for i in 0..basis_size {
-                coeffs_2d[[i, j]] = fitted[i];
-            }
-        }
+        // Use fitter's efficient 2D fit (GEMM-based)
+        let coeffs_2d = self.fitter.fit_2d(&values_2d);
         
         // 4. Reshape back to N-D with basis_size at position 0
+        let basis_size = self.basis_size();
         let mut coeffs_shape = vec![basis_size];
         values_dim0.shape().with_dims(|dims| {
             for i in 1..dims.len() {
@@ -361,23 +355,16 @@ impl<S: StatisticsType> MatsubaraSamplingPositiveOnly<S> {
         
         let coeffs_2d_dyn = coeffs_dim0.reshape(&[basis_size, extra_size][..]).to_tensor();
         
-        // 3. Evaluate each column using the fitter
-        let n_points = self.n_sampling_points();
-        let mut result_2d = DTensor::<Complex<f64>, 2>::from_fn([n_points, extra_size], |_| {
-            Complex::new(0.0, 0.0)
+        // 3. Convert to DTensor and evaluate using GEMM
+        let coeffs_2d = DTensor::<f64, 2>::from_fn([basis_size, extra_size], |idx| {
+            coeffs_2d_dyn[&[idx[0], idx[1]][..]]
         });
         
-        for j in 0..extra_size {
-            let column: Vec<f64> = (0..basis_size)
-                .map(|i| coeffs_2d_dyn[&[i, j][..]])
-                .collect();
-            let evaluated = self.fitter.evaluate(&column);
-            for i in 0..n_points {
-                result_2d[[i, j]] = evaluated[i];
-            }
-        }
+        // Use fitter's efficient 2D evaluate (GEMM-based)
+        let result_2d = self.fitter.evaluate_2d(&coeffs_2d);
         
         // 4. Reshape back to N-D with n_points at position 0
+        let n_points = self.n_sampling_points();
         let mut result_shape = vec![n_points];
         coeffs_dim0.shape().with_dims(|dims| {
             for i in 1..dims.len() {
@@ -424,24 +411,18 @@ impl<S: StatisticsType> MatsubaraSamplingPositiveOnly<S> {
         
         // 2. Reshape to 2D: (n_points, extra_size)
         let extra_size: usize = values_dim0.len() / n_points;
-        
         let values_2d_dyn = values_dim0.reshape(&[n_points, extra_size][..]).to_tensor();
         
-        // 3. Fit each column using the fitter
-        let basis_size = self.basis_size();
-        let mut coeffs_2d = DTensor::<f64, 2>::from_fn([basis_size, extra_size], |_| 0.0);
+        // 3. Convert to DTensor and fit using GEMM
+        let values_2d = DTensor::<Complex<f64>, 2>::from_fn([n_points, extra_size], |idx| {
+            values_2d_dyn[&[idx[0], idx[1]][..]]
+        });
         
-        for j in 0..extra_size {
-            let column: Vec<Complex<f64>> = (0..n_points)
-                .map(|i| values_2d_dyn[&[i, j][..]])
-                .collect();
-            let fitted = self.fitter.fit(&column);
-            for i in 0..basis_size {
-                coeffs_2d[[i, j]] = fitted[i];
-            }
-        }
+        // Use fitter's efficient 2D fit (GEMM-based)
+        let coeffs_2d = self.fitter.fit_2d(&values_2d);
         
         // 4. Reshape back to N-D with basis_size at position 0
+        let basis_size = self.basis_size();
         let mut coeffs_shape = vec![basis_size];
         values_dim0.shape().with_dims(|dims| {
             for i in 1..dims.len() {
