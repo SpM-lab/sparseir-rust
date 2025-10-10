@@ -53,8 +53,17 @@ pub struct MatsubaraSampling<S: StatisticsType> {
 }
 
 impl<S: StatisticsType> MatsubaraSampling<S> {
-    // TODO: Implement default sampling point selection
-    // pub fn new<K>(basis: &FiniteTempBasis<K, S>) -> Self { ... }
+    /// Create Matsubara sampling with default sampling points
+    ///
+    /// Uses extrema-based sampling point selection (symmetric: positive and negative frequencies).
+    pub fn new<K>(basis: &FiniteTempBasis<K, S>) -> Self
+    where
+        K: KernelProperties + CentrosymmKernel + Clone + 'static,
+        S: 'static,
+    {
+        let sampling_points = basis.default_matsubara_sampling_points(false);
+        Self::with_sampling_points(basis, sampling_points)
+    }
     
     /// Create Matsubara sampling with custom sampling points
     pub fn with_sampling_points<K>(
@@ -252,8 +261,18 @@ pub struct MatsubaraSamplingPositiveOnly<S: StatisticsType> {
 }
 
 impl<S: StatisticsType> MatsubaraSamplingPositiveOnly<S> {
-    // TODO: Implement default sampling point selection
-    // pub fn new<K>(basis: &FiniteTempBasis<K, S>) -> Self { ... }
+    /// Create Matsubara sampling with default positive-only sampling points
+    ///
+    /// Uses extrema-based sampling point selection (positive frequencies only).
+    /// Exploits symmetry to reconstruct real coefficients.
+    pub fn new<K>(basis: &FiniteTempBasis<K, S>) -> Self
+    where
+        K: KernelProperties + CentrosymmKernel + Clone + 'static,
+        S: 'static,
+    {
+        let sampling_points = basis.default_matsubara_sampling_points(true);
+        Self::with_sampling_points(basis, sampling_points)
+    }
     
     /// Create Matsubara sampling with custom positive-only sampling points
     pub fn with_sampling_points<K>(

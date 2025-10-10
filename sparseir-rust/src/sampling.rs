@@ -68,24 +68,11 @@ where
     /// Sampling points in imaginary time τ ∈ [0, β]
     sampling_points: Vec<f64>,
     
-    /// Sampling matrix: A[i, l] = u_l(τ_i)
-    /// Shape: (n_sampling_points, basis_size)
-    matrix: DTensor<f64, 2>,
-    
-    /// SVD of the sampling matrix (lazily computed on first fit)
-    matrix_svd: RefCell<Option<SamplingMatrixSVD>>,
+    /// Real matrix fitter for least-squares fitting
+    fitter: crate::fitter::RealMatrixFitter,
     
     /// Marker for statistics type
     _phantom: std::marker::PhantomData<S>,
-}
-
-/// SVD decomposition of the sampling matrix
-///
-/// Stores U, S, V from A = U * S * Vᵀ for efficient pseudoinverse computation
-struct SamplingMatrixSVD {
-    u: DTensor<f64, 2>,
-    s: Vec<f64>,
-    vt: DTensor<f64, 2>,
 }
 
 impl<S> TauSampling<S>
@@ -146,10 +133,12 @@ where
         // Compute sampling matrix: A[i, l] = u_l(τ_i)
         let matrix = eval_matrix_tau(basis, &sampling_points);
         
+        // Create fitter
+        let fitter = crate::fitter::RealMatrixFitter::new(matrix);
+        
         Self {
             sampling_points,
-            matrix,
-            matrix_svd: RefCell::new(None),
+            fitter,
             _phantom: std::marker::PhantomData,
         }
     }
@@ -161,17 +150,17 @@ where
     
     /// Get the number of sampling points
     pub fn n_sampling_points(&self) -> usize {
-        self.sampling_points.len()
+        self.fitter.n_points()
     }
     
     /// Get the basis size
     pub fn basis_size(&self) -> usize {
-        self.matrix.shape().1
+        self.fitter.basis_size()
     }
     
     /// Get the sampling matrix
     pub fn matrix(&self) -> &DTensor<f64, 2> {
-        &self.matrix
+        &self.fitter.matrix
     }
     
     /// Evaluate basis coefficients at sampling points
@@ -187,24 +176,7 @@ where
     /// # Panics
     /// Panics if `coeffs.len() != basis_size`
     pub fn evaluate(&self, coeffs: &[f64]) -> Vec<f64> {
-        let basis_size = self.basis_size();
-        assert_eq!(
-            coeffs.len(),
-            basis_size,
-            "Number of coefficients ({}) must match basis size ({})",
-            coeffs.len(),
-            basis_size
-        );
-        
-        // Convert coeffs to column vector (basis_size, 1)
-        let coeffs_col = DTensor::<f64, 2>::from_fn([basis_size, 1], |idx| coeffs[idx[0]]);
-        
-        // result = matrix * coeffs
-        let result = matmul_par(&self.matrix, &coeffs_col);
-        
-        // Extract result as Vec
-        let n = self.n_sampling_points();
-        (0..n).map(|i| result[[i, 0]]).collect()
+        self.fitter.evaluate(coeffs)
     }
     
     /// Internal generic evaluate_nd implementation
@@ -247,8 +219,8 @@ where
         // 3. Matrix multiply: result = A * coeffs
         //    A is real, convert to type T
         let n_points = self.n_sampling_points();
-        let matrix_t = DTensor::<T, 2>::from_fn(*self.matrix.shape(), |idx| {
-            self.matrix[idx].into()
+        let matrix_t = DTensor::<T, 2>::from_fn(*self.fitter.matrix.shape(), |idx| {
+            self.fitter.matrix[idx].into()
         });
         let result_2d = matmul_par(&matrix_t, &coeffs_2d);
         
@@ -309,40 +281,25 @@ where
     }
     
     /// Internal generic fit_nd implementation
+    ///
+    /// Delegates to fitter for real values, fits real/imaginary parts separately for complex values
     fn fit_nd_impl<T>(
         &self,
         values: &Tensor<T, DynRank>,
         dim: usize,
     ) -> Tensor<T, DynRank>
     where
-        T: num_complex::ComplexFloat + faer_traits::ComplexField + 'static + From<f64> + Copy,
+        T: num_complex::ComplexFloat + faer_traits::ComplexField + 'static + From<f64> + Copy + Default,
     {
+        use num_complex::Complex;
+        
         let rank = values.rank();
         assert!(dim < rank, "dim={} must be < rank={}", dim, rank);
         
-        // Compute SVD lazily on first call (always real)
-        if self.matrix_svd.borrow().is_none() {
-            let svd = compute_matrix_svd(&self.matrix);
-            
-            // Check conditioning
-            let condition_number = svd.s[0] / svd.s[svd.s.len() - 1];
-            if condition_number > 1e8 {
-                eprintln!(
-                    "Warning: Sampling matrix is poorly conditioned (cond = {:.2e})",
-                    condition_number
-                );
-            }
-            
-            *self.matrix_svd.borrow_mut() = Some(svd);
-        }
-        
-        let svd = self.matrix_svd.borrow();
-        let svd = svd.as_ref().unwrap();
-        
         let n_points = self.n_sampling_points();
+        let basis_size = self.basis_size();
         let target_dim_size = values.shape().dim(dim);
         
-        // Check that the target dimension matches n_sampling_points
         assert_eq!(
             target_dim_size,
             n_points,
@@ -352,8 +309,52 @@ where
             n_points
         );
         
-        // Apply SVD-based fit along dimension
-        fit_along_dim_impl(&svd, values, dim)
+        // 1. Move target dimension to position 0
+        let values_dim0 = movedim(values, dim, 0);
+        
+        // 2. Reshape to 2D: (n_points, extra_size)
+        let extra_size: usize = values_dim0.len() / n_points;
+        let values_2d_dyn = values_dim0.reshape(&[n_points, extra_size][..]).to_tensor();
+        
+        // 3. Convert to DTensor<T, 2> and fit using fitter's 2D methods
+        // Use type introspection to dispatch between real and complex
+        use std::any::TypeId;
+        let is_real = TypeId::of::<T>() == TypeId::of::<f64>();
+        
+        let coeffs_2d = if is_real {
+            // Real case: convert to f64 tensor and fit
+            let values_2d_f64 = DTensor::<f64, 2>::from_fn([n_points, extra_size], |idx| {
+                unsafe { *(&values_2d_dyn[&[idx[0], idx[1]][..]] as *const T as *const f64) }
+            });
+            let coeffs_2d_f64 = self.fitter.fit_2d(&values_2d_f64);
+            // Convert back to T
+            DTensor::<T, 2>::from_fn(*coeffs_2d_f64.shape(), |idx| {
+                unsafe { *(&coeffs_2d_f64[idx] as *const f64 as *const T) }
+            })
+        } else {
+            // Complex case: convert to Complex<f64> tensor and fit
+            let values_2d_c64 = DTensor::<Complex<f64>, 2>::from_fn([n_points, extra_size], |idx| {
+                unsafe { *(&values_2d_dyn[&[idx[0], idx[1]][..]] as *const T as *const Complex<f64>) }
+            });
+            let coeffs_2d_c64 = self.fitter.fit_complex_2d(&values_2d_c64);
+            // Convert back to T
+            DTensor::<T, 2>::from_fn(*coeffs_2d_c64.shape(), |idx| {
+                unsafe { *(&coeffs_2d_c64[idx] as *const Complex<f64> as *const T) }
+            })
+        };
+        
+        // 4. Reshape back to N-D with basis_size at position 0
+        let mut coeffs_shape = vec![basis_size];
+        values_dim0.shape().with_dims(|dims| {
+            for i in 1..dims.len() {
+                coeffs_shape.push(dims[i]);
+            }
+        });
+        
+        let coeffs_dim0 = coeffs_2d.into_dyn().reshape(&coeffs_shape[..]).to_tensor();
+        
+        // 5. Move dimension 0 back to original position dim
+        movedim(&coeffs_dim0, 0, dim)
     }
     
     /// Fit basis coefficients from values at sampling points (N-dimensional)
@@ -391,7 +392,7 @@ where
         dim: usize,
     ) -> Tensor<T, DynRank>
     where
-        T: num_complex::ComplexFloat + faer_traits::ComplexField + 'static + From<f64> + Copy,
+        T: num_complex::ComplexFloat + faer_traits::ComplexField + 'static + From<f64> + Copy + Default,
     {
         self.fit_nd_impl(values, dim)
     }
@@ -419,91 +420,5 @@ where
         let tau = sampling_points[i];
         basis.u[l].evaluate(tau)
     })
-}
-
-/// Generic fit operation along a specific dimension using SVD
-fn fit_along_dim_impl<T>(
-    svd: &SamplingMatrixSVD,
-    values: &Tensor<T, DynRank>,
-    dim: usize,
-) -> Tensor<T, DynRank>
-where
-    T: num_complex::ComplexFloat + faer_traits::ComplexField + 'static + From<f64> + Copy,
-{
-    // Get dimensions
-    let dim0 = values.shape().dim(dim);
-    
-    // 1. Move target dimension to position 0
-    let values_dim0 = movedim(values, dim, 0);
-    
-    // 2. Reshape to 2D: (dim0, extra_size)
-    let extra_size: usize = values_dim0.len() / dim0;
-    
-    // Store values_shape for later use
-    let values_shape: Vec<usize> = values_dim0.shape().with_dims(|dims| dims.to_vec());
-    
-    // Reshape values: (d0, d1, d2, ...) → (d0, d1*d2*...)
-    let values_2d_dyn = values_dim0.reshape(&[dim0, extra_size][..]).to_tensor();
-    let values_2d = DTensor::<T, 2>::from_fn([dim0, extra_size], |idx| {
-        values_2d_dyn[&[idx[0], idx[1]][..]]
-    });
-    
-    // 3. Compute U^T * values_2d (convert real U to type T)
-    let ut = DTensor::<T, 2>::from_fn(*svd.u.shape(), |idx| {
-        svd.u[[idx[1], idx[0]]].into()  // transpose and convert
-    });
-    let ut_values = matmul_par(&ut, &values_2d);
-    
-    // 4. Divide by singular values: S^{-1} * (U^T * values)
-    let basis_size = svd.vt.shape().1;
-    let s_inv_ut_values = DTensor::<T, 2>::from_fn([basis_size, extra_size], |idx| {
-        let i = idx[0];
-        let j = idx[1];
-        if i < svd.s.len() {
-            ut_values[[i, j]] / svd.s[i].into()
-        } else {
-            T::zero()
-        }
-    });
-    
-    // 5. coeffs_2d = V * (S^{-1} * U^T * values) (convert real V to type T)
-    let v = DTensor::<T, 2>::from_fn(*svd.vt.shape(), |idx| {
-        svd.vt[[idx[1], idx[0]]].into()  // transpose and convert
-    });
-    let coeffs_2d = matmul_par(&v, &s_inv_ut_values);
-    
-    // 6. Reshape back: (basis_size, extra_size) → (basis_size, d1, d2, ...)
-    let mut result_shape = values_shape.clone();
-    result_shape[0] = basis_size;
-    
-    // Convert coeffs_2d to DynRank and reshape
-    let coeffs_2d_dyn = coeffs_2d.into_dyn();
-    let result_dim0 = coeffs_2d_dyn.reshape(&result_shape[..]).to_tensor();
-    
-    // 7. Move dimension back to original position
-    movedim(&result_dim0, 0, dim)
-}
-
-/// Compute SVD of the sampling matrix using Faer
-fn compute_matrix_svd(matrix: &DTensor<f64, 2>) -> SamplingMatrixSVD {
-    use mdarray_linalg::{SVD, SVDDecomp};
-    use mdarray_linalg_faer::Faer;
-    
-    // Clone matrix for SVD (Faer's SVD may modify input)
-    let mut a = matrix.clone();
-    
-    // Compute thin SVD
-    let SVDDecomp { u, s, vt } = Faer.svd(&mut a)
-        .expect("SVD computation failed");
-    
-    // Convert s to Vec<f64> (mdarray-linalg stores singular values in first row: s[[0, i]])
-    let min_dim = s.shape().0.min(s.shape().1);
-    let s_vec: Vec<f64> = (0..min_dim).map(|i| s[[0, i]]).collect();
-    
-    SamplingMatrixSVD {
-        u,
-        s: s_vec,
-        vt,
-    }
 }
 

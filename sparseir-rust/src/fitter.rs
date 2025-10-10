@@ -36,7 +36,7 @@ struct ComplexSVD {
 /// let fitted_coeffs = fitter.fit(&values);
 /// ```
 pub struct RealMatrixFitter {
-    matrix: DTensor<f64, 2>,  // (n_points, basis_size)
+    pub matrix: DTensor<f64, 2>,  // (n_points, basis_size)
     svd: RefCell<Option<RealSVD>>,
 }
 
@@ -98,6 +98,108 @@ impl RealMatrixFitter {
         
         // Solve: coeffs = V * S^{-1} * U^T * values
         solve_real_svd(svd, values)
+    }
+    
+    /// Fit complex values by fitting real and imaginary parts separately
+    ///
+    /// # Arguments
+    /// * `values` - Complex values at sampling points (length = n_points)
+    ///
+    /// # Returns
+    /// Complex coefficients (length = basis_size)
+    pub fn fit_complex(&self, values: &[Complex<f64>]) -> Vec<Complex<f64>> {
+        use num_complex::Complex;
+        
+        assert_eq!(values.len(), self.n_points(),
+            "values.len()={} must equal n_points={}", values.len(), self.n_points());
+        
+        // Fit real and imaginary parts separately
+        let values_re: Vec<f64> = values.iter().map(|v| v.re).collect();
+        let values_im: Vec<f64> = values.iter().map(|v| v.im).collect();
+        
+        let coeffs_re = self.fit(&values_re);
+        let coeffs_im = self.fit(&values_im);
+        
+        coeffs_re.iter().zip(coeffs_im.iter())
+            .map(|(&re, &im)| Complex::new(re, im))
+            .collect()
+    }
+    
+    /// Evaluate complex coefficients
+    ///
+    /// # Arguments
+    /// * `coeffs` - Complex coefficients (length = basis_size)
+    ///
+    /// # Returns
+    /// Complex values at sampling points (length = n_points)
+    pub fn evaluate_complex(&self, coeffs: &[Complex<f64>]) -> Vec<Complex<f64>> {
+        use num_complex::Complex;
+        
+        assert_eq!(coeffs.len(), self.basis_size(),
+            "coeffs.len()={} must equal basis_size={}", coeffs.len(), self.basis_size());
+        
+        // Evaluate real and imaginary parts separately
+        let coeffs_re: Vec<f64> = coeffs.iter().map(|c| c.re).collect();
+        let coeffs_im: Vec<f64> = coeffs.iter().map(|c| c.im).collect();
+        
+        let values_re = self.evaluate(&coeffs_re);
+        let values_im = self.evaluate(&coeffs_im);
+        
+        values_re.iter().zip(values_im.iter())
+            .map(|(&re, &im)| Complex::new(re, im))
+            .collect()
+    }
+    
+    /// Fit 2D real tensor (along dim=0)
+    ///
+    /// # Arguments
+    /// * `values_2d` - Shape: [n_points, extra_size]
+    ///
+    /// # Returns
+    /// Coefficients tensor, shape: [basis_size, extra_size]
+    pub fn fit_2d(&self, values_2d: &mdarray::DTensor<f64, 2>) -> mdarray::DTensor<f64, 2> {
+        let (n_points, extra_size) = *values_2d.shape();
+        assert_eq!(n_points, self.n_points(),
+            "values_2d.shape().0={} must equal n_points={}", n_points, self.n_points());
+        
+        let basis_size = self.basis_size();
+        let mut coeffs_2d = mdarray::DTensor::<f64, 2>::from_fn([basis_size, extra_size], |_| 0.0);
+        
+        for j in 0..extra_size {
+            let column: Vec<f64> = (0..n_points).map(|i| values_2d[[i, j]]).collect();
+            let fitted = self.fit(&column);
+            for i in 0..basis_size {
+                coeffs_2d[[i, j]] = fitted[i];
+            }
+        }
+        
+        coeffs_2d
+    }
+    
+    /// Fit 2D complex tensor (along dim=0)
+    ///
+    /// # Arguments
+    /// * `values_2d` - Shape: [n_points, extra_size]
+    ///
+    /// # Returns
+    /// Complex coefficients tensor, shape: [basis_size, extra_size]
+    pub fn fit_complex_2d(&self, values_2d: &mdarray::DTensor<Complex<f64>, 2>) -> mdarray::DTensor<Complex<f64>, 2> {
+        let (n_points, extra_size) = *values_2d.shape();
+        assert_eq!(n_points, self.n_points(),
+            "values_2d.shape().0={} must equal n_points={}", n_points, self.n_points());
+        
+        let basis_size = self.basis_size();
+        let mut coeffs_2d = mdarray::DTensor::<Complex<f64>, 2>::from_fn([basis_size, extra_size], |_| Complex::new(0.0, 0.0));
+        
+        for j in 0..extra_size {
+            let column: Vec<Complex<f64>> = (0..n_points).map(|i| values_2d[[i, j]]).collect();
+            let fitted = self.fit_complex(&column);
+            for i in 0..basis_size {
+                coeffs_2d[[i, j]] = fitted[i];
+            }
+        }
+        
+        coeffs_2d
     }
 }
 
