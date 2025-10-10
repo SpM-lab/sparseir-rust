@@ -139,7 +139,7 @@ pub fn giwn_single_pole<S: StatisticsType>(
     beta: f64,
 ) -> Complex<f64> {
     // G(iωn) = 1/(iωn - ω)
-    let iwn = matsubara_freq.value(beta);
-    let denominator = Complex::new(0.0, 1.0) * iwn - Complex::new(omega, 0.0);
+    let wn = matsubara_freq.value(beta);
+    let denominator = Complex::new(0.0, 1.0) * wn - Complex::new(omega, 0.0);
     Complex::new(1.0, 0.0) / denominator
 }
