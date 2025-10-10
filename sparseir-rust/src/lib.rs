@@ -20,6 +20,7 @@ pub mod traits;
 pub mod sve;
 pub mod basis;
 pub mod dlr;  // Discrete Lehmann Representation utilities
+pub mod fitter;  // Least-squares fitters (real/complex matrices)
 
 // Re-export commonly used types and traits
 pub use freq::{
@@ -44,6 +45,7 @@ pub use kernelmatrix::{DiscretizedKernel, InterpolatedKernel, matrix_from_gauss,
 pub use sve::{SVEResult, TworkType, SVDStrategy, SamplingSVE, CentrosymmSVE, SVEStrategy, compute_sve, compute_svd, truncate};
 pub use basis::{FiniteTempBasis, FermionicBasis, BosonicBasis};
 pub use dlr::{gtau_single_pole, fermionic_single_pole, bosonic_single_pole};
+pub use fitter::{RealMatrixFitter, ComplexToRealFitter};
 
 // Re-export external dependencies for convenience
 pub use twofloat::TwoFloat;
