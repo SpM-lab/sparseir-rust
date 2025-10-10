@@ -19,6 +19,7 @@ pub mod special_functions;
 pub mod traits;
 pub mod sve;
 pub mod basis;
+pub mod dlr;  // Discrete Lehmann Representation utilities
 
 // Re-export commonly used types and traits
 pub use freq::{
@@ -42,6 +43,7 @@ pub use interpolation2d::Interpolate2D;
 pub use kernelmatrix::{DiscretizedKernel, InterpolatedKernel, matrix_from_gauss, matrix_from_gauss_with_segments};
 pub use sve::{SVEResult, TworkType, SVDStrategy, SamplingSVE, CentrosymmSVE, SVEStrategy, compute_sve, compute_svd, truncate};
 pub use basis::{FiniteTempBasis, FermionicBasis, BosonicBasis};
+pub use dlr::{fermionic_single_pole, bosonic_single_pole};
 
 // Re-export external dependencies for convenience
 pub use twofloat::TwoFloat;
