@@ -374,6 +374,91 @@ where
     }
 }
 
+// ============================================================================
+// Trait implementations
+// ============================================================================
+
+impl<K, S> crate::basis_trait::Basis<S> for FiniteTempBasis<K, S>
+where
+    K: KernelProperties + CentrosymmKernel + Clone + 'static,
+    S: StatisticsType + 'static,
+{
+    fn beta(&self) -> f64 {
+        self.beta
+    }
+    
+    fn wmax(&self) -> f64 {
+        self.kernel.lambda() / self.beta
+    }
+    
+    fn lambda(&self) -> f64 {
+        self.kernel.lambda()
+    }
+    
+    fn size(&self) -> usize {
+        self.size()
+    }
+    
+    fn accuracy(&self) -> f64 {
+        self.accuracy
+    }
+    
+    fn significance(&self) -> Vec<f64> {
+        if let Some(&first_s) = self.s.first() {
+            self.s.iter().map(|&s| s / first_s).collect()
+        } else {
+            vec![]
+        }
+    }
+    
+    fn default_tau_sampling_points(&self) -> Vec<f64> {
+        self.default_tau_sampling_points()
+    }
+    
+    fn default_matsubara_sampling_points(&self, positive_only: bool) -> Vec<crate::freq::MatsubaraFreq<S>> {
+        self.default_matsubara_sampling_points(positive_only)
+    }
+    
+    fn evaluate_tau(&self, tau: &[f64]) -> mdarray::DTensor<f64, 2> {
+        use mdarray::DTensor;
+        
+        let n_points = tau.len();
+        let basis_size = self.size();
+        
+        // Evaluate each basis function at all tau points
+        // Result: matrix[i, l] = u_l(tau[i])
+        DTensor::<f64, 2>::from_fn([n_points, basis_size], |idx| {
+            let i = idx[0];  // tau index
+            let l = idx[1];  // basis function index
+            self.u[l].evaluate(tau[i])
+        })
+    }
+    
+    fn evaluate_matsubara(&self, freqs: &[crate::freq::MatsubaraFreq<S>]) -> mdarray::DTensor<num_complex::Complex<f64>, 2> {
+        use mdarray::DTensor;
+        use num_complex::Complex;
+        
+        let n_points = freqs.len();
+        let basis_size = self.size();
+        
+        // Evaluate each basis function at all Matsubara frequencies
+        // Result: matrix[i, l] = uhat_l(iωn[i])
+        DTensor::<Complex<f64>, 2>::from_fn([n_points, basis_size], |idx| {
+            let i = idx[0];  // frequency index
+            let l = idx[1];  // basis function index
+            self.uhat[l].evaluate(&freqs[i])
+        })
+    }
+    
+    fn default_omega_sampling_points(&self) -> Vec<f64> {
+        self.default_omega_sampling_points()
+    }
+}
+
+// ============================================================================
+// Type aliases
+// ============================================================================
+
 /// Type alias for fermionic basis with LogisticKernel
 pub type FermionicBasis = FiniteTempBasis<LogisticKernel, Fermionic>;
 
