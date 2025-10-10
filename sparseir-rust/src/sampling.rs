@@ -8,7 +8,6 @@ use crate::gemm::matmul_par;
 use crate::kernel::{KernelProperties, CentrosymmKernel};
 use crate::traits::StatisticsType;
 use mdarray::{DTensor, Tensor, DynRank, Shape};
-use num_complex::Complex;
 use std::cell::RefCell;
 
 /// Move axis from position `src` to position `dst`
@@ -269,9 +268,13 @@ where
         movedim(&result_dim0, 0, dim)
     }
     
-    /// Evaluate basis coefficients at sampling points (N-dimensional, real)
+    /// Evaluate basis coefficients at sampling points (N-dimensional)
     ///
     /// Evaluates along the specified dimension, keeping other dimensions intact.
+    /// Supports both real (`f64`) and complex (`Complex<f64>`) coefficients.
+    ///
+    /// # Type Parameters
+    /// * `T` - Element type (f64 or Complex<f64>)
     ///
     /// # Arguments
     /// * `coeffs` - N-dimensional array with `coeffs.shape().dim(dim) == basis_size`
@@ -285,37 +288,23 @@ where
     ///
     /// # Example
     /// ```ignore
+    /// use num_complex::Complex;
     /// use mdarray::tensor;
-    /// // coeffs: (basis_size, n_k, n_omega)
-    /// // With dim=0, result: (n_sampling_points, n_k, n_omega)
-    /// let values = sampling.evaluate_nd(&coeffs, 0);
+    /// 
+    /// // Real coefficients
+    /// let values_real = sampling.evaluate_nd::<f64>(&coeffs_real, 0);
+    /// 
+    /// // Complex coefficients
+    /// let values_complex = sampling.evaluate_nd::<Complex<f64>>(&coeffs_complex, 0);
     /// ```
-    pub fn evaluate_nd(
+    pub fn evaluate_nd<T>(
         &self,
-        coeffs: &Tensor<f64, DynRank>,
+        coeffs: &Tensor<T, DynRank>,
         dim: usize,
-    ) -> Tensor<f64, DynRank> {
-        self.evaluate_nd_impl(coeffs, dim)
-    }
-    
-    /// Evaluate basis coefficients at sampling points (N-dimensional, complex)
-    ///
-    /// Evaluates along the specified dimension, keeping other dimensions intact.
-    ///
-    /// # Arguments
-    /// * `coeffs` - N-dimensional complex array with `coeffs.shape().dim(dim) == basis_size`
-    /// * `dim` - Dimension along which to evaluate (0-indexed)
-    ///
-    /// # Returns
-    /// N-dimensional complex array with `result.shape().dim(dim) == n_sampling_points`
-    ///
-    /// # Panics
-    /// Panics if `coeffs.shape().dim(dim) != basis_size` or if `dim >= rank`
-    pub fn evaluate_nd_complex(
-        &self,
-        coeffs: &Tensor<Complex<f64>, DynRank>,
-        dim: usize,
-    ) -> Tensor<Complex<f64>, DynRank> {
+    ) -> Tensor<T, DynRank>
+    where
+        T: num_complex::ComplexFloat + faer_traits::ComplexField + 'static + From<f64> + Copy,
+    {
         self.evaluate_nd_impl(coeffs, dim)
     }
     
@@ -367,9 +356,13 @@ where
         fit_along_dim_impl(&svd, values, dim)
     }
     
-    /// Fit basis coefficients from values at sampling points (N-dimensional, real)
+    /// Fit basis coefficients from values at sampling points (N-dimensional)
     ///
     /// Fits along the specified dimension, keeping other dimensions intact.
+    /// Supports both real (`f64`) and complex (`Complex<f64>`) values.
+    ///
+    /// # Type Parameters
+    /// * `T` - Element type (f64 or Complex<f64>)
     ///
     /// # Arguments
     /// * `values` - N-dimensional array with `values.shape().dim(dim) == n_sampling_points`
@@ -383,37 +376,23 @@ where
     ///
     /// # Example
     /// ```ignore
+    /// use num_complex::Complex;
     /// use mdarray::tensor;
-    /// // values: (n_sampling_points, n_k, n_omega)
-    /// // With dim=0, result: (basis_size, n_k, n_omega)
-    /// let coeffs = sampling.fit_nd(&values, 0);
+    /// 
+    /// // Real values
+    /// let coeffs_real = sampling.fit_nd::<f64>(&values_real, 0);
+    /// 
+    /// // Complex values
+    /// let coeffs_complex = sampling.fit_nd::<Complex<f64>>(&values_complex, 0);
     /// ```
-    pub fn fit_nd(
+    pub fn fit_nd<T>(
         &self,
-        values: &Tensor<f64, DynRank>,
+        values: &Tensor<T, DynRank>,
         dim: usize,
-    ) -> Tensor<f64, DynRank> {
-        self.fit_nd_impl(values, dim)
-    }
-    
-    /// Fit basis coefficients from values at sampling points (N-dimensional, complex)
-    ///
-    /// Fits along the specified dimension, keeping other dimensions intact.
-    ///
-    /// # Arguments
-    /// * `values` - N-dimensional complex array with `values.shape().dim(dim) == n_sampling_points`
-    /// * `dim` - Dimension along which to fit (0-indexed)
-    ///
-    /// # Returns
-    /// N-dimensional complex array with `result.shape().dim(dim) == basis_size`
-    ///
-    /// # Panics
-    /// Panics if `values.shape().dim(dim) != n_sampling_points` or if `dim >= rank`
-    pub fn fit_nd_complex(
-        &self,
-        values: &Tensor<Complex<f64>, DynRank>,
-        dim: usize,
-    ) -> Tensor<Complex<f64>, DynRank> {
+    ) -> Tensor<T, DynRank>
+    where
+        T: num_complex::ComplexFloat + faer_traits::ComplexField + 'static + From<f64> + Copy,
+    {
         self.fit_nd_impl(values, dim)
     }
 }

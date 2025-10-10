@@ -1,383 +1,133 @@
 use sparseir_rust::basis::FiniteTempBasis;
 use sparseir_rust::kernel::LogisticKernel;
 use sparseir_rust::sampling::TauSampling;
-use sparseir_rust::traits::{Fermionic, StatisticsType};
+use sparseir_rust::traits::{Fermionic, Bosonic, StatisticsType};
 use sparseir_rust::kernel::{KernelProperties, CentrosymmKernel};
 use num_complex::Complex;
-use mdarray::{Shape, Tensor, DynRank};
+use mdarray::{Tensor, DynRank};
 
-#[test]
-fn test_fit_complex_basic() {
+mod common;
+use common::{SimpleRng, RandomGenerate, movedim, ErrorNorm};
+
+/// Generic test for evaluate_nd/fit_nd roundtrip (generic over element type and statistics)
+fn test_evaluate_nd_roundtrip<T, S>()
+where
+    T: RandomGenerate + num_complex::ComplexFloat + faer_traits::ComplexField + From<f64> + Copy + Default + ErrorNorm + 'static,
+    S: StatisticsType,
+    LogisticKernel: KernelProperties + CentrosymmKernel + Clone + 'static,
+{
     let beta = 1.0;
     let wmax = 10.0;
     let epsilon = Some(1e-6);
     
     let kernel = LogisticKernel::new(beta * wmax);
-    let basis = FiniteTempBasis::<_, Fermionic>::new(kernel, beta, epsilon, None);
+    let basis = FiniteTempBasis::<_, S>::new(kernel, beta, epsilon, None);
     let sampling = TauSampling::new(&basis);
     
-    // Create complex coefficients: real part from singular values, imaginary part constant
-    let coeffs_real: Vec<f64> = basis.s.iter().copied().collect();
-    let coeffs_complex: Vec<Complex<f64>> = coeffs_real.iter()
-        .map(|&re| Complex::new(re, re * 0.1))
-        .collect();
-    
-    // Evaluate: real matrix × complex coeffs → complex values
-    let values_complex: Vec<Complex<f64>> = sampling.sampling_points()
-        .iter()
-        .enumerate()
-        .map(|(_i, &tau)| {
-            // Manually compute: sum_l coeffs[l] * u_l(tau)
-            coeffs_complex.iter()
-                .enumerate()
-                .map(|(l, &c)| c * Complex::new(basis.u[l].evaluate(tau), 0.0))
-                .sum()
-        })
-        .collect();
-    
-    // Convert to 1D Tensor for fit_nd
-    let n_points = sampling.n_sampling_points();
-    let mut values_tensor: mdarray::Tensor<Complex<f64>, mdarray::DynRank> = 
-        mdarray::Tensor::zeros(&[n_points][..]);
-    for (i, &val) in values_complex.iter().enumerate() {
-        values_tensor[&[i][..]] = val;
-    }
-    
-    // Fit: complex values → complex coeffs
-    let fitted_coeffs_tensor = sampling.fit_nd_complex(&values_tensor, 0);
-    
-    // Check roundtrip
-    for (i, &orig) in coeffs_complex.iter().enumerate() {
-        let fitted = fitted_coeffs_tensor[&[i][..]];
-        let abs_error = (orig - fitted).norm();
-        assert!(
-            abs_error < 1e-10,
-            "Complex fit error: orig={}, fitted={}, error={}",
-            orig,
-            fitted,
-            abs_error
-        );
-    }
-}
-
-#[test]
-fn test_fit_complex_physical() {
-    let beta = 1.0;
-    let wmax = 10.0;
-    let epsilon = Some(1e-6);
-    
-    let kernel = LogisticKernel::new(beta * wmax);
-    let basis = FiniteTempBasis::<_, Fermionic>::new(kernel, beta, epsilon, None);
-    let sampling = TauSampling::new(&basis);
-    
-    // Physical test: Retarded Green's function in imaginary time
-    // G^R(τ) = -θ(τ) e^(-ωτ) → complex poles in frequency
-    let omega = 5.0;
-    let gamma = 0.5;  // damping
-    
-    // Complex Green's function with pole at ω - iγ
-    let g_values: Vec<Complex<f64>> = sampling.sampling_points()
-        .iter()
-        .map(|&tau| {
-            let re = -(-omega * tau).exp() * (gamma * tau).cos();
-            let im = -(-omega * tau).exp() * (gamma * tau).sin();
-            Complex::new(re, im) / (1.0 + (-beta * omega).exp())
-        })
-        .collect();
-    
-    // Convert to 1D Tensor for fit_nd
-    let n_points = sampling.n_sampling_points();
-    let mut g_values_tensor: mdarray::Tensor<Complex<f64>, mdarray::DynRank> = 
-        mdarray::Tensor::zeros(&[n_points][..]);
-    for (i, &val) in g_values.iter().enumerate() {
-        g_values_tensor[&[i][..]] = val;
-    }
-    
-    // Fit to IR basis
-    let coeffs_tensor = sampling.fit_nd_complex(&g_values_tensor, 0);
-    
-    // Evaluate back
-    let fitted_values: Vec<Complex<f64>> = sampling.sampling_points()
-        .iter()
-        .map(|&tau| {
-            (0..sampling.basis_size())
-                .map(|l| coeffs_tensor[&[l][..]] * Complex::new(basis.u[l].evaluate(tau), 0.0))
-                .sum()
-        })
-        .collect();
-    
-    // Check accuracy
-    for (orig, fitted) in g_values.iter().zip(fitted_values.iter()) {
-        let abs_error = (orig - fitted).norm();
-        assert!(
-            abs_error < 1e-10,
-            "Physical complex Green's function error: {}",
-            abs_error
-        );
-    }
-}
-
-#[test]
-fn test_fit_real_vs_complex() {
-    let beta = 1.0;
-    let wmax = 10.0;
-    let epsilon = Some(1e-6);
-    
-    let kernel = LogisticKernel::new(beta * wmax);
-    let basis = FiniteTempBasis::<_, Fermionic>::new(kernel, beta, epsilon, None);
-    let sampling = TauSampling::new(&basis);
-    
-    // Real values: constant value at all sampling points
-    let value: f64 = basis.s.iter()
-        .enumerate()
-        .map(|(l, &s)| s * basis.u[l].evaluate(0.5 * beta))
-        .sum();
-    let n_points = sampling.n_sampling_points();
-    
-    // Create real tensor
-    let mut values_real_tensor: mdarray::Tensor<f64, mdarray::DynRank> = 
-        mdarray::Tensor::zeros(&[n_points][..]);
-    for i in 0..n_points {
-        values_real_tensor[&[i][..]] = value;
-    }
-    
-    // Create complex tensor (zero imaginary part)
-    let mut values_complex_tensor: mdarray::Tensor<Complex<f64>, mdarray::DynRank> = 
-        mdarray::Tensor::zeros(&[n_points][..]);
-    for i in 0..n_points {
-        values_complex_tensor[&[i][..]] = Complex::new(value, 0.0);
-    }
-    
-    // Fit both
-    let coeffs_real_tensor = sampling.fit_nd(&values_real_tensor, 0);
-    let coeffs_complex_tensor = sampling.fit_nd_complex(&values_complex_tensor, 0);
-    
-    // Should give same results (complex with zero imaginary part)
-    for i in 0..sampling.basis_size() {
-        let real = coeffs_real_tensor[&[i][..]];
-        let complex = coeffs_complex_tensor[&[i][..]];
-        let diff_re = (real - complex.re).abs();
-        let diff_im = complex.im.abs();
-        
-        assert!(diff_re < 1e-12, "Real part mismatch: {}", diff_re);
-        assert!(diff_im < 1e-12, "Imaginary part should be ~0: {}", diff_im);
-    }
-}
-
-#[test]
-fn test_evaluate_nd_complex() {
-    use mdarray::{Tensor, DynRank};
-    
-    let beta = 1.0;
-    let wmax = 10.0;
-    let epsilon = Some(1e-6);
-    
-    let kernel = LogisticKernel::new(beta * wmax);
-    let basis = FiniteTempBasis::<_, Fermionic>::new(kernel, beta, epsilon, None);
-    let sampling = TauSampling::new(&basis);
-    
-    let basis_size = basis.size();
     let n_k = 5;
     let n_omega = 7;
     
-    // Create 3D complex coefficients: (basis_size, n_k, n_omega)
-    let mut coeffs: Tensor<Complex<f64>, DynRank> = 
-        Tensor::zeros(&[basis_size, n_k, n_omega][..]);
-    
-    for l in 0..basis_size {
+    // Test for all dimensions (dim = 0, 1, 2)
+    for dim in 0..3 {
+        // Generate random test data (dim=0 format: [basis_size, n_k, n_omega])
+        let (coeffs_0, _values_0) = generate_random_test_data::<T, _, _>(
+            sampling.sampling_points(), &basis, 42 + dim as u64, &[n_k, n_omega]
+        );
+        
+        // Move to target dimension
+        // coeffs: [basis_size, n_k, n_omega] → move axis 0 to position dim
+        let coeffs_dim = movedim(&coeffs_0, 0, dim);
+        
+        // Evaluate along target dimension (using generic API)
+        let evaluated_values = sampling.evaluate_nd::<T>(&coeffs_dim, dim);
+        
+        // Fit back along target dimension (using generic API)
+        let fitted_coeffs_dim = sampling.fit_nd::<T>(&evaluated_values, dim);
+        
+        // Move back to dim=0 for comparison
+        let fitted_coeffs_0 = movedim(&fitted_coeffs_dim, dim, 0);
+        
+        let basis_size = basis.size();
+        
+        // Check roundtrip (compare in dim=0 format)
         for k in 0..n_k {
             for omega in 0..n_omega {
-                let flat_idx = l * n_k * n_omega + k * n_omega + omega;
-                let re = (flat_idx as f64) * 0.1;
-                let im = (flat_idx as f64) * 0.05;
-                coeffs[&[l, k, omega][..]] = (basis.s[l]/basis.s[0]) * Complex::new(re, im);
-            }
-        }
-    }
-    
-    // Evaluate along dim=0 (basis dimension)
-    let values = sampling.evaluate_nd_complex(&coeffs, 0);
-    
-    // Check shape
-    assert_eq!(values.shape().dim(0), sampling.n_sampling_points());
-    assert_eq!(values.shape().dim(1), n_k);
-    assert_eq!(values.shape().dim(2), n_omega);
-    
-    // Fit back
-    let fitted_coeffs = sampling.fit_nd_complex(&values, 0);
-    
-    // Check roundtrip
-    for k in 0..n_k {
-        for omega in 0..n_omega {
-            for l in 0..basis_size {
-                let orig = coeffs[&[l, k, omega][..]];
-                let fitted = fitted_coeffs[&[l, k, omega][..]];
-                let abs_error = (orig - fitted).norm();
-                
-                assert!(
-                    abs_error < 1e-10,
-                    "ND complex roundtrip error at ({},{},{}): orig={}, fitted={}, error={}",
-                    l, k, omega, orig, fitted, abs_error
-                );
+                for l in 0..basis_size {
+                    let orig = coeffs_0[&[l, k, omega][..]];
+                    let fitted = fitted_coeffs_0[&[l, k, omega][..]];
+                    // ErrorNorm returns f64 for both f64 and Complex<f64>
+                    let abs_error = (orig - fitted).error_norm();
+                    
+                    assert!(
+                        abs_error < 1e-10,
+                        "ND roundtrip (dim={}) error at ({},{},{}): error={}",
+                        dim, l, k, omega, abs_error
+                    );
+                }
             }
         }
     }
 }
 
 #[test]
-fn test_fit_nd_complex_different_dim() {
-    use mdarray::{Tensor, DynRank};
-    
-    let beta = 1.0;
-    let wmax = 10.0;
-    let epsilon = Some(1e-6);
-    
-    let kernel = LogisticKernel::new(beta * wmax);
-    let basis = FiniteTempBasis::<_, Fermionic>::new(kernel, beta, epsilon, None);
-    let sampling = TauSampling::new(&basis);
-    
-    let n_points = sampling.n_sampling_points();
-    let basis_size = basis.size();
-    let n_k = 4;
-    
-    // Create 2D complex values: (n_k, n_points)
-    let mut values: Tensor<Complex<f64>, DynRank> = 
-        Tensor::zeros(&[n_k, n_points][..]);
-    
-    for k in 0..n_k {
-        for i in 0..n_points {
-            let flat_idx = k * n_points + i;
-            values[&[k, i][..]] = Complex::new((flat_idx as f64) * 0.2, (flat_idx as f64) * 0.1);
-        }
-    }
-    
-    // Fit along dim=1 (sampling points dimension)
-    let coeffs = sampling.fit_nd_complex(&values, 1);
-    
-    // Check shape
-    assert_eq!(coeffs.shape().dim(0), n_k);
-    assert_eq!(coeffs.shape().dim(1), basis_size);
-    
-    // Evaluate back
-    let fitted_values = sampling.evaluate_nd_complex(&coeffs, 1);
-    
-    // Check roundtrip
-    for k in 0..n_k {
-        for i in 0..n_points {
-            let orig = values[&[k, i][..]];
-            let fitted = fitted_values[&[k, i][..]];
-            let abs_error = (orig - fitted).norm();
-            
-            assert!(
-                abs_error < 1e-10,
-                "ND complex roundtrip (dim=1) error at ({},{}): error={}",
-                k, i, abs_error
-            );
-        }
-    }
+fn test_evaluate_nd_fermionic_real() {
+    test_evaluate_nd_roundtrip::<f64, Fermionic>();
 }
 
 #[test]
-fn test_nd_real_vs_complex() {
-    use mdarray::{Tensor, DynRank};
-    
-    let beta = 1.0;
-    let wmax = 10.0;
-    let epsilon = Some(1e-6);
-    
-    let kernel = LogisticKernel::new(beta * wmax);
-    let basis = FiniteTempBasis::<_, Fermionic>::new(kernel, beta, epsilon, None);
-    let sampling = TauSampling::new(&basis);
-    
-    let basis_size = basis.size();
-    let n_extra = 8;
-    
-    // Create real 2D coefficients
-    let mut coeffs_real: Tensor<f64, DynRank> = 
-        Tensor::zeros(&[basis_size, n_extra][..]);
-    
-    for l in 0..basis_size {
-        for j in 0..n_extra {
-            let flat_idx = l * n_extra + j;
-            coeffs_real[&[l, j][..]] = (flat_idx as f64) * 0.15;
-        }
-    }
-    
-    // Same as complex (zero imaginary)
-    let mut coeffs_complex: Tensor<Complex<f64>, DynRank> = 
-        Tensor::zeros(&[basis_size, n_extra][..]);
-    
-    for l in 0..basis_size {
-        for j in 0..n_extra {
-            let flat_idx = l * n_extra + j;
-            coeffs_complex[&[l, j][..]] = Complex::new((flat_idx as f64) * 0.15, 0.0);
-        }
-    }
-    
-    // Evaluate both
-    let values_real = sampling.evaluate_nd(&coeffs_real, 0);
-    let values_complex = sampling.evaluate_nd_complex(&coeffs_complex, 0);
-    
-    // Compare
-    let n_points = sampling.n_sampling_points();
-    for i in 0..n_points {
-        for j in 0..n_extra {
-            let real = values_real[&[i, j][..]];
-            let complex = values_complex[&[i, j][..]];
-            
-            let diff_re = (real - complex.re).abs();
-            let diff_im = complex.im.abs();
-            
-            assert!(diff_re < 1e-12, "Real evaluate_nd mismatch: {}", diff_re);
-            assert!(diff_im < 1e-12, "Imaginary part should be ~0: {}", diff_im);
-        }
-    }
+fn test_evaluate_nd_fermionic_complex() {
+    test_evaluate_nd_roundtrip::<Complex<f64>, Fermionic>();
+}
+
+#[test]
+fn test_evaluate_nd_bosonic_real() {
+    test_evaluate_nd_roundtrip::<f64, Bosonic>();
+}
+
+#[test]
+fn test_evaluate_nd_bosonic_complex() {
+    test_evaluate_nd_roundtrip::<Complex<f64>, Bosonic>();
 }
 
 // ============================================================================
 // Test data generation helpers
 // ============================================================================
 
-/// Generate random complex test data with N-dimensional structure
+/// Generate random test data with N-dimensional structure (generic over element type)
 ///
-/// Creates complex coefficients and corresponding Green's function values:
+/// Creates coefficients and corresponding values at sampling points:
 /// - Coefficients: shape [basis_size, ...extra_dims], randomly generated
 /// - Values: shape [n_points, ...extra_dims], evaluated at sampling points
 ///
-/// The Green's function is constructed as a sum of poles at fixed frequencies:
-///   G(τ) = Σ_k weight_k * G_pole(τ, ω_k)
-/// where pole positions are deterministic (e.g., ω = [0.3, 0.7, -0.5] * wmax)
-/// and weights are generated from the seed.
+/// Coefficients are scaled by singular values for physical relevance.
+///
+/// # Type Parameters
+/// * `T` - Element type (f64 or Complex<f64>)
 ///
 /// # Arguments
-/// * `sampling` - TauSampling object
+/// * `sampling_points` - Sampling points in τ ∈ [0, β]
 /// * `basis` - Finite temperature basis (needed for evaluation)
 /// * `seed` - Random seed for reproducible coefficient generation
 /// * `extra_dims` - Additional dimensions beyond basis/sampling (e.g., &[n_k, n_omega])
 ///
 /// # Returns
-/// (coeffs_tensor, values_tensor) where values = sampling.evaluate_nd_complex(coeffs, 0)
+/// (coeffs_tensor, values_tensor) where values are evaluated at sampling_points
 #[allow(dead_code)]
-fn generate_random_test_data<K, S>(
-    sampling: &TauSampling<S>,
+fn generate_random_test_data<T, K, S>(
+    sampling_points: &[f64],
     basis: &FiniteTempBasis<K, S>,
     seed: u64,
     extra_dims: &[usize],
-) -> (Tensor<Complex<f64>, DynRank>, Tensor<Complex<f64>, DynRank>)
+) -> (Tensor<T, DynRank>, Tensor<T, DynRank>)
 where
+    T: RandomGenerate + num_complex::ComplexFloat + faer_traits::ComplexField + From<f64> + Copy + Default + 'static,
     K: KernelProperties + CentrosymmKernel + Clone + 'static,
     S: StatisticsType,
 {
-    // Simple deterministic pseudo-RNG (LCG)
-    let mut rng_state = seed;
-    let mut next_f64 = || {
-        rng_state = rng_state.wrapping_mul(1664525).wrapping_add(1013904223);
-        // Map to [0, 1)
-        ((rng_state >> 16) as f64) / ((1u64 << 48) as f64)
-    };
+    let mut rng = SimpleRng::new(seed);
     
-    let basis_size = sampling.basis_size();
-    let n_points = sampling.n_sampling_points();
+    let basis_size = basis.size();
+    let n_points = sampling_points.len();
     
     let total_extra: usize = extra_dims.iter().product();
     let total_extra = if total_extra == 0 { 1 } else { total_extra };
@@ -386,7 +136,7 @@ where
     let mut coeffs_shape = vec![basis_size];
     coeffs_shape.extend_from_slice(extra_dims);
     
-    let mut coeffs: Tensor<Complex<f64>, DynRank> = Tensor::zeros(&coeffs_shape[..]);
+    let mut coeffs: Tensor<T, DynRank> = Tensor::zeros(&coeffs_shape[..]);
     
     // Generate random coefficients scaled by singular values
     for flat_idx in 0..total_extra {
@@ -401,13 +151,14 @@ where
         
         // Generate coefficients for each basis function
         for l in 0..basis_size {
-            // Random complex number scaled by singular value
-            let re = (next_f64() - 0.5) * 2.0;  // [-1, 1)
-            let im = (next_f64() - 0.5) * 2.0;  // [-1, 1)
-            let random_coeff = Complex::new(re, im);
+            // Random value in [0, 1) (or complex with re, im in [0, 1))
+            let random_base: T = rng.next();
+            
+            // Map to [-1, 1): x * 2 - 1
+            let random_centered = random_base * 2.0.into() - 1.0.into();
             
             // Scale by singular value for physical relevance
-            let scaled_coeff = random_coeff * basis.s[l];
+            let scaled_coeff = random_centered * basis.s[l].into();
             
             // Set coefficient at [l, ...extra_idx]
             let mut full_idx = vec![l];
@@ -417,7 +168,42 @@ where
     }
     
     // Evaluate coefficients at sampling points
-    let values = sampling.evaluate_nd_complex(&coeffs, 0);
+    // values[i, ...extra_idx] = Σ_l coeffs[l, ...extra_idx] * u_l(τ_i)
+    let mut values_shape = vec![n_points];
+    values_shape.extend_from_slice(extra_dims);
+    let mut values: Tensor<T, DynRank> = Tensor::zeros(&values_shape[..]);
+    
+    for flat_idx in 0..total_extra {
+        // Convert flat index to multi-index for extra dimensions
+        let mut extra_idx = Vec::new();
+        let mut remainder = flat_idx;
+        for &dim_size in extra_dims.iter().rev() {
+            extra_idx.push(remainder % dim_size);
+            remainder /= dim_size;
+        }
+        extra_idx.reverse();
+        
+        // Evaluate at each sampling point
+        for (i, &tau) in sampling_points.iter().enumerate() {
+            let mut value = T::zero();
+            
+            // Sum over basis functions: Σ_l coeffs[l, ...extra_idx] * u_l(τ)
+            for l in 0..basis_size {
+                let mut coeff_idx = vec![l];
+                coeff_idx.extend_from_slice(&extra_idx);
+                let coeff = coeffs[&coeff_idx[..]];
+                
+                // u_l(τ) is real, convert to type T
+                let u_l_tau = basis.u[l].evaluate(tau);
+                value = value + coeff * u_l_tau.into();
+            }
+            
+            // Set value at [i, ...extra_idx]
+            let mut value_idx = vec![i];
+            value_idx.extend_from_slice(&extra_idx);
+            values[&value_idx[..]] = value;
+        }
+    }
     
     (coeffs, values)
 }
