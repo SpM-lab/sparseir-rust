@@ -34,11 +34,20 @@ fn test_fit_complex_basic() {
         })
         .collect();
     
+    // Convert to 1D Tensor for fit_nd
+    let n_points = sampling.n_sampling_points();
+    let mut values_tensor: mdarray::Tensor<Complex<f64>, mdarray::DynRank> = 
+        mdarray::Tensor::zeros(&[n_points][..]);
+    for (i, &val) in values_complex.iter().enumerate() {
+        values_tensor[&[i][..]] = val;
+    }
+    
     // Fit: complex values → complex coeffs
-    let fitted_coeffs = sampling.fit_complex(&values_complex);
+    let fitted_coeffs_tensor = sampling.fit_nd_complex(&values_tensor, 0);
     
     // Check roundtrip
-    for (orig, fitted) in coeffs_complex.iter().zip(fitted_coeffs.iter()) {
+    for (i, &orig) in coeffs_complex.iter().enumerate() {
+        let fitted = fitted_coeffs_tensor[&[i][..]];
         let abs_error = (orig - fitted).norm();
         assert!(
             abs_error < 1e-10,
@@ -75,16 +84,23 @@ fn test_fit_complex_physical() {
         })
         .collect();
     
+    // Convert to 1D Tensor for fit_nd
+    let n_points = sampling.n_sampling_points();
+    let mut g_values_tensor: mdarray::Tensor<Complex<f64>, mdarray::DynRank> = 
+        mdarray::Tensor::zeros(&[n_points][..]);
+    for (i, &val) in g_values.iter().enumerate() {
+        g_values_tensor[&[i][..]] = val;
+    }
+    
     // Fit to IR basis
-    let coeffs = sampling.fit_complex(&g_values);
+    let coeffs_tensor = sampling.fit_nd_complex(&g_values_tensor, 0);
     
     // Evaluate back
     let fitted_values: Vec<Complex<f64>> = sampling.sampling_points()
         .iter()
         .map(|&tau| {
-            coeffs.iter()
-                .enumerate()
-                .map(|(l, &c)| c * Complex::new(basis.u[l].evaluate(tau), 0.0))
+            (0..sampling.basis_size())
+                .map(|l| coeffs_tensor[&[l][..]] * Complex::new(basis.u[l].evaluate(tau), 0.0))
                 .sum()
         })
         .collect();
@@ -115,19 +131,30 @@ fn test_fit_real_vs_complex() {
         .enumerate()
         .map(|(l, &s)| s * basis.u[l].evaluate(0.5 * beta))
         .sum();
-    let values_real: Vec<f64> = vec![value; sampling.n_sampling_points()];
+    let n_points = sampling.n_sampling_points();
     
-    // Same values as complex (zero imaginary part)
-    let values_complex: Vec<Complex<f64>> = values_real.iter()
-        .map(|&v| Complex::new(v, 0.0))
-        .collect();
+    // Create real tensor
+    let mut values_real_tensor: mdarray::Tensor<f64, mdarray::DynRank> = 
+        mdarray::Tensor::zeros(&[n_points][..]);
+    for i in 0..n_points {
+        values_real_tensor[&[i][..]] = value;
+    }
+    
+    // Create complex tensor (zero imaginary part)
+    let mut values_complex_tensor: mdarray::Tensor<Complex<f64>, mdarray::DynRank> = 
+        mdarray::Tensor::zeros(&[n_points][..]);
+    for i in 0..n_points {
+        values_complex_tensor[&[i][..]] = Complex::new(value, 0.0);
+    }
     
     // Fit both
-    let coeffs_real = sampling.fit(&values_real);
-    let coeffs_complex = sampling.fit_complex(&values_complex);
+    let coeffs_real_tensor = sampling.fit_nd(&values_real_tensor, 0);
+    let coeffs_complex_tensor = sampling.fit_nd_complex(&values_complex_tensor, 0);
     
     // Should give same results (complex with zero imaginary part)
-    for (real, complex) in coeffs_real.iter().zip(coeffs_complex.iter()) {
+    for i in 0..sampling.basis_size() {
+        let real = coeffs_real_tensor[&[i][..]];
+        let complex = coeffs_complex_tensor[&[i][..]];
         let diff_re = (real - complex.re).abs();
         let diff_im = complex.im.abs();
         
@@ -162,7 +189,7 @@ fn test_evaluate_nd_complex() {
                 let flat_idx = l * n_k * n_omega + k * n_omega + omega;
                 let re = (flat_idx as f64) * 0.1;
                 let im = (flat_idx as f64) * 0.05;
-                coeffs[&[l, k, omega][..]] = Complex::new(re, im);
+                coeffs[&[l, k, omega][..]] = (basis.s[l]/basis.s[0]) * Complex::new(re, im);
             }
         }
     }

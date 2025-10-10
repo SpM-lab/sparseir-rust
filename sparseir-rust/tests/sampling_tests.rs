@@ -110,9 +110,22 @@ fn test_evaluate_fit_roundtrip_fermionic() {
         .map(|&tau| fermionic_single_pole(tau, omega, beta))
         .collect();
     
+    // Convert to 1D Tensor for fit_nd
+    let n_points = sampling.n_sampling_points();
+    let mut g_values_tensor: mdarray::Tensor<f64, mdarray::DynRank> = 
+        mdarray::Tensor::zeros(&[n_points][..]);
+    for (i, &val) in g_values.iter().enumerate() {
+        g_values_tensor[&[i][..]] = val;
+    }
+    
     // Fit to IR basis coefficients
-    let coeffs = sampling.fit(&g_values);
-    assert_eq!(coeffs.len(), sampling.basis_size());
+    let coeffs_tensor = sampling.fit_nd(&g_values_tensor, 0);
+    assert_eq!(coeffs_tensor.shape().dim(0), sampling.basis_size());
+    
+    // Convert back to Vec for evaluate
+    let coeffs: Vec<f64> = (0..sampling.basis_size())
+        .map(|i| coeffs_tensor[&[i][..]])
+        .collect();
     
     // Evaluate back: coeffs → values
     let fitted_values = sampling.evaluate(&coeffs);
@@ -145,8 +158,21 @@ fn test_evaluate_fit_roundtrip_bosonic() {
         .map(|&tau| bosonic_single_pole(tau, omega, beta))
         .collect();
     
+    // Convert to 1D Tensor for fit_nd
+    let n_points = sampling.n_sampling_points();
+    let mut g_values_tensor: mdarray::Tensor<f64, mdarray::DynRank> = 
+        mdarray::Tensor::zeros(&[n_points][..]);
+    for (i, &val) in g_values.iter().enumerate() {
+        g_values_tensor[&[i][..]] = val;
+    }
+    
     // Fit to IR basis coefficients
-    let coeffs = sampling.fit(&g_values);
+    let coeffs_tensor = sampling.fit_nd(&g_values_tensor, 0);
+    
+    // Convert back to Vec for evaluate
+    let coeffs: Vec<f64> = (0..sampling.basis_size())
+        .map(|i| coeffs_tensor[&[i][..]])
+        .collect();
     
     // Evaluate back: coeffs → values
     let fitted_values = sampling.evaluate(&coeffs);
@@ -332,15 +358,20 @@ fn test_evaluate_wrong_size() {
 }
 
 #[test]
-#[should_panic(expected = "must match number of sampling points")]
+#[should_panic(expected = "must equal n_sampling_points")]
 fn test_fit_wrong_size() {
     let basis = create_test_basis_fermionic();
     
     let sampling: TauSampling<Fermionic> = TauSampling::new(&basis);
     
     // Wrong number of values should panic
-    let wrong_values = vec![1.0; sampling.n_sampling_points() + 5];
-    let _coeffs = sampling.fit(&wrong_values);
+    let wrong_size = sampling.n_sampling_points() + 5;
+    let mut wrong_values: mdarray::Tensor<f64, mdarray::DynRank> = 
+        mdarray::Tensor::zeros(&[wrong_size][..]);
+    for i in 0..wrong_size {
+        wrong_values[&[i][..]] = 1.0;
+    }
+    let _coeffs = sampling.fit_nd(&wrong_values, 0);
 }
 
 #[test]
