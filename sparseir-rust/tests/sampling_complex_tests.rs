@@ -1,9 +1,10 @@
 use sparseir_rust::basis::FiniteTempBasis;
 use sparseir_rust::kernel::LogisticKernel;
 use sparseir_rust::sampling::TauSampling;
-use sparseir_rust::traits::Fermionic;
+use sparseir_rust::traits::{Fermionic, StatisticsType};
+use sparseir_rust::kernel::{KernelProperties, CentrosymmKernel};
 use num_complex::Complex;
-use mdarray::Shape;
+use mdarray::{Shape, Tensor, DynRank};
 
 #[test]
 fn test_fit_complex_basic() {
@@ -331,5 +332,93 @@ fn test_nd_real_vs_complex() {
             assert!(diff_im < 1e-12, "Imaginary part should be ~0: {}", diff_im);
         }
     }
+}
+
+// ============================================================================
+// Test data generation helpers
+// ============================================================================
+
+/// Generate random complex test data with N-dimensional structure
+///
+/// Creates complex coefficients and corresponding Green's function values:
+/// - Coefficients: shape [basis_size, ...extra_dims], randomly generated
+/// - Values: shape [n_points, ...extra_dims], evaluated at sampling points
+///
+/// The Green's function is constructed as a sum of poles at fixed frequencies:
+///   G(τ) = Σ_k weight_k * G_pole(τ, ω_k)
+/// where pole positions are deterministic (e.g., ω = [0.3, 0.7, -0.5] * wmax)
+/// and weights are generated from the seed.
+///
+/// # Arguments
+/// * `sampling` - TauSampling object
+/// * `basis` - Finite temperature basis (needed for evaluation)
+/// * `seed` - Random seed for reproducible coefficient generation
+/// * `extra_dims` - Additional dimensions beyond basis/sampling (e.g., &[n_k, n_omega])
+///
+/// # Returns
+/// (coeffs_tensor, values_tensor) where values = sampling.evaluate_nd_complex(coeffs, 0)
+#[allow(dead_code)]
+fn generate_random_test_data<K, S>(
+    sampling: &TauSampling<S>,
+    basis: &FiniteTempBasis<K, S>,
+    seed: u64,
+    extra_dims: &[usize],
+) -> (Tensor<Complex<f64>, DynRank>, Tensor<Complex<f64>, DynRank>)
+where
+    K: KernelProperties + CentrosymmKernel + Clone + 'static,
+    S: StatisticsType,
+{
+    // Simple deterministic pseudo-RNG (LCG)
+    let mut rng_state = seed;
+    let mut next_f64 = || {
+        rng_state = rng_state.wrapping_mul(1664525).wrapping_add(1013904223);
+        // Map to [0, 1)
+        ((rng_state >> 16) as f64) / ((1u64 << 48) as f64)
+    };
+    
+    let basis_size = sampling.basis_size();
+    let n_points = sampling.n_sampling_points();
+    
+    let total_extra: usize = extra_dims.iter().product();
+    let total_extra = if total_extra == 0 { 1 } else { total_extra };
+    
+    // Create coeffs shape: [basis_size, ...extra_dims]
+    let mut coeffs_shape = vec![basis_size];
+    coeffs_shape.extend_from_slice(extra_dims);
+    
+    let mut coeffs: Tensor<Complex<f64>, DynRank> = Tensor::zeros(&coeffs_shape[..]);
+    
+    // Generate random coefficients scaled by singular values
+    for flat_idx in 0..total_extra {
+        // Convert flat index to multi-index for extra dimensions
+        let mut extra_idx = Vec::new();
+        let mut remainder = flat_idx;
+        for &dim_size in extra_dims.iter().rev() {
+            extra_idx.push(remainder % dim_size);
+            remainder /= dim_size;
+        }
+        extra_idx.reverse();
+        
+        // Generate coefficients for each basis function
+        for l in 0..basis_size {
+            // Random complex number scaled by singular value
+            let re = (next_f64() - 0.5) * 2.0;  // [-1, 1)
+            let im = (next_f64() - 0.5) * 2.0;  // [-1, 1)
+            let random_coeff = Complex::new(re, im);
+            
+            // Scale by singular value for physical relevance
+            let scaled_coeff = random_coeff * basis.s[l];
+            
+            // Set coefficient at [l, ...extra_idx]
+            let mut full_idx = vec![l];
+            full_idx.extend_from_slice(&extra_idx);
+            coeffs[&full_idx[..]] = scaled_coeff;
+        }
+    }
+    
+    // Evaluate coefficients at sampling points
+    let values = sampling.evaluate_nd_complex(&coeffs, 0);
+    
+    (coeffs, values)
 }
 
