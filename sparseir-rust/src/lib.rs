@@ -23,6 +23,7 @@ pub mod basis_trait;  // Common trait for basis representations
 pub mod basis;
 pub mod dlr;  // Discrete Lehmann Representation utilities
 pub mod fitter;  // Least-squares fitters (real/complex matrices)
+pub mod taufuncs;  // Imaginary time τ normalization utilities
 
 // Re-export commonly used types and traits
 pub use freq::{
@@ -54,6 +55,7 @@ pub use dlr::{
 pub use fitter::{RealMatrixFitter, ComplexToRealFitter, ComplexMatrixFitter};
 pub use sampling::TauSampling;
 pub use matsubara_sampling::{MatsubaraSampling, MatsubaraSamplingPositiveOnly};
+pub use taufuncs::{normalize_tau, normalize_tau_fermionic, normalize_tau_bosonic};
 
 // Re-export external dependencies for convenience
 pub use twofloat::TwoFloat;

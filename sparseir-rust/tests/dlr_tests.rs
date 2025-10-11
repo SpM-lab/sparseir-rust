@@ -27,7 +27,7 @@ fn test_periodicity_generic<S: StatisticsType>(expected_sign: f64, stat_name: &s
 fn test_boundary_interpretation_generic<S: StatisticsType>(stat_name: &str) {
     let beta = 1.0;
     let omega = 5.0;
-    let eps = 1e-10;
+    let eps = 1e-6;
     
     // Test: β is interpreted as β- (left limit) and -β as -β+ (right limit)
     let g_beta_minus = gtau_single_pole::<S>(beta - eps, omega, beta);

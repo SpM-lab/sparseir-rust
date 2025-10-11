@@ -66,19 +66,11 @@ pub fn gtau_single_pole<S: StatisticsType>(tau: f64, omega: f64, beta: f64) -> f
 /// let g = fermionic_single_pole(tau, omega, beta);
 /// ```
 pub fn fermionic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
-    // Normalize τ to [0, β) and track sign from anti-periodicity
+    use crate::taufuncs::normalize_tau_fermionic;
+    
+    // Normalize τ to [0, β] and track sign from anti-periodicity
     // G(τ + β) = -G(τ) for fermions
-    // Note: β is interpreted as β- (left limit), so tau > beta for extension
-    let (tau_normalized, sign) = if tau < 0.0 {
-        // -β < τ < 0: G(τ) = -G(τ + β)
-        (tau + beta, -1.0)
-    } else if tau > beta {
-        // β < τ < 2β: G(τ) = -G(τ - β)  
-        (tau - beta, -1.0)
-    } else {
-        // 0 ≤ τ ≤ β: normal range (β interpreted as β-)
-        (tau, 1.0)
-    };
+    let (tau_normalized, sign) = normalize_tau_fermionic(tau, beta);
     
     sign * (-(-omega * tau_normalized).exp() / (1.0 + (-beta * omega).exp()))
 }
@@ -107,19 +99,11 @@ pub fn fermionic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
 /// let g = bosonic_single_pole(tau, omega, beta);
 /// ```
 pub fn bosonic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
-    // Normalize τ to [0, β) using periodicity
+    use crate::taufuncs::normalize_tau_bosonic;
+    
+    // Normalize τ to [0, β] using periodicity
     // G(τ + β) = G(τ) for bosons
-    // Note: β is interpreted as β- (left limit), so tau > beta for extension
-    let tau_normalized = if tau < 0.0 {
-        // -β < τ < 0: G(τ) = G(τ + β)
-        tau + beta
-    } else if tau > beta {
-        // β < τ < 2β: G(τ) = G(τ - β)
-        tau - beta
-    } else {
-        // 0 ≤ τ ≤ β: normal range (β interpreted as β-)
-        tau
-    };
+    let tau_normalized = normalize_tau_bosonic(tau, beta);
     
     (-omega * tau_normalized).exp() / (1.0 - (-beta * omega).exp())
 }
@@ -420,6 +404,7 @@ where
     fn evaluate_tau(&self, tau: &[f64]) -> mdarray::DTensor<f64, 2> {
         use mdarray::DTensor;
         use crate::kernel::LogisticKernel;
+        use crate::taufuncs::normalize_tau;
         
         let n_points = tau.len();
         let n_poles = self.poles.len();
@@ -433,29 +418,8 @@ where
             let tau_val = tau[idx[0]];
             let pole = self.poles[idx[1]];
             
-            // Normalize tau to [0, β) with periodicity (for extended range support)
-            let (tau_norm, sign) = match S::STATISTICS {
-                Statistics::Fermionic => {
-                    // Anti-periodic: G(τ + β) = -G(τ)
-                    if tau_val < 0.0 {
-                        (tau_val + self.beta, -1.0)
-                    } else if tau_val > self.beta {
-                        (tau_val - self.beta, -1.0)
-                    } else {
-                        (tau_val, 1.0)
-                    }
-                },
-                Statistics::Bosonic => {
-                    // Periodic: G(τ + β) = G(τ)
-                    if tau_val < 0.0 {
-                        (tau_val + self.beta, 1.0)
-                    } else if tau_val > self.beta {
-                        (tau_val - self.beta, 1.0)
-                    } else {
-                        (tau_val, 1.0)
-                    }
-                },
-            };
+            // Normalize tau to [0, β] with periodicity (for extended range support)
+            let (tau_norm, sign) = normalize_tau::<S>(tau_val, self.beta);
             
             // Compute kernel value
             let x = 2.0 * tau_norm / self.beta - 1.0;
