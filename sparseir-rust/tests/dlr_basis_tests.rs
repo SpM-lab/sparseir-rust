@@ -2,7 +2,7 @@
 
 use sparseir_rust::{
     DiscreteLehmannRepresentation, LogisticKernel, FiniteTempBasis, 
-    Fermionic, Bosonic
+    Fermionic, Bosonic, Basis, TauSampling, MatsubaraSampling
 };
 use mdarray::Tensor;
 use num_complex::Complex;
@@ -29,66 +29,6 @@ fn test_dlr_construction_fermionic() {
     for &pole in &dlr.poles {
         assert!(pole.abs() <= wmax, "pole = {} exceeds wmax = {}", pole, wmax);
     }
-}
-
-/// Generic test for from_IR/to_IR roundtrip
-fn test_dlr_from_to_ir_roundtrip_generic<T, S>()
-where
-    T: num_complex::ComplexFloat + faer_traits::ComplexField + From<f64> + Copy + Default + 'static 
-        + common::ErrorNorm + common::ConvertFromReal,
-    S: sparseir_rust::StatisticsType + 'static,
-{
-    let beta = 10.0;
-    let wmax = 10.0;
-    let epsilon = 1e-6;
-    
-    let kernel = LogisticKernel::new(beta * wmax);
-    let basis = FiniteTempBasis::<LogisticKernel, S>::new(kernel, beta, Some(epsilon), None);
-    
-    // Create DLR
-    let dlr = DiscreteLehmannRepresentation::<S>::new(&basis);
-    
-    // Create IR coefficients
-    let gl: Vec<T> = (0..basis.size())
-        .map(|i| {
-            let mag = ((i + 1) as f64).powi(-2);
-            T::from_real(mag)
-        })
-        .collect();
-    
-    // IR → DLR → IR
-    let g_dlr = dlr.from_IR::<T>(&gl);
-    let gl_reconst = dlr.to_IR::<T>(&g_dlr);
-    
-    // Check roundtrip accuracy
-    let max_error = gl.iter()
-        .zip(gl_reconst.iter())
-        .map(|(a, b)| (*a - *b).error_norm())
-        .max_by(|a, b| a.partial_cmp(b).unwrap())
-        .unwrap();
-    
-    println!("DLR {:?} {} roundtrip error: {:.2e}", S::STATISTICS, std::any::type_name::<T>(), max_error);
-    assert!(max_error < 1e-7, "Roundtrip error too large: {:.2e}", max_error);
-}
-
-#[test]
-fn test_dlr_from_to_IR_roundtrip_real_fermionic() {
-    test_dlr_from_to_ir_roundtrip_generic::<f64, Fermionic>();
-}
-
-#[test]
-fn test_dlr_from_to_IR_roundtrip_complex_fermionic() {
-    test_dlr_from_to_ir_roundtrip_generic::<Complex<f64>, Fermionic>();
-}
-
-#[test]
-fn test_dlr_from_to_IR_roundtrip_real_bosonic() {
-    test_dlr_from_to_ir_roundtrip_generic::<f64, Bosonic>();
-}
-
-#[test]
-fn test_dlr_from_to_IR_roundtrip_complex_bosonic() {
-    test_dlr_from_to_ir_roundtrip_generic::<Complex<f64>, Bosonic>();
 }
 
 #[test]
@@ -197,3 +137,66 @@ fn test_dlr_nd_roundtrip_real_bosonic() {
 fn test_dlr_nd_roundtrip_complex_bosonic() {
     test_dlr_nd_roundtrip_generic::<Complex<f64>, Bosonic>();
 }
+
+#[test]
+fn test_dlr_basis_trait() {
+    let beta = 10.0;
+    let wmax = 10.0;
+    let epsilon = 1e-6;
+    
+    let kernel = LogisticKernel::new(beta * wmax);
+    let basis_ir = FiniteTempBasis::<LogisticKernel, Fermionic>::new(kernel, beta, Some(epsilon), None);
+    let dlr = DiscreteLehmannRepresentation::<Fermionic>::new(&basis_ir);
+    
+    // Test Basis trait methods
+    assert_eq!(dlr.beta(), beta);
+    assert_eq!(dlr.wmax(), wmax);
+    assert_eq!(dlr.lambda(), beta * wmax);
+    assert_eq!(dlr.size(), dlr.poles.len());
+    assert_eq!(dlr.accuracy(), basis_ir.accuracy());
+    
+    let sig = dlr.significance();
+    assert_eq!(sig.len(), dlr.size());
+    assert!(sig.iter().all(|&s| (s - 1.0).abs() < 1e-10), "All significance should be 1.0");
+    
+    // Test evaluate_tau
+    let tau_points = vec![0.0, beta / 4.0, beta / 2.0, 3.0 * beta / 4.0];
+    let matrix_tau = dlr.evaluate_tau(&tau_points);
+    assert_eq!(*matrix_tau.shape(), (tau_points.len(), dlr.size()));
+    
+    // Test evaluate_matsubara
+    use sparseir_rust::MatsubaraFreq;
+    let freqs = vec![
+        MatsubaraFreq::<Fermionic>::new(1).unwrap(),
+        MatsubaraFreq::<Fermionic>::new(3).unwrap(),
+        MatsubaraFreq::<Fermionic>::new(-1).unwrap(),
+    ];
+    let matrix_matsu = dlr.evaluate_matsubara(&freqs);
+    assert_eq!(*matrix_matsu.shape(), (freqs.len(), dlr.size()));
+}
+
+#[test]
+fn test_dlr_with_tau_sampling() {
+    let beta = 10.0;
+    let wmax = 10.0;
+    let epsilon = 1e-6;
+    
+    let kernel = LogisticKernel::new(beta * wmax);
+    let basis_ir = FiniteTempBasis::<LogisticKernel, Fermionic>::new(kernel, beta, Some(epsilon), None);
+    
+    // Create DLR
+    let dlr = DiscreteLehmannRepresentation::<Fermionic>::new(&basis_ir);
+    
+    // Create TauSampling from DLR (using Basis trait)
+    let tau_points = basis_ir.default_tau_sampling_points();
+    let n_tau_points = tau_points.len();
+    let sampling_dlr = TauSampling::<Fermionic>::with_sampling_points(&dlr, tau_points);
+    
+    // Test that it works
+    println!("IR tau sampling points: {}, DLR size: {}", n_tau_points, dlr.size());
+    assert_eq!(sampling_dlr.n_sampling_points(), n_tau_points);
+    assert_eq!(sampling_dlr.basis_size(), dlr.size());
+    
+    println!("TauSampling with DLR created successfully!");
+}
+

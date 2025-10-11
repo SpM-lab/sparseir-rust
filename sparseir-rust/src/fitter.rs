@@ -150,6 +150,26 @@ impl RealMatrixFitter {
             .collect()
     }
     
+    /// Evaluate 2D real tensor (along dim=0) using matrix multiplication
+    ///
+    /// Computes: values_2d = matrix * coeffs_2d
+    ///
+    /// # Arguments
+    /// * `coeffs_2d` - Shape: [basis_size, extra_size]
+    ///
+    /// # Returns
+    /// Values tensor, shape: [n_points, extra_size]
+    pub fn evaluate_2d(&self, coeffs_2d: &mdarray::DTensor<f64, 2>) -> mdarray::DTensor<f64, 2> {
+        use crate::gemm::matmul_par;
+        
+        let (basis_size, extra_size) = *coeffs_2d.shape();
+        assert_eq!(basis_size, self.basis_size(),
+            "coeffs_2d.shape().0={} must equal basis_size={}", basis_size, self.basis_size());
+        
+        // values_2d = matrix * coeffs_2d
+        matmul_par(&self.matrix, coeffs_2d)
+    }
+    
     /// Fit 2D real tensor (along dim=0) using matrix multiplication
     ///
     /// Efficiently computes: coeffs_2d = V * S^{-1} * U^T * values_2d
@@ -208,7 +228,7 @@ impl RealMatrixFitter {
         let (n_points, extra_size) = *values_2d.shape();
         assert_eq!(n_points, self.n_points(),
             "values_2d.shape().0={} must equal n_points={}", n_points, self.n_points());
-        
+
         // Extract real and imaginary parts
         let values_re = DTensor::<f64, 2>::from_fn([n_points, extra_size], |idx| {
             values_2d[idx].re
@@ -216,16 +236,107 @@ impl RealMatrixFitter {
         let values_im = DTensor::<f64, 2>::from_fn([n_points, extra_size], |idx| {
             values_2d[idx].im
         });
-        
+
         // Fit real and imaginary parts separately using matrix multiplication
         let coeffs_re = self.fit_2d(&values_re);
         let coeffs_im = self.fit_2d(&values_im);
-        
+
         // Combine back to complex
         let basis_size = self.basis_size();
         DTensor::<Complex<f64>, 2>::from_fn([basis_size, extra_size], |idx| {
             Complex::new(coeffs_re[idx], coeffs_im[idx])
         })
+    }
+    
+    /// Evaluate 2D complex coefficients to complex values using GEMM
+    ///
+    /// # Arguments
+    /// * `coeffs_2d` - Shape: [basis_size, extra_size]
+    ///
+    /// # Returns
+    /// Values tensor, shape: [n_points, extra_size]
+    pub fn evaluate_complex_2d(&self, coeffs_2d: &mdarray::DTensor<Complex<f64>, 2>) -> mdarray::DTensor<Complex<f64>, 2> {
+        use crate::gemm::matmul_par;
+        
+        let (basis_size, extra_size) = *coeffs_2d.shape();
+        assert_eq!(basis_size, self.basis_size(),
+            "coeffs_2d.shape().0={} must equal basis_size={}", basis_size, self.basis_size());
+        
+        // Extract real and imaginary parts
+        let coeffs_re = DTensor::<f64, 2>::from_fn([basis_size, extra_size], |idx| {
+            coeffs_2d[idx].re
+        });
+        let coeffs_im = DTensor::<f64, 2>::from_fn([basis_size, extra_size], |idx| {
+            coeffs_2d[idx].im
+        });
+        
+        // Evaluate real and imaginary parts separately: values = matrix * coeffs
+        let values_re = matmul_par(&self.matrix, &coeffs_re);
+        let values_im = matmul_par(&self.matrix, &coeffs_im);
+        
+        // Combine to complex
+        let n_points = self.n_points();
+        DTensor::<Complex<f64>, 2>::from_fn([n_points, extra_size], |idx| {
+            Complex::new(values_re[idx], values_im[idx])
+        })
+    }
+    
+    /// Generic 2D evaluate (works for both f64 and Complex<f64>)
+    ///
+    /// # Type Parameters
+    /// * `T` - Element type (f64 or Complex<f64>)
+    ///
+    /// # Arguments
+    /// * `coeffs_2d` - Shape: [basis_size, extra_size]
+    ///
+    /// # Returns
+    /// Values tensor, shape: [n_points, extra_size]
+    pub fn evaluate_2d_generic<T>(&self, coeffs_2d: &mdarray::DTensor<T, 2>) -> mdarray::DTensor<T, 2>
+    where
+        T: num_complex::ComplexFloat + faer_traits::ComplexField + From<f64> + Copy + Default + 'static,
+    {
+        use std::any::TypeId;
+        
+        if TypeId::of::<T>() == TypeId::of::<f64>() {
+            let coeffs_f64 = unsafe { &*(coeffs_2d as *const mdarray::DTensor<T, 2> as *const mdarray::DTensor<f64, 2>) };
+            let result = self.evaluate_2d(coeffs_f64);
+            unsafe { std::mem::transmute::<mdarray::DTensor<f64, 2>, mdarray::DTensor<T, 2>>(result) }
+        } else if TypeId::of::<T>() == TypeId::of::<Complex<f64>>() {
+            let coeffs_complex = unsafe { &*(coeffs_2d as *const mdarray::DTensor<T, 2> as *const mdarray::DTensor<Complex<f64>, 2>) };
+            let result = self.evaluate_complex_2d(coeffs_complex);
+            unsafe { std::mem::transmute::<mdarray::DTensor<Complex<f64>, 2>, mdarray::DTensor<T, 2>>(result) }
+        } else {
+            panic!("Unsupported type for evaluate_2d_generic");
+        }
+    }
+    
+    /// Generic 2D fit (works for both f64 and Complex<f64>)
+    ///
+    /// # Type Parameters
+    /// * `T` - Element type (f64 or Complex<f64>)
+    ///
+    /// # Arguments
+    /// * `values_2d` - Shape: [n_points, extra_size]
+    ///
+    /// # Returns
+    /// Coefficients tensor, shape: [basis_size, extra_size]
+    pub fn fit_2d_generic<T>(&self, values_2d: &mdarray::DTensor<T, 2>) -> mdarray::DTensor<T, 2>
+    where
+        T: num_complex::ComplexFloat + faer_traits::ComplexField + From<f64> + Copy + Default + 'static,
+    {
+        use std::any::TypeId;
+        
+        if TypeId::of::<T>() == TypeId::of::<f64>() {
+            let values_f64 = unsafe { &*(values_2d as *const mdarray::DTensor<T, 2> as *const mdarray::DTensor<f64, 2>) };
+            let result = self.fit_2d(values_f64);
+            unsafe { std::mem::transmute::<mdarray::DTensor<f64, 2>, mdarray::DTensor<T, 2>>(result) }
+        } else if TypeId::of::<T>() == TypeId::of::<Complex<f64>>() {
+            let values_complex = unsafe { &*(values_2d as *const mdarray::DTensor<T, 2> as *const mdarray::DTensor<Complex<f64>, 2>) };
+            let result = self.fit_complex_2d(values_complex);
+            unsafe { std::mem::transmute::<mdarray::DTensor<Complex<f64>, 2>, mdarray::DTensor<T, 2>>(result) }
+        } else {
+            panic!("Unsupported type for fit_2d_generic");
+        }
     }
 }
 

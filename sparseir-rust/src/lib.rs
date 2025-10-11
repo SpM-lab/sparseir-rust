@@ -52,6 +52,8 @@ pub use dlr::{
     gtau_single_pole, fermionic_single_pole, bosonic_single_pole, giwn_single_pole
 };
 pub use fitter::{RealMatrixFitter, ComplexToRealFitter, ComplexMatrixFitter};
+pub use sampling::TauSampling;
+pub use matsubara_sampling::{MatsubaraSampling, MatsubaraSamplingPositiveOnly};
 
 // Re-export external dependencies for convenience
 pub use twofloat::TwoFloat;
