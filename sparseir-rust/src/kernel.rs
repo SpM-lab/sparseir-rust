@@ -512,6 +512,16 @@ impl RegularizedBoseKernel {
         let v = T::from_f64(self.lambda) * y;
         let absv = v.abs();
         
+        // Handle y ≈ 0 using Taylor expansion
+        // K(x,y) = 1/Λ - xy/2 + (1/24)Λ(3x² - 1)y² + O(y³)
+        // For |Λy| < 2e-14, use first-order approximation
+        // This avoids division by zero when exp(-|Λy|) ≈ 1
+        if absv.to_f64() < 2e-14 {
+            let term0 = T::from_f64(1.0 / self.lambda);
+            let term1 = T::from_f64(0.5) * x * y;
+            return term0 - term1;
+        }
+        
         // enum_val = exp(-|v| * (v >= 0 ? u_plus : u_minus))
         let enum_val = if v >= T::from_f64(0.0) {
             (-absv * u_plus).exp()
@@ -522,17 +532,11 @@ impl RegularizedBoseKernel {
         // Handle v / (exp(v) - 1) with numerical stability
         // Follows C++ implementation using expm1 pattern
         // denom = absv / expm1(-absv) = absv / (exp(-absv) - 1)
-        let denom = if absv.to_f64() >= 1e-200 {
-            // absv / (exp(-absv) - 1)
-            // Note: exp(-absv) < 1, so (exp(-absv) - 1) is negative
-            let exp_neg_absv = (-absv).exp();
-            absv / (exp_neg_absv - T::from_f64(1.0))
-        } else {
-            T::from_f64(-1.0)  // Limit as v → 0
-        };
+        let exp_neg_absv = (-absv).exp();
+        let denom = absv / (exp_neg_absv - T::from_f64(1.0));
         
         // K(x, y) = -1/Λ * enum_val * denom
-        // Since denom is negative, final result is positive
+        // Since denom is negative (exp(-absv) < 1), final result is positive
         T::from_f64(-1.0 / self.lambda) * enum_val * denom
     }
 }
