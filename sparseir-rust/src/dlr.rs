@@ -29,13 +29,13 @@ use std::marker::PhantomData;
 ///
 /// # Example
 /// ```ignore
-/// use sparseir_rust::traits::Fermionic;
+/// use crate::traits::Fermionic;
 /// let g_f = gtau_single_pole::<Fermionic>(0.5, 5.0, 1.0);
 /// 
-/// use sparseir_rust::traits::Bosonic;
+/// use crate::traits::Bosonic;
 /// let g_b = gtau_single_pole::<Bosonic>(0.5, 5.0, 1.0);
 /// ```
-pub fn gtau_single_pole<S: StatisticsType>(tau: f64, omega: f64, beta: f64) -> f64 {
+pub(crate) fn gtau_single_pole<S: StatisticsType>(tau: f64, omega: f64, beta: f64) -> f64 {
     match S::STATISTICS {
         Statistics::Fermionic => fermionic_single_pole(tau, omega, beta),
         Statistics::Bosonic => bosonic_single_pole(tau, omega, beta),
@@ -65,7 +65,7 @@ pub fn gtau_single_pole<S: StatisticsType>(tau: f64, omega: f64, beta: f64) -> f
 /// let tau = 0.5 * beta;
 /// let g = fermionic_single_pole(tau, omega, beta);
 /// ```
-pub fn fermionic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
+pub(crate) fn fermionic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
     use crate::taufuncs::normalize_tau;
     use crate::traits::Fermionic;
     
@@ -99,7 +99,7 @@ pub fn fermionic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
 /// let tau = 0.5 * beta;
 /// let g = bosonic_single_pole(tau, omega, beta);
 /// ```
-pub fn bosonic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
+pub(crate) fn bosonic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
     use crate::taufuncs::normalize_tau;
     use crate::traits::Bosonic;
     
@@ -124,7 +124,7 @@ pub fn bosonic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
 ///
 /// # Returns
 /// Complex-valued Green's function G(iωn)
-pub fn giwn_single_pole<S: StatisticsType>(
+pub(crate) fn giwn_single_pole<S: StatisticsType>(
     matsubara_freq: &MatsubaraFreq<S>,
     omega: f64,
     beta: f64,
@@ -266,7 +266,7 @@ impl<S: StatisticsType> DiscreteLehmannRepresentation<S> {
     where
         T: num_complex::ComplexFloat + faer_traits::ComplexField + From<f64> + Copy + Default + 'static,
     {
-        use mdarray::{Tensor, DynRank, DTensor, Shape};
+        use mdarray::{DTensor, Shape};
         
         let mut gl_shape = vec![];
         gl.shape().with_dims(|dims| {
@@ -319,7 +319,7 @@ impl<S: StatisticsType> DiscreteLehmannRepresentation<S> {
     where
         T: num_complex::ComplexFloat + faer_traits::ComplexField + From<f64> + Copy + Default + 'static,
     {
-        use mdarray::{Tensor, DynRank, DTensor, Shape};
+        use mdarray::{DTensor, Shape};
         
         let mut g_dlr_shape = vec![];
         g_dlr.shape().with_dims(|dims| {
@@ -474,5 +474,68 @@ where
     fn default_omega_sampling_points(&self) -> Vec<f64> {
         // DLR poles ARE the omega sampling points
         self.poles.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::traits::{Fermionic, Bosonic};
+
+    /// Generic test for periodicity/anti-periodicity
+    fn test_periodicity_generic<S: StatisticsType>(expected_sign: f64, stat_name: &str) {
+        let beta = 1.0;
+        let omega = 5.0;
+        
+        // Use interior points, avoiding boundaries
+        for tau in [0.1, 0.3, 0.7] {
+            let g_tau = gtau_single_pole::<S>(tau, omega, beta);
+            let g_tau_plus_beta = gtau_single_pole::<S>(tau + beta, omega, beta);
+            
+            // For fermions: G(τ+β) = -G(τ) → sign = -1
+            // For bosons: G(τ+β) = G(τ) → sign = 1
+            let expected = expected_sign * g_tau;
+            
+            assert!(
+                (expected - g_tau_plus_beta).abs() < 1e-14,
+                "{} periodicity violated at τ={}: G(τ)={}, G(τ+β)={}, expected={}",
+                stat_name, tau, g_tau, g_tau_plus_beta, expected
+            );
+        }
+    }
+
+    #[test]
+    fn test_fermionic_antiperiodicity() {
+        // Fermions: G(τ+β) = -G(τ)
+        test_periodicity_generic::<Fermionic>(-1.0, "Fermionic");
+    }
+
+    #[test]
+    fn test_bosonic_periodicity() {
+        // Bosons: G(τ+β) = G(τ)
+        test_periodicity_generic::<Bosonic>(1.0, "Bosonic");
+    }
+
+    #[test]
+    fn test_generic_function_matches_specific() {
+        let beta = 1.0;
+        let omega = 5.0;
+        let tau = 0.5;
+        
+        // Test that generic function matches specific functions
+        let g_f_specific = fermionic_single_pole(tau, omega, beta);
+        let g_f_generic = gtau_single_pole::<Fermionic>(tau, omega, beta);
+        
+        let g_b_specific = bosonic_single_pole(tau, omega, beta);
+        let g_b_generic = gtau_single_pole::<Bosonic>(tau, omega, beta);
+        
+        assert!(
+            (g_f_specific - g_f_generic).abs() < 1e-14,
+            "Fermionic: specific={}, generic={}", g_f_specific, g_f_generic
+        );
+        assert!(
+            (g_b_specific - g_b_generic).abs() < 1e-14,
+            "Bosonic: specific={}, generic={}", g_b_specific, g_b_generic
+        );
     }
 }

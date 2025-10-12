@@ -207,7 +207,7 @@ impl<S: StatisticsType> fmt::Display for MatsubaraFreq<S> {
 
 // Utility functions
 /// Get the sign of a Matsubara frequency
-pub fn sign<S: StatisticsType>(freq: &MatsubaraFreq<S>) -> i32 {
+pub(crate) fn sign<S: StatisticsType>(freq: &MatsubaraFreq<S>) -> i32 {
     if freq.n > 0 {
         1
     } else if freq.n < 0 {
@@ -218,7 +218,7 @@ pub fn sign<S: StatisticsType>(freq: &MatsubaraFreq<S>) -> i32 {
 }
 
 /// Get the fermionic sign based on statistics type
-pub fn fermionic_sign<S: StatisticsType>() -> i32 {
+pub(crate) fn fermionic_sign<S: StatisticsType>() -> i32 {
     match S::STATISTICS {
         Statistics::Fermionic => -1,
         Statistics::Bosonic => 1,
@@ -226,12 +226,12 @@ pub fn fermionic_sign<S: StatisticsType>() -> i32 {
 }
 
 /// Create a zero frequency (bosonic only)
-pub fn zero() -> BosonicFreq {
+pub(crate) fn zero() -> BosonicFreq {
     unsafe { BosonicFreq::new_unchecked(0) }
 }
 
 /// Check if a frequency is zero
-pub fn is_zero<S: StatisticsType>(freq: &MatsubaraFreq<S>) -> bool {
+pub(crate) fn is_zero<S: StatisticsType>(freq: &MatsubaraFreq<S>) -> bool {
     match S::STATISTICS {
         Statistics::Fermionic => false, // Fermionic frequencies are never zero
         Statistics::Bosonic => freq.n == 0,
@@ -239,7 +239,7 @@ pub fn is_zero<S: StatisticsType>(freq: &MatsubaraFreq<S>) -> bool {
 }
 
 /// Compare two Matsubara frequencies of potentially different statistics types
-pub fn is_less<S1: StatisticsType, S2: StatisticsType>(
+pub(crate) fn is_less<S1: StatisticsType, S2: StatisticsType>(
     a: &MatsubaraFreq<S1>,
     b: &MatsubaraFreq<S2>,
 ) -> bool {
@@ -247,7 +247,7 @@ pub fn is_less<S1: StatisticsType, S2: StatisticsType>(
 }
 
 /// Factory function to create Statistics from zeta value
-pub fn create_statistics(zeta: i64) -> Result<Statistics, String> {
+pub(crate) fn create_statistics(zeta: i64) -> Result<Statistics, String> {
     match zeta {
         1 => Ok(Statistics::Fermionic),
         0 => Ok(Statistics::Bosonic),
@@ -419,5 +419,79 @@ mod tests {
 
         let n_direct = freq.into_i64();
         assert_eq!(n_direct, 3);
+    }
+
+    #[test]
+    fn test_sign() {
+        let fermionic_pos = FermionicFreq::new(3).unwrap();
+        assert_eq!(sign(&fermionic_pos), 1);
+
+        let fermionic_neg = FermionicFreq::new(-5).unwrap();
+        assert_eq!(sign(&fermionic_neg), -1);
+
+        let bosonic_zero = BosonicFreq::new(0).unwrap();
+        assert_eq!(sign(&bosonic_zero), 0);
+
+        let bosonic_pos = BosonicFreq::new(4).unwrap();
+        assert_eq!(sign(&bosonic_pos), 1);
+    }
+
+    #[test]
+    fn test_fermionic_sign() {
+        assert_eq!(fermionic_sign::<Fermionic>(), -1);
+        assert_eq!(fermionic_sign::<Bosonic>(), 1);
+    }
+
+    #[test]
+    fn test_zero() {
+        let zero_freq = zero();
+        assert_eq!(zero_freq.get_n(), 0);
+        assert_eq!(zero_freq.value(1.0), 0.0);
+    }
+
+    #[test]
+    fn test_is_zero() {
+        // Fermionic frequencies are never zero
+        let fermionic = FermionicFreq::new(1).unwrap();
+        assert!(!is_zero(&fermionic));
+
+        // Bosonic zero frequency
+        let bosonic_zero = BosonicFreq::new(0).unwrap();
+        assert!(is_zero(&bosonic_zero));
+
+        // Non-zero bosonic frequency
+        let bosonic_nonzero = BosonicFreq::new(2).unwrap();
+        assert!(!is_zero(&bosonic_nonzero));
+    }
+
+    #[test]
+    fn test_is_less() {
+        let freq1 = FermionicFreq::new(1).unwrap();
+        let freq3 = FermionicFreq::new(3).unwrap();
+        assert!(is_less(&freq1, &freq3));
+        assert!(!is_less(&freq3, &freq1));
+
+        // Compare different statistics types
+        let fermionic = FermionicFreq::new(1).unwrap();
+        let bosonic = BosonicFreq::new(2).unwrap();
+        assert!(is_less(&fermionic, &bosonic));
+
+        // Same frequency
+        assert!(!is_less(&freq1, &freq1));
+    }
+
+    #[test]
+    fn test_create_statistics() {
+        // Fermionic (zeta = 1)
+        let fermionic = create_statistics(1).unwrap();
+        assert_eq!(fermionic, Statistics::Fermionic);
+
+        // Bosonic (zeta = 0)
+        let bosonic = create_statistics(0).unwrap();
+        assert_eq!(bosonic, Statistics::Bosonic);
+
+        // Invalid zeta
+        assert!(create_statistics(2).is_err());
+        assert!(create_statistics(-1).is_err());
     }
 }

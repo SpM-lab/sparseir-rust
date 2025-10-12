@@ -26,11 +26,7 @@ pub mod fitter;  // Least-squares fitters (real/complex matrices)
 pub mod taufuncs;  // Imaginary time τ normalization utilities
 
 // Re-export commonly used types and traits
-pub use freq::{
-    create_statistics, fermionic_sign, is_less, is_zero, sign, zero, BosonicFreq, FermionicFreq,
-    MatsubaraFreq,
-};
-pub use gauss::{legendre, legendre_custom, legendre_twofloat, Rule};
+pub use freq::{BosonicFreq, FermionicFreq, MatsubaraFreq};
 pub use kernel::{
     compute_logistic_kernel, CentrosymmKernel, KernelProperties, LogisticKernel, LogisticSVEHints,
     SVEHints, SymmetryType,
@@ -48,14 +44,9 @@ pub use kernelmatrix::{DiscretizedKernel, InterpolatedKernel, matrix_from_gauss,
 pub use sve::{SVEResult, TworkType, SVDStrategy, SamplingSVE, CentrosymmSVE, SVEStrategy, compute_sve, compute_svd, truncate};
 pub use basis_trait::Basis;
 pub use basis::{FiniteTempBasis, FermionicBasis, BosonicBasis};
-pub use dlr::{
-    DiscreteLehmannRepresentation,
-    gtau_single_pole, fermionic_single_pole, bosonic_single_pole, giwn_single_pole
-};
-pub use fitter::{RealMatrixFitter, ComplexToRealFitter, ComplexMatrixFitter};
+pub use dlr::DiscreteLehmannRepresentation;
 pub use sampling::TauSampling;
 pub use matsubara_sampling::{MatsubaraSampling, MatsubaraSamplingPositiveOnly};
-pub use taufuncs::normalize_tau;
 
 // Re-export external dependencies for convenience
 pub use twofloat::TwoFloat;

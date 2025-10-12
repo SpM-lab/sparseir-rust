@@ -35,7 +35,7 @@ struct ComplexSVD {
 /// let values = fitter.evaluate(&coeffs);
 /// let fitted_coeffs = fitter.fit(&values);
 /// ```
-pub struct RealMatrixFitter {
+pub(crate) struct RealMatrixFitter {
     pub matrix: DTensor<f64, 2>,  // (n_points, basis_size)
     svd: RefCell<Option<RealSVD>>,
 }
@@ -358,7 +358,7 @@ impl RealMatrixFitter {
 /// let values = fitter.evaluate(&coeffs);  // → Vec<Complex<f64>>
 /// let fitted_coeffs = fitter.fit(&values);  // ← Vec<Complex<f64>>, → Vec<f64>
 /// ```
-pub struct ComplexToRealFitter {
+pub(crate) struct ComplexToRealFitter {
     // A_real ∈ R^{2n×m}: flattened complex matrix
     // A_real[2i,   :] = Re(A[i, :])
     // A_real[2i+1, :] = Im(A[i, :])
@@ -555,7 +555,7 @@ impl ComplexToRealFitter {
 /// let values = fitter.evaluate(&coeffs);  // → Vec<Complex<f64>>
 /// let fitted_coeffs = fitter.fit(&values);  // ← Vec<Complex<f64>>, → Vec<Complex<f64>>
 /// ```
-pub struct ComplexMatrixFitter {
+pub(crate) struct ComplexMatrixFitter {
     pub matrix: DTensor<Complex<f64>, 2>,  // (n_points, basis_size)
     svd: RefCell<Option<ComplexSVD>>,
 }
@@ -792,3 +792,7 @@ fn solve_complex_svd(svd: &ComplexSVD, values: &[Complex<f64>]) -> Vec<Complex<f
     (0..basis_size).map(|i| coeffs_col[[i, 0]]).collect()
 }
 
+
+#[cfg(test)]
+#[path = "fitter_tests.rs"]
+mod tests;

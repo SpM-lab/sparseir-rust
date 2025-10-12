@@ -46,17 +46,17 @@ fn is_odd_period(tau: f64, beta: f64) -> bool {
 ///
 /// # Examples
 /// ```ignore
-/// use sparseir_rust::taufuncs::normalize_tau;
-/// use sparseir_rust::traits::Fermionic;
+/// use crate::taufuncs::normalize_tau;
+/// use crate::traits::Fermionic;
 ///
 /// let (tau_norm, sign) = normalize_tau::<Fermionic>(-0.3, 1.0);
 /// assert!((tau_norm - 0.7).abs() < 1e-14);
 /// assert_eq!(sign, -1.0);
 /// ```
-pub fn normalize_tau<S: StatisticsType>(tau: f64, beta: f64) -> (f64, f64) {
+pub(crate) fn normalize_tau<S: StatisticsType>(tau: f64, beta: f64) -> (f64, f64) {
     // Normalize τ to [0, β)
-    let mut sign: f64;
-    let mut tau_normalized: f64;
+    let sign: f64;
+    let tau_normalized: f64;
     if tau < 0.0 {
         tau_normalized = tau + beta;
         sign = -1.0;
@@ -79,4 +79,84 @@ pub fn normalize_tau<S: StatisticsType>(tau: f64, beta: f64) -> (f64, f64) {
             return (tau_normalized, 1.0);
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::traits::{Fermionic, Bosonic};
+
+    #[test]
+    fn test_is_odd_period() {
+        let beta = 1.0;
+        
+        // Normal range
+        assert!(!is_odd_period(0.0, beta));
+        assert!(!is_odd_period(0.5, beta));
+        assert!(!is_odd_period(beta, beta));  // β is β-
+        
+        // Odd periods
+        assert!(is_odd_period(-0.1, beta));
+        assert!(is_odd_period(1.1, beta));
+    }
+
+    #[test]
+    fn test_normalize_tau_generic_fermionic() {
+        let beta = 1.0;
+
+        // Normal range
+        let (tau_norm, sign) = normalize_tau::<Fermionic>(0.5, beta);
+        assert!((tau_norm - 0.5).abs() < 1e-14);
+        assert!((sign - 1.0).abs() < 1e-14);
+
+        // At β (interpreted as β-)
+        let (tau_norm, sign) = normalize_tau::<Fermionic>(beta, beta);
+        assert!((tau_norm - beta).abs() < 1e-14);
+        assert!((sign - 1.0).abs() < 1e-14);
+
+        // Negative range
+        let (tau_norm, sign) = normalize_tau::<Fermionic>(-0.3, beta);
+        assert!((tau_norm - 0.7).abs() < 1e-14);
+        assert!((sign - (-1.0)).abs() < 1e-14);
+
+        // Extended range
+        let (tau_norm, sign) = normalize_tau::<Fermionic>(1.2, beta);
+        assert!((tau_norm - 0.2).abs() < 1e-14);
+        assert!((sign - (-1.0)).abs() < 1e-14);
+        
+        // Test -β (interpreted as -β + 0, wraps to normal range)
+        let (tau_norm, sign) = normalize_tau::<Fermionic>(-beta, beta);
+        assert!(tau_norm.abs() < 1e-14);  // wraps to 0
+        assert!((sign - (-1.0)).abs() < 1e-14);
+    }
+
+    #[test]
+    fn test_normalize_tau_generic_bosonic() {
+        let beta = 1.0;
+
+        // Normal range
+        let (tau_norm, sign) = normalize_tau::<Bosonic>(0.5, beta);
+        assert!((tau_norm - 0.5).abs() < 1e-14);
+        assert!((sign - 1.0).abs() < 1e-14);
+
+        // At β (interpreted as β-)
+        let (tau_norm, sign) = normalize_tau::<Bosonic>(beta, beta);
+        assert!((tau_norm - beta).abs() < 1e-14);
+        assert!((sign - 1.0).abs() < 1e-14);
+
+        // Negative range
+        let (tau_norm, sign) = normalize_tau::<Bosonic>(-0.3, beta);
+        assert!((tau_norm - 0.7).abs() < 1e-14);
+        assert!((sign - 1.0).abs() < 1e-14);
+
+        // Extended range
+        let (tau_norm, sign) = normalize_tau::<Bosonic>(1.2, beta);
+        assert!((tau_norm - 0.2).abs() < 1e-14);
+        assert!((sign - 1.0).abs() < 1e-14);
+        
+        // Test -β (interpreted as -β + 0, wraps to normal range)
+        let (tau_norm, sign) = normalize_tau::<Bosonic>(-beta, beta);
+        assert!(tau_norm.abs() < 1e-14);  // wraps to 0
+        assert!((sign - 1.0).abs() < 1e-14);
+    }
 }
