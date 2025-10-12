@@ -1,8 +1,8 @@
 //! Tests for FiniteTempBasis functionality
 
 use sparseir_rust::basis::{FiniteTempBasis, FermionicBasis};
-use sparseir_rust::kernel::LogisticKernel;
-use sparseir_rust::traits::Fermionic;
+use sparseir_rust::kernel::{LogisticKernel, RegularizedBoseKernel};
+use sparseir_rust::traits::{Bosonic, Fermionic};
 
 #[test]
 fn test_basis_construction() {
@@ -122,5 +122,50 @@ fn test_default_tau_sampling_points_conditioning() {
     
     println!("✅ Condition number: {:.2e} (reference: {:.2e}, threshold: {:.2e})",
              condition_number, reference_cond, reference_cond * 2.0);
+}
+
+#[test]
+fn test_regularized_bose_basis_construction() {
+    let beta = 10.0;
+    let omega_max = 1.0;
+    let epsilon = 1e-6;
+    
+    let kernel = RegularizedBoseKernel::new(beta * omega_max);
+    let basis = FiniteTempBasis::<RegularizedBoseKernel, Bosonic>::new(kernel, beta, Some(epsilon), None);
+    
+    assert_eq!(basis.beta, beta);
+    assert!((basis.omega_max() - omega_max).abs() < 1e-10);
+    assert!(basis.size() > 0);
+    assert!(basis.accuracy > 0.0);
+    assert!(basis.accuracy < epsilon);
+    
+    println!("\n=== RegularizedBoseKernel Basis Test ===");
+    println!("Beta: {}, Omega_max: {}, Epsilon: {}", beta, omega_max, epsilon);
+    println!("Basis size: {}", basis.size());
+    println!("Accuracy: {:.6e}", basis.accuracy);
+}
+
+#[test]
+fn test_regularized_bose_basis_different_parameters() {
+    // Test with different beta and omega_max values
+    let test_cases = vec![
+        (1.0, 1.0, 1e-6),
+        (10.0, 10.0, 1e-6),
+        (100.0, 1.0, 1e-6),
+    ];
+    
+    for (beta, omega_max, epsilon) in test_cases {
+        let kernel = RegularizedBoseKernel::new(beta * omega_max);
+        let basis = FiniteTempBasis::<RegularizedBoseKernel, Bosonic>::new(kernel, beta, Some(epsilon), None);
+        
+        assert_eq!(basis.beta, beta);
+        assert!((basis.omega_max() - omega_max).abs() < 1e-10);
+        assert!(basis.size() > 0);
+        assert!(basis.accuracy > 0.0);
+        assert!(basis.accuracy < epsilon);
+        
+        println!("Beta={}, Omega_max={}: size={}, accuracy={:.6e}", 
+                 beta, omega_max, basis.size(), basis.accuracy);
+    }
 }
 
