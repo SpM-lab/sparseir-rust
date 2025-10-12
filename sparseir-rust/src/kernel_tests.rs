@@ -10,6 +10,12 @@ const DBIG_DIGITS: usize = 100;
 const TOLERANCE_F64: f64 = 1e-12;
 const TOLERANCE_TWOFLOAT: f64 = 1e-12; // TODO: MAKE IT TIGHTER
 
+/// Trait for kernel computation using high-precision DBig arithmetic
+trait KernelDbigCompute {
+    /// Compute kernel value using DBig for high-precision reference
+    fn compute_dbig(lambda: DBig, x: DBig, y: DBig, ctx: &Context<HalfAway>) -> DBig;
+}
+
 /// Convert f64 to DBig with high precision
 fn f64_to_dbig(val: f64, precision: usize) -> DBig {
     let val_str = format!("{:.17e}", val);
@@ -27,36 +33,66 @@ fn extract_f64(approx: Approximation<f64, dashu_float::round::Rounding>) -> f64 
     }
 }
 
-/// High-precision logistic kernel implementation using DBig
-fn logistic_kernel_dbig(lambda: DBig, x: DBig, y: DBig, ctx: &Context<HalfAway>) -> DBig {
-    // K(x, y) = exp(-Λy(x + 1)/2) / (1 + exp(-Λy))
-    let one = f64_to_dbig(1.0, ctx.precision());
-    let two = f64_to_dbig(2.0, ctx.precision());
+// Implement KernelDbigCompute for LogisticKernel
+impl KernelDbigCompute for LogisticKernel {
+    fn compute_dbig(lambda: DBig, x: DBig, y: DBig, ctx: &Context<HalfAway>) -> DBig {
+        // K(x, y) = exp(-Λy(x + 1)/2) / (1 + exp(-Λy))
+        let one = f64_to_dbig(1.0, ctx.precision());
+        let two = f64_to_dbig(2.0, ctx.precision());
 
-    let numerator = (-lambda.clone() * y.clone() * (x + one.clone()) / two).exp();
-    let denominator = one + (-lambda * y).exp();
+        let numerator = (-lambda.clone() * y.clone() * (x + one.clone()) / two).exp();
+        let denominator = one + (-lambda * y).exp();
 
-    numerator / denominator
+        numerator / denominator
+    }
 }
 
-/// Test precision of logistic kernel implementation for any CustomNumeric type
-fn test_logistic_kernel_compute_precision<T: CustomNumeric>(
+// Implement KernelDbigCompute for RegularizedBoseKernel
+impl KernelDbigCompute for RegularizedBoseKernel {
+    fn compute_dbig(lambda: DBig, x: DBig, y: DBig, ctx: &Context<HalfAway>) -> DBig {
+        // K(x, y) = y * exp(-Λ y (x + 1) / 2) / (1 - exp(-Λ y))
+        // Simple formula (DBig has enough precision, no need for numerical tricks)
+        let one = f64_to_dbig(1.0, ctx.precision());
+        let two = f64_to_dbig(2.0, ctx.precision());
+        
+        let exponent = -lambda.clone() * y.clone() * (x + one.clone()) / two;
+        let numerator = y.clone() * exponent.exp();
+        let denominator = one - (-lambda * y.clone()).exp();
+
+        numerator / denominator
+    }
+}
+
+/// Generic test for kernel computation precision
+///
+/// Compares kernel implementation against high-precision DBig reference.
+///
+/// # Type Parameters
+/// * `K` - Kernel type implementing CentrosymmKernel and KernelDbigCompute
+/// * `T` - Numeric type to test (f64, TwoFloat, etc.)
+fn test_kernel_compute_precision_generic<K, T>(
+    kernel: &K,
     lambda: f64,
     x: f64,
     y: f64,
     tolerance: f64,
-) {
+    kernel_name: &str,
+)
+where
+    K: CentrosymmKernel + KernelDbigCompute,
+    T: CustomNumeric,
+{
     // Convert inputs to type T
     let x_t: T = T::from_f64(x);
     let y_t: T = T::from_f64(y);
-    let result_t = compute_logistic_kernel(lambda, x_t, y_t);
+    let result_t = kernel.compute(x_t, y_t);
 
     // DBig version (high precision reference)
     let ctx = Context::<HalfAway>::new(DBIG_DIGITS);
     let lambda_dbig = f64_to_dbig(lambda, ctx.precision());
     let x_dbig = f64_to_dbig(x, ctx.precision());
     let y_dbig = f64_to_dbig(y, ctx.precision());
-    let result_dbig = logistic_kernel_dbig(lambda_dbig, x_dbig, y_dbig, &ctx);
+    let result_dbig = K::compute_dbig(lambda_dbig, x_dbig, y_dbig, &ctx);
 
     // Convert T result to DBig for high-precision comparison
     let result_t_dbig = result_t.to_dbig(ctx.precision());
@@ -66,7 +102,8 @@ fn test_logistic_kernel_compute_precision<T: CustomNumeric>(
     let error_t_dbig_f64 = extract_f64(error_t_dbig.to_f64());
     assert!(
         error_t_dbig_f64 <= tolerance,
-        "lambda={}, x={}, y={}: {}={:.15e}, DBig={:.15e}, error={:.15e} > tolerance={:.15e}",
+        "{}: lambda={}, x={}, y={}: {}={:.15e}, DBig={:.15e}, error={:.15e} > tolerance={:.15e}",
+        kernel_name,
         lambda,
         x,
         y,
@@ -83,23 +120,23 @@ fn test_logistic_kernel_compute_different_lambdas() {
     let lambdas = [10.0, 1e2, 1e4]; // [10, 100, 10000]
 
     for lambda in lambdas {
+        let kernel = LogisticKernel::new(lambda);
         for x in [-1.0, 0.0, 1.0] {
             for y in [-1.0, 0.0, 1.0] {
                 // Test both f64 and TwoFloat implementations
-                test_logistic_kernel_compute_precision::<f64>(lambda, x, y, TOLERANCE_F64);
-                test_logistic_kernel_compute_precision::<TwoFloat>(
-                    lambda,
-                    x,
-                    y,
-                    TOLERANCE_TWOFLOAT,
+                test_kernel_compute_precision_generic::<LogisticKernel, f64>(
+                    &kernel, lambda, x, y, TOLERANCE_F64, "LogisticKernel"
+                );
+                test_kernel_compute_precision_generic::<LogisticKernel, TwoFloat>(
+                    &kernel, lambda, x, y, TOLERANCE_TWOFLOAT, "LogisticKernel"
                 );
             }
         }
     }
 }
 
-/// High-precision compute_reduced implementation using DBig
-fn compute_reduced_dbig(
+/// High-precision compute_reduced implementation using DBig (generic)
+fn compute_reduced_dbig<K: KernelDbigCompute>(
     lambda: DBig,
     x: DBig,
     y: DBig,
@@ -109,33 +146,36 @@ fn compute_reduced_dbig(
     match symmetry {
         SymmetryType::Even => {
             // K(x, y) + K(x, -y)
-            let k_plus = logistic_kernel_dbig(lambda.clone(), x.clone(), y.clone(), ctx);
-            let k_minus = logistic_kernel_dbig(lambda, x, -y, ctx);
+            let k_plus = K::compute_dbig(lambda.clone(), x.clone(), y.clone(), ctx);
+            let k_minus = K::compute_dbig(lambda, x, -y, ctx);
             k_plus + k_minus
         }
         SymmetryType::Odd => {
-            // K(x, y) - K(x, -y) (DBigで力押し)
-            let k_plus = logistic_kernel_dbig(lambda.clone(), x.clone(), y.clone(), ctx);
-            let k_minus = logistic_kernel_dbig(lambda, x, -y, ctx);
+            // K(x, y) - K(x, -y)
+            let k_plus = K::compute_dbig(lambda.clone(), x.clone(), y.clone(), ctx);
+            let k_minus = K::compute_dbig(lambda, x, -y, ctx);
             k_plus - k_minus
         }
     }
 }
 
-/// Test precision of compute_reduced implementation for any CustomNumeric type
-fn test_logistic_kernel_compute_reduced_precision<T: CustomNumeric>(
+/// Generic test for compute_reduced precision
+fn test_kernel_compute_reduced_precision_generic<K, T>(
+    kernel: &K,
     lambda: f64,
     x: f64,
     y: f64,
     symmetry: SymmetryType,
     tolerance: f64,
-) {
+    kernel_name: &str,
+)
+where
+    K: CentrosymmKernel + KernelDbigCompute,
+    T: CustomNumeric,
+{
     // Convert inputs to type T
     let x_t: T = T::from_f64(x);
     let y_t: T = T::from_f64(y);
-
-    // For compute_reduced, we need to call the trait method
-    let kernel = LogisticKernel::new(lambda);
     let result_reduced_t = kernel.compute_reduced(x_t, y_t, symmetry);
 
     // DBig version (high precision reference)
@@ -143,7 +183,7 @@ fn test_logistic_kernel_compute_reduced_precision<T: CustomNumeric>(
     let lambda_dbig = f64_to_dbig(lambda, ctx.precision());
     let x_dbig = f64_to_dbig(x, ctx.precision());
     let y_dbig = f64_to_dbig(y, ctx.precision());
-    let result_reduced_dbig = compute_reduced_dbig(lambda_dbig, x_dbig, y_dbig, symmetry, &ctx);
+    let result_reduced_dbig = compute_reduced_dbig::<K>(lambda_dbig, x_dbig, y_dbig, symmetry, &ctx);
 
     // Convert T result to DBig for high-precision comparison
     let result_reduced_t_dbig = result_reduced_t.to_dbig(ctx.precision());
@@ -153,8 +193,8 @@ fn test_logistic_kernel_compute_reduced_precision<T: CustomNumeric>(
     let error_t_dbig_f64 = extract_f64(error_t_dbig.to_f64());
     assert!(
         error_t_dbig_f64 <= tolerance,
-        "lambda={}, x={}, y={}, symmetry={:?}: {}={:.15e}, DBig={:.15e}, error={:.15e} > tolerance={:.15e}",
-        lambda, x, y, symmetry, std::any::type_name::<T>(), result_reduced_t.to_f64(), extract_f64(result_reduced_dbig.to_f64()), error_t_dbig_f64, tolerance
+        "{}: lambda={}, x={}, y={}, symmetry={:?}: {}={:.15e}, DBig={:.15e}, error={:.15e} > tolerance={:.15e}",
+        kernel_name, lambda, x, y, symmetry, std::any::type_name::<T>(), result_reduced_t.to_f64(), extract_f64(result_reduced_dbig.to_f64()), error_t_dbig_f64, tolerance
     );
 }
 
@@ -169,19 +209,12 @@ fn test_logistic_kernel_compute_reduced_different_lambdas() {
                 // y >= 0
                 for symmetry in [SymmetryType::Even, SymmetryType::Odd] {
                     // Test both f64 and TwoFloat implementations
-                    test_logistic_kernel_compute_reduced_precision::<f64>(
-                        lambda,
-                        x,
-                        y,
-                        symmetry,
-                        TOLERANCE_F64,
+                    let kernel = LogisticKernel::new(lambda);
+                    test_kernel_compute_reduced_precision_generic::<LogisticKernel, f64>(
+                        &kernel, lambda, x, y, symmetry, TOLERANCE_F64, "LogisticKernel"
                     );
-                    test_logistic_kernel_compute_reduced_precision::<TwoFloat>(
-                        lambda,
-                        x,
-                        y,
-                        symmetry,
-                        TOLERANCE_TWOFLOAT,
+                    test_kernel_compute_reduced_precision_generic::<LogisticKernel, TwoFloat>(
+                        &kernel, lambda, x, y, symmetry, TOLERANCE_TWOFLOAT, "LogisticKernel"
                     );
                 }
             }
@@ -349,4 +382,22 @@ fn test_regularized_bose_kernel_weight_fermionic_panics() {
 fn test_regularized_bose_kernel_inv_weight_fermionic_panics() {
     let kernel = RegularizedBoseKernel::new(10.0);
     kernel.inv_weight::<Fermionic>(1.0, 5.0);
+}
+
+#[test]
+fn test_regularized_bose_kernel_compute_different_lambdas() {
+    let lambdas = [10.0, 1e2, 1e4];
+    let test_points = [(0.5, 0.5), (-0.5, -0.5), (0.1, -0.8)];
+    
+    for &lambda in &lambdas {
+        let kernel = RegularizedBoseKernel::new(lambda);
+        for &(x, y) in &test_points {
+            test_kernel_compute_precision_generic::<RegularizedBoseKernel, f64>(
+                &kernel, lambda, x, y, TOLERANCE_F64, "RegularizedBoseKernel"
+            );
+            test_kernel_compute_precision_generic::<RegularizedBoseKernel, TwoFloat>(
+                &kernel, lambda, x, y, TOLERANCE_TWOFLOAT, "RegularizedBoseKernel"
+            );
+        }
+    }
 }

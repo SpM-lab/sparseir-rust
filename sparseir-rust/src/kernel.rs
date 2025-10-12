@@ -73,7 +73,7 @@ pub trait KernelProperties {
     /// For most kernels, this is 0 (no scaling).
     /// For RegularizedBoseKernel, this is 1 (linear scaling).
     fn ypower(&self) -> i32;
-    
+
     /// Convergence radius of the Matsubara basis asymptotic model
     /// 
     /// For improved numerical accuracy, IR basis functions on Matsubara axis
@@ -501,8 +501,13 @@ impl RegularizedBoseKernel {
         T: CustomNumeric,
     {
         // u_plus = (x + 1) / 2, u_minus = (1 - x) / 2
-        let u_plus = x_plus.unwrap_or_else(|| T::from_f64(0.5) * (T::from_f64(1.0) + x));
-        let u_minus = x_minus.unwrap_or_else(|| T::from_f64(0.5) * (T::from_f64(1.0) - x));
+        // x_plus and x_minus are (x+1) and (1-x), so we need to multiply by 0.5
+        let u_plus = x_plus
+            .map(|xp| T::from_f64(0.5) * xp)
+            .unwrap_or_else(|| T::from_f64(0.5) * (T::from_f64(1.0) + x));
+        let u_minus = x_minus
+            .map(|xm| T::from_f64(0.5) * xm)
+            .unwrap_or_else(|| T::from_f64(0.5) * (T::from_f64(1.0) - x));
         
         let v = T::from_f64(self.lambda) * y;
         let absv = v.abs();
@@ -515,17 +520,19 @@ impl RegularizedBoseKernel {
         };
         
         // Handle v / (exp(v) - 1) with numerical stability
-        // For small |v|: use limit = -1
-        // For larger |v|: absv / (1 - exp(-absv))
+        // Follows C++ implementation using expm1 pattern
+        // denom = absv / expm1(-absv) = absv / (exp(-absv) - 1)
         let denom = if absv.to_f64() >= 1e-200 {
-            // |v| / (1 - exp(-|v|))
+            // absv / (exp(-absv) - 1)
+            // Note: exp(-absv) < 1, so (exp(-absv) - 1) is negative
             let exp_neg_absv = (-absv).exp();
-            absv / (T::from_f64(1.0) - exp_neg_absv)
+            absv / (exp_neg_absv - T::from_f64(1.0))
         } else {
             T::from_f64(-1.0)  // Limit as v → 0
         };
         
         // K(x, y) = -1/Λ * enum_val * denom
+        // Since denom is negative, final result is positive
         T::from_f64(-1.0 / self.lambda) * enum_val * denom
     }
 }
