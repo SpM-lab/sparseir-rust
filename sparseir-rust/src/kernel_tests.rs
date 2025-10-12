@@ -1,13 +1,7 @@
-//! Precision tests for kernel implementations
-//!
-//! This module provides precision tests comparing TwoFloat implementations
-//! against high-precision DBig calculations for kernel functions.
-
+use super::*;
+use crate::traits::{Fermionic, Bosonic};
 use dashu_base::{Abs, Approximation};
 use dashu_float::{round::mode::HalfAway, Context, DBig};
-use sparseir_rust::{
-    compute_logistic_kernel, CentrosymmKernel, CustomNumeric, LogisticKernel, SymmetryType,
-};
 use std::str::FromStr;
 use twofloat::TwoFloat;
 
@@ -243,4 +237,116 @@ fn test_compute_reduced_symmetry_types() {
         result_even, result_odd,
         "Even and odd results should be different"
     );
+}
+
+// ============================================================================
+// Generic kernel tests
+// ============================================================================
+
+/// Generic test for kernel centrosymmetry: K(x, y) == K(-x, -y)
+fn test_kernel_centrosymmetry_generic<K: CentrosymmKernel>(kernel: &K) {
+    let x = 0.5;
+    let y = 0.3;
+    let k_pos = kernel.compute(x, y);
+    let k_neg = kernel.compute(-x, -y);
+    
+    assert!(
+        (k_pos - k_neg).abs() < 1e-14,
+        "Centrosymmetry violated: K({}, {}) = {}, K({}, {}) = {}",
+        x, y, k_pos, -x, -y, k_neg
+    );
+}
+
+/// Generic test for kernel compute basic functionality
+fn test_kernel_compute_basic_generic<K: CentrosymmKernel>(kernel: &K) {
+    // Test at origin
+    let k_00 = kernel.compute(0.0, 0.0);
+    assert!(k_00.is_finite(), "K(0, 0) should be finite");
+    
+    // Test at various points
+    for &x in &[-0.5, 0.0, 0.5] {
+        for &y in &[-0.3, 0.0, 0.3] {
+            let k = kernel.compute(x, y);
+            assert!(k.is_finite(), "K({}, {}) should be finite", x, y);
+        }
+    }
+}
+
+// ============================================================================
+// LogisticKernel tests
+// ============================================================================
+
+#[test]
+fn test_logistic_kernel_centrosymmetry() {
+    let kernel = LogisticKernel::new(10.0);
+    test_kernel_centrosymmetry_generic(&kernel);
+}
+
+#[test]
+fn test_logistic_kernel_compute_basic_generic() {
+    let kernel = LogisticKernel::new(10.0);
+    test_kernel_compute_basic_generic(&kernel);
+}
+
+// ============================================================================
+// RegularizedBoseKernel tests
+// ============================================================================
+
+#[test]
+fn test_regularized_bose_kernel_construction() {
+    let lambda = 10.0;
+    let kernel = RegularizedBoseKernel::new(lambda);
+    assert_eq!(kernel.lambda, lambda);
+    assert_eq!(kernel.ypower(), 1);
+    assert_eq!(kernel.conv_radius(), 40.0 * lambda);
+}
+
+#[test]
+#[should_panic(expected = "must be non-negative")]
+fn test_regularized_bose_kernel_negative_lambda() {
+    RegularizedBoseKernel::new(-1.0);
+}
+
+#[test]
+fn test_regularized_bose_kernel_compute_basic() {
+    let kernel = RegularizedBoseKernel::new(10.0);
+    test_kernel_compute_basic_generic(&kernel);
+}
+
+#[test]
+fn test_regularized_bose_kernel_centrosymmetry() {
+    let kernel = RegularizedBoseKernel::new(10.0);
+    test_kernel_centrosymmetry_generic(&kernel);
+}
+
+#[test]
+fn test_regularized_bose_kernel_weight_bosonic() {
+    let kernel = RegularizedBoseKernel::new(10.0);
+    let beta = 1.0;
+    let omega = 5.0;
+    
+    // weight = 1/ω
+    let weight = kernel.weight::<Bosonic>(beta, omega);
+    assert!((weight - 1.0 / omega).abs() < 1e-14);
+    
+    // inv_weight = ω
+    let inv_weight = kernel.inv_weight::<Bosonic>(beta, omega);
+    assert!((inv_weight - omega).abs() < 1e-14);
+    
+    // weight * inv_weight = 1
+    assert!((weight * inv_weight - 1.0).abs() < 1e-14);
+}
+
+#[test]
+#[should_panic(expected = "does not support fermionic")]
+fn test_regularized_bose_kernel_weight_fermionic_panics() {
+    let kernel = RegularizedBoseKernel::new(10.0);
+    kernel.weight::<Fermionic>(1.0, 5.0);
+}
+
+#[test]
+#[should_panic(expected = "does not support fermionic")]
+fn test_regularized_bose_kernel_inv_weight_fermionic_panics() {
+    let kernel = RegularizedBoseKernel::new(10.0);
+    kernel.inv_weight::<Fermionic>(1.0, 5.0);
 }
