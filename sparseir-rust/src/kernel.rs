@@ -662,13 +662,92 @@ where
     T: Copy + Debug + Send + Sync + CustomNumeric + 'static,
 {
     fn segments_x(&self) -> Vec<T> {
-        // Similar to LogisticKernel for now
-        vec![T::from_f64(0.0), T::from_f64(1.0)]
+        // Returns segments for x >= 0 domain only
+        // C++/Julia: nzeros = max(round(15 * log10(lambda)), 15)
+        let nzeros = ((15.0 * self.kernel.lambda.log10()).round() as usize).max(15);
+        
+        // temp[i] = 0.18 * i
+        let mut temp = vec![0.0; nzeros];
+        for i in 0..nzeros {
+            temp[i] = 0.18 * i as f64;
+        }
+        
+        // diffs[i] = 1.0 / cosh(temp[i])
+        let mut diffs = vec![0.0; nzeros];
+        for i in 0..nzeros {
+            diffs[i] = 1.0 / temp[i].cosh();
+        }
+        
+        // Cumulative sum
+        let mut zeros = vec![0.0; nzeros];
+        zeros[0] = diffs[0];
+        for i in 1..nzeros {
+            zeros[i] = zeros[i - 1] + diffs[i];
+        }
+        
+        // Normalize
+        let last_zero = zeros[nzeros - 1];
+        for i in 0..nzeros {
+            zeros[i] /= last_zero;
+        }
+        
+        // Create segments with only non-negative values: [0, zeros[0], zeros[1], ...]
+        let mut segments = Vec::with_capacity(nzeros + 1);
+        segments.push(T::from_f64(0.0));
+        for i in 0..nzeros {
+            segments.push(T::from_f64(zeros[i]));
+        }
+        
+        // Ensure sorted (should already be sorted, but verify)
+        segments.sort_by(|a, b| {
+            a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        
+        segments
     }
 
     fn segments_y(&self) -> Vec<T> {
-        // May need special handling near y = 0 due to regularization
-        vec![T::from_f64(0.0), T::from_f64(1.0)]
+        // Returns segments for y >= 0 domain only
+        // C++/Julia: nzeros = max(round(20 * log10(lambda)), 20)
+        let nzeros = ((20.0 * self.kernel.lambda.log10()).round() as usize).max(20);
+        
+        // diffs[j] = 0.12 / exp(0.0337 * j * log(j + 1))
+        let mut diffs = vec![0.0; nzeros];
+        for j in 0..nzeros {
+            let j_f64 = j as f64;
+            let exponent = 0.0337 * j_f64 * (j_f64 + 1.0).ln();
+            diffs[j] = 0.12 / exponent.exp();
+        }
+        
+        // Cumulative sum
+        let mut zeros = vec![0.0; nzeros];
+        zeros[0] = diffs[0];
+        for i in 1..nzeros {
+            zeros[i] = zeros[i - 1] + diffs[i];
+        }
+        
+        // Normalize by last value, then remove it
+        let last_zero = zeros[nzeros - 1];
+        for i in 0..nzeros {
+            zeros[i] /= last_zero;
+        }
+        zeros.pop();
+        
+        // After normalization and pop, zeros are in [0, 1) range
+        // Create segments: [0, zeros[0], zeros[1], ..., 1]
+        let mut segments = Vec::with_capacity(zeros.len() + 2);
+        segments.push(T::from_f64(0.0));
+        for z in zeros {
+            segments.push(T::from_f64(z));
+        }
+        segments.push(T::from_f64(1.0));
+        
+        // Ensure sorted (should already be sorted, but verify)
+        segments.sort_by(|a, b| {
+            a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        
+        segments
     }
 
     fn nsvals(&self) -> usize {
