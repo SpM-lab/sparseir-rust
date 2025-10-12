@@ -18,7 +18,7 @@ use std::fmt::Debug;
 /// The rule contains quadrature points `x`, weights `w`, and auxiliary arrays
 /// `x_forward` and `x_backward` for efficient computation.
 #[derive(Debug, Clone)]
-pub(crate) struct Rule<T> {
+pub struct Rule<T> {
     /// Quadrature points
     pub x: Vec<T>, //COMMENT: ADD CHECK CODE TO MAKE SURE x is in non-decreasing order
     /// Quadrature weights
@@ -647,7 +647,7 @@ where
 ///
 /// # Returns
 /// A Gauss-Legendre quadrature rule
-pub(crate) fn legendre<T>(n: usize) -> Rule<T>
+pub fn legendre<T>(n: usize) -> Rule<T>
 where
     T: CustomNumeric + Copy + Debug + std::fmt::Display + 'static,
 {
@@ -772,7 +772,7 @@ where
 }
 
 /// Create a Gauss-Legendre quadrature rule with n points on [-1, 1] (CustomNumeric version).
-pub(crate) fn legendre_custom<T>(n: usize) -> Rule<T>
+pub fn legendre_custom<T>(n: usize) -> Rule<T>
 where
     T: CustomNumeric,
 {
@@ -796,7 +796,7 @@ where
 }
 
 /// Create a Gauss-Legendre quadrature rule with n points on [-1, 1] (TwoFloat version).
-pub(crate) fn legendre_twofloat(n: usize) -> Rule<twofloat::TwoFloat> {
+pub fn legendre_twofloat(n: usize) -> Rule<twofloat::TwoFloat> {
     if n == 0 {
         return Rule::new_twofloat(
             vec![],

@@ -12,6 +12,7 @@ use mdarray::DTensor;
 use num_complex::Complex;
 use std::marker::PhantomData;
 
+
 /// Generic single-pole Green's function at imaginary time τ
 ///
 /// Computes G(τ) for either fermionic or bosonic statistics based on the type parameter S.
@@ -29,13 +30,13 @@ use std::marker::PhantomData;
 ///
 /// # Example
 /// ```ignore
-/// use crate::traits::Fermionic;
+/// use sparseir_rust::traits::Fermionic;
 /// let g_f = gtau_single_pole::<Fermionic>(0.5, 5.0, 1.0);
 /// 
-/// use crate::traits::Bosonic;
+/// use sparseir_rust::traits::Bosonic;
 /// let g_b = gtau_single_pole::<Bosonic>(0.5, 5.0, 1.0);
 /// ```
-pub(crate) fn gtau_single_pole<S: StatisticsType>(tau: f64, omega: f64, beta: f64) -> f64 {
+pub fn gtau_single_pole<S: StatisticsType>(tau: f64, omega: f64, beta: f64) -> f64 {
     match S::STATISTICS {
         Statistics::Fermionic => fermionic_single_pole(tau, omega, beta),
         Statistics::Bosonic => bosonic_single_pole(tau, omega, beta),
@@ -65,7 +66,7 @@ pub(crate) fn gtau_single_pole<S: StatisticsType>(tau: f64, omega: f64, beta: f6
 /// let tau = 0.5 * beta;
 /// let g = fermionic_single_pole(tau, omega, beta);
 /// ```
-pub(crate) fn fermionic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
+pub fn fermionic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
     use crate::taufuncs::normalize_tau;
     use crate::traits::Fermionic;
     
@@ -99,7 +100,7 @@ pub(crate) fn fermionic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
 /// let tau = 0.5 * beta;
 /// let g = bosonic_single_pole(tau, omega, beta);
 /// ```
-pub(crate) fn bosonic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
+pub fn bosonic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
     use crate::taufuncs::normalize_tau;
     use crate::traits::Bosonic;
     
@@ -124,7 +125,7 @@ pub(crate) fn bosonic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
 ///
 /// # Returns
 /// Complex-valued Green's function G(iωn)
-pub(crate) fn giwn_single_pole<S: StatisticsType>(
+pub fn giwn_single_pole<S: StatisticsType>(
     matsubara_freq: &MatsubaraFreq<S>,
     omega: f64,
     beta: f64,
@@ -155,8 +156,16 @@ pub(crate) fn giwn_single_pole<S: StatisticsType>(
 /// - `reg[i]` are regularization factors (1 for fermions, tanh(βω/2) for bosons)
 ///
 /// # Type Parameters
+/// * `K` - Kernel type
 /// * `S` - Statistics type (Fermionic or Bosonic)
-pub struct DiscreteLehmannRepresentation<S: StatisticsType> {
+pub struct DiscreteLehmannRepresentation<K, S>
+where
+    K: crate::kernel::KernelProperties + Clone,
+    S: StatisticsType,
+{
+    /// The kernel used to construct this DLR
+    pub kernel: K,
+    
     /// Pole positions on the real-frequency axis ω ∈ [-ωmax, ωmax]
     pub poles: Vec<f64>,
     
@@ -169,6 +178,11 @@ pub struct DiscreteLehmannRepresentation<S: StatisticsType> {
     /// Accuracy of the representation
     pub accuracy: f64,
     
+    /// Inverse weights for each pole: inv_weight[i] = 1 / weight[i]
+    /// - Fermionic: inv_weight = 1.0
+    /// - Bosonic (LogisticKernel): inv_weight = tanh(β·ω/2)
+    inv_weights: Vec<f64>,
+    
     /// Fitting matrix from IR: fitmat = -s · V(poles)
     /// Used for to_IR transformation
     fitmat: DTensor<f64, 2>,
@@ -180,7 +194,11 @@ pub struct DiscreteLehmannRepresentation<S: StatisticsType> {
     _phantom: PhantomData<S>,
 }
 
-impl<S: StatisticsType> DiscreteLehmannRepresentation<S> {
+impl<K, S> DiscreteLehmannRepresentation<K, S>
+where
+    K: crate::kernel::KernelProperties + Clone,
+    S: StatisticsType,
+{
     /// Create DLR from IR basis with custom poles
     ///
     /// # Arguments
@@ -190,12 +208,13 @@ impl<S: StatisticsType> DiscreteLehmannRepresentation<S> {
     /// # Returns
     /// A new DLR representation
     pub fn with_poles(
-        basis: &impl crate::basis_trait::Basis<S>,
+        basis: &impl crate::basis_trait::Basis<S, Kernel = K>,
         poles: Vec<f64>,
     ) -> Self
     where
         S: 'static,
     {
+        let kernel = basis.kernel().clone();
         let beta = basis.beta();
         let wmax = basis.wmax();
         let accuracy = basis.accuracy();
@@ -219,11 +238,18 @@ impl<S: StatisticsType> DiscreteLehmannRepresentation<S> {
         // Create fitter for from_IR (inverse operation)
         let fitter = RealMatrixFitter::new(fitmat.clone());
         
+        // Compute inverse weights for each pole using kernel's inv_weight function
+        let inv_weights: Vec<f64> = poles.iter()
+            .map(|&pole| kernel.inv_weight::<S>(beta, pole))
+            .collect();
+        
         Self {
+            kernel,
             poles,
             beta,
             wmax,
             accuracy,
+            inv_weights,
             fitmat,
             fitter,
             _phantom: PhantomData,
@@ -239,7 +265,7 @@ impl<S: StatisticsType> DiscreteLehmannRepresentation<S> {
     ///
     /// # Returns
     /// A new DLR representation with default poles
-    pub fn new(basis: &impl crate::basis_trait::Basis<S>) -> Self
+    pub fn new(basis: &impl crate::basis_trait::Basis<S, Kernel = K>) -> Self
     where
         S: 'static,
     {
@@ -362,10 +388,17 @@ impl<S: StatisticsType> DiscreteLehmannRepresentation<S> {
 // Basis trait implementation for DLR
 // ============================================================================
 
-impl<S: StatisticsType> crate::basis_trait::Basis<S> for DiscreteLehmannRepresentation<S>
+impl<K, S> crate::basis_trait::Basis<S> for DiscreteLehmannRepresentation<K, S>
 where
-    S: 'static,
+    K: crate::kernel::KernelProperties + Clone,
+    S: StatisticsType + 'static,
 {
+    type Kernel = K;
+    
+    fn kernel(&self) -> &Self::Kernel {
+        &self.kernel
+    }
+    
     fn beta(&self) -> f64 {
         self.beta
     }
@@ -419,6 +452,7 @@ where
         DTensor::<f64, 2>::from_fn([n_points, n_poles], |idx| {
             let tau_val = tau[idx[0]];
             let pole = self.poles[idx[1]];
+            let inv_weight = self.inv_weights[idx[1]];
             
             // Normalize tau to [0, β] with periodicity (for extended range support)
             let (tau_norm, sign) = normalize_tau::<S>(tau_val, self.beta);
@@ -427,7 +461,8 @@ where
             let x = 2.0 * tau_norm / self.beta - 1.0;
             let y = pole / self.wmax;
             
-            sign * (-kernel.compute(x, y))
+            // u_i(τ) = -K(x, y_i) * inv_weight[i]
+            sign * (-kernel.compute(x, y)) * inv_weight
         })
     }
     
@@ -442,21 +477,15 @@ where
         DTensor::<Complex<f64>, 2>::from_fn([n_points, n_poles], |idx| {
             let freq = &freqs[idx[0]];
             let pole = self.poles[idx[1]];
+            let inv_weight = self.inv_weights[idx[1]];
             
             // iν = i * π * (2n + ζ) / β
             let iv = freq.value_imaginary(self.beta);
             
-            match S::STATISTICS {
-                Statistics::Fermionic => {
-                    // u_i(iν) = 1 / (iν - pole_i)
-                    Complex::new(1.0, 0.0) / (iv - Complex::new(pole, 0.0))
-                },
-                Statistics::Bosonic => {
-                    // u_i(iν) = tanh(β·pole_i/2) / (iν - pole_i)
-                    let reg = (self.beta * pole / 2.0).tanh();
-                    Complex::new(reg, 0.0) / (iv - Complex::new(pole, 0.0))
-                },
-            }
+            // u_i(iν) = inv_weight / (iν - pole_i)
+            // Fermionic: inv_weight = 1.0
+            // Bosonic: inv_weight = tanh(β·pole_i/2)
+            Complex::new(inv_weight, 0.0) / (iv - Complex::new(pole, 0.0))
         })
     }
     

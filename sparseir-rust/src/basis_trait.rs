@@ -5,6 +5,7 @@
 
 use crate::freq::MatsubaraFreq;
 use crate::traits::StatisticsType;
+use crate::kernel::KernelProperties;
 
 /// Common trait for basis representations in imaginary-time/frequency domains
 ///
@@ -21,6 +22,15 @@ use crate::traits::StatisticsType;
 /// # Type Parameters
 /// * `S` - Statistics type (Fermionic or Bosonic)
 pub trait Basis<S: StatisticsType> {
+    /// Associated kernel type
+    type Kernel: KernelProperties;
+    
+    /// Get reference to the kernel
+    ///
+    /// # Returns
+    /// Reference to the kernel used to construct this basis
+    fn kernel(&self) -> &Self::Kernel;
+    
     /// Inverse temperature β
     ///
     /// # Returns

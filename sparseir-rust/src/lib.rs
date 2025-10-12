@@ -27,6 +27,7 @@ pub mod taufuncs;  // Imaginary time τ normalization utilities
 
 // Re-export commonly used types and traits
 pub use freq::{BosonicFreq, FermionicFreq, MatsubaraFreq};
+pub use gauss::{legendre, legendre_custom, legendre_twofloat, Rule};
 pub use kernel::{
     compute_logistic_kernel, CentrosymmKernel, KernelProperties, LogisticKernel, LogisticSVEHints,
     SVEHints, SymmetryType,
@@ -44,7 +45,10 @@ pub use kernelmatrix::{DiscretizedKernel, InterpolatedKernel, matrix_from_gauss,
 pub use sve::{SVEResult, TworkType, SVDStrategy, SamplingSVE, CentrosymmSVE, SVEStrategy, compute_sve, compute_svd, truncate};
 pub use basis_trait::Basis;
 pub use basis::{FiniteTempBasis, FermionicBasis, BosonicBasis};
-pub use dlr::DiscreteLehmannRepresentation;
+pub use dlr::{
+    DiscreteLehmannRepresentation,
+    gtau_single_pole, fermionic_single_pole, bosonic_single_pole, giwn_single_pole
+};
 pub use sampling::TauSampling;
 pub use matsubara_sampling::{MatsubaraSampling, MatsubaraSamplingPositiveOnly};
 
