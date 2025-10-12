@@ -404,3 +404,7 @@ impl<T: CustomNumeric + Debug + Clone + 'static> InterpolatedKernel<T> {
         self.n_cells_y
     }
 }
+
+#[cfg(test)]
+#[path = "kernelmatrix_tests.rs"]
+mod tests;

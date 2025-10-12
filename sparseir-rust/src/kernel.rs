@@ -614,13 +614,15 @@ impl CentrosymmKernel for RegularizedBoseKernel {
             SymmetryType::Even => self.compute(x, y) + self.compute(x, -y),
             SymmetryType::Odd => {
                 // For RegularizedBoseKernel, use sinh formulation for numerical stability
-                // K(x,y) - K(x,-y) = 2 * y * sinh(Λ y x / 2) / (1 - exp(-Λ |y|))
+                // K(x,y) - K(x,-y) = y * sinh(Λ y x / 2) / sinh(Λ y / 2)
+                // This formula is only valid for y > 0 (i.e., v_half > 0)
                 let v_half = T::from_f64(self.lambda * 0.5) * y;
                 let xv_half = x * v_half;
-                let xy_small = xv_half.to_f64().abs() < 1.0;
-                let sinh_finite = v_half.to_f64().abs() < 85.0 && v_half.to_f64().abs() > 1e-200;
+                let xy_small = xv_half.to_f64() < 1.0;
+                // IMPORTANT: sinh_range requires v_half > 0, matching C++ implementation
+                let sinh_range = v_half.to_f64() > 1e-200 && v_half.to_f64() < 85.0;
                 
-                if xy_small && sinh_finite {
+                if xy_small && sinh_range {
                     // Use sinh formulation for numerical stability
                     y * xv_half.sinh() / v_half.sinh()
                 } else {
