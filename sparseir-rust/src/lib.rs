@@ -29,7 +29,9 @@ pub mod taufuncs;  // Imaginary time τ normalization utilities
 pub use freq::{BosonicFreq, FermionicFreq, MatsubaraFreq};
 pub use gauss::{legendre, legendre_custom, legendre_twofloat, Rule};
 pub use kernel::{
-    compute_logistic_kernel, CentrosymmKernel, KernelProperties, LogisticKernel, LogisticSVEHints,
+    compute_logistic_kernel, CentrosymmKernel, KernelProperties, 
+    LogisticKernel, LogisticSVEHints,
+    RegularizedBoseKernel, RegularizedBoseSVEHints,
     SVEHints, SymmetryType,
 };
 pub use numeric::CustomNumeric;

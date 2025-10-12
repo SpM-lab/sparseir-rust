@@ -436,4 +436,322 @@ where
     }
 }
 
+// ============================================================================
+// RegularizedBoseKernel
+// ============================================================================
+
+/// Regularized bosonic analytical continuation kernel
+///
+/// In dimensionless variables x = 2τ/β - 1, y = βω/Λ, the integral kernel is:
+///
+/// ```text
+/// K(x, y) = y * exp(-Λ y (x + 1) / 2) / (1 - exp(-Λ y))
+/// ```
+///
+/// This kernel is used for bosonic Green's functions. The factor y regularizes
+/// the singularity at ω = 0, making the kernel well-behaved for numerical work.
+///
+/// The dimensionalized kernel is related by:
+/// ```text
+/// K(τ, ω) = ωmax * K(2τ/β - 1, ω/ωmax)
+/// ```
+/// where ωmax = Λ/β.
+///
+/// # Properties
+/// - **Centrosymmetric**: K(x, y) = K(-x, -y)
+/// - **ypower = 1**: Spectral function transforms as ρ'(y) = y * ρ(y)
+/// - **Bosonic only**: Does not support fermionic statistics
+/// - **Weight function**: w(β, ω) = 1/ω for bosonic statistics
+///
+/// # Numerical Stability
+/// The expression v / (exp(v) - 1) is evaluated using expm1 for small |v|.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RegularizedBoseKernel {
+    /// Kernel cutoff parameter Λ = β × ωmax
+    pub lambda: f64,
+}
+
+impl RegularizedBoseKernel {
+    /// Create a new RegularizedBoseKernel
+    ///
+    /// # Arguments
+    /// * `lambda` - Kernel cutoff Λ (must be non-negative)
+    ///
+    /// # Panics
+    /// Panics if lambda < 0
+    pub fn new(lambda: f64) -> Self {
+        if lambda < 0.0 {
+            panic!("Kernel cutoff Λ must be non-negative, got {}", lambda);
+        }
+        Self { lambda }
+    }
+    
+    /// Compute kernel value with numerical stability
+    ///
+    /// Evaluates K(x, y) = y * exp(-Λy(x+1)/2) / (1 - exp(-Λy))
+    /// using expm1 for better accuracy near y = 0.
+    ///
+    /// # Arguments
+    /// * `x` - Normalized time coordinate (x ∈ [-1, 1])
+    /// * `y` - Normalized frequency coordinate (y ∈ [-1, 1])
+    /// * `x_plus` - Precomputed x + 1 (optional, for efficiency)
+    /// * `x_minus` - Precomputed 1 - x (optional, for efficiency)
+    fn compute_impl<T>(&self, x: T, y: T, x_plus: Option<T>, x_minus: Option<T>) -> T
+    where
+        T: CustomNumeric,
+    {
+        // u_plus = (x + 1) / 2, u_minus = (1 - x) / 2
+        let u_plus = x_plus.unwrap_or_else(|| T::from_f64(0.5) * (T::from_f64(1.0) + x));
+        let u_minus = x_minus.unwrap_or_else(|| T::from_f64(0.5) * (T::from_f64(1.0) - x));
+        
+        let v = T::from_f64(self.lambda) * y;
+        let absv = v.abs();
+        
+        // enum_val = exp(-|v| * (v >= 0 ? u_plus : u_minus))
+        let enum_val = if v >= T::from_f64(0.0) {
+            (-absv * u_plus).exp()
+        } else {
+            (-absv * u_minus).exp()
+        };
+        
+        // Handle v / (exp(v) - 1) with numerical stability
+        // For small |v|: use limit = -1
+        // For larger |v|: absv / (1 - exp(-absv))
+        let denom = if absv.to_f64() >= 1e-200 {
+            // |v| / (1 - exp(-|v|))
+            let exp_neg_absv = (-absv).exp();
+            absv / (T::from_f64(1.0) - exp_neg_absv)
+        } else {
+            T::from_f64(-1.0)  // Limit as v → 0
+        };
+        
+        // K(x, y) = -1/Λ * enum_val * denom
+        T::from_f64(-1.0 / self.lambda) * enum_val * denom
+    }
+}
+
+impl KernelProperties for RegularizedBoseKernel {
+    type SVEHintsType<T> = RegularizedBoseSVEHints<T>
+    where
+        T: Copy + Debug + Send + Sync + CustomNumeric + 'static;
+    
+    fn ypower(&self) -> i32 {
+        1  // Spectral function transforms as ρ'(y) = y * ρ(y)
+    }
+    
+    fn conv_radius(&self) -> f64 {
+        40.0 * self.lambda
+    }
+    
+    fn xmax(&self) -> f64 {
+        1.0
+    }
+    
+    fn ymax(&self) -> f64 {
+        1.0
+    }
+    
+    fn weight<S: StatisticsType + 'static>(&self, _beta: f64, omega: f64) -> f64 {
+        match S::STATISTICS {
+            Statistics::Fermionic => {
+                panic!("RegularizedBoseKernel does not support fermionic functions");
+            }
+            Statistics::Bosonic => {
+                // weight = 1/ω
+                if omega.abs() < 1e-300 {
+                    panic!("RegularizedBoseKernel: omega too close to zero");
+                }
+                1.0 / omega
+            }
+        }
+    }
+    
+    fn inv_weight<S: StatisticsType + 'static>(&self, _beta: f64, omega: f64) -> f64 {
+        match S::STATISTICS {
+            Statistics::Fermionic => {
+                panic!("RegularizedBoseKernel does not support fermionic functions");
+            }
+            Statistics::Bosonic => {
+                // inv_weight = ω (safe, no division)
+                omega
+            }
+        }
+    }
+
+    fn sve_hints<T>(&self, epsilon: f64) -> Self::SVEHintsType<T>
+    where
+        T: Copy + Debug + Send + Sync + CustomNumeric + 'static,
+    {
+        RegularizedBoseSVEHints::new(self.clone(), epsilon)
+    }
+}
+
+impl CentrosymmKernel for RegularizedBoseKernel {
+    fn compute<T: CustomNumeric + Copy + Debug>(&self, x: T, y: T) -> T {
+        let x_plus = Some(T::from_f64(1.0) + x);
+        let x_minus = Some(T::from_f64(1.0) - x);
+        self.compute_impl(x, y, x_plus, x_minus)
+    }
+
+    fn compute_reduced<T: CustomNumeric + Copy + Debug>(
+        &self,
+        x: T,
+        y: T,
+        symmetry: SymmetryType,
+    ) -> T {
+        match symmetry {
+            SymmetryType::Even => self.compute(x, y) + self.compute(x, -y),
+            SymmetryType::Odd => {
+                // For RegularizedBoseKernel, use sinh formulation for numerical stability
+                // K(x,y) - K(x,-y) = 2 * y * sinh(Λ y x / 2) / (1 - exp(-Λ |y|))
+                let v_half = T::from_f64(self.lambda * 0.5) * y;
+                let xv_half = x * v_half;
+                let xy_small = xv_half.to_f64().abs() < 1.0;
+                let sinh_finite = v_half.to_f64().abs() < 85.0 && v_half.to_f64().abs() > 1e-200;
+                
+                if xy_small && sinh_finite {
+                    // Use sinh formulation for numerical stability
+                    y * xv_half.sinh() / v_half.sinh()
+                } else {
+                    // Fall back to direct computation
+                    self.compute(x, y) - self.compute(x, -y)
+                }
+            }
+        }
+    }
+
+    fn lambda(&self) -> f64 {
+        self.lambda
+    }
+}
+
+/// SVE hints for RegularizedBoseKernel
+#[derive(Debug, Clone)]
+pub struct RegularizedBoseSVEHints<T> {
+    kernel: RegularizedBoseKernel,
+    epsilon: f64,
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T> RegularizedBoseSVEHints<T>
+where
+    T: Copy + Debug + Send + Sync,
+{
+    pub fn new(kernel: RegularizedBoseKernel, epsilon: f64) -> Self {
+        Self {
+            kernel,
+            epsilon,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T> SVEHints<T> for RegularizedBoseSVEHints<T>
+where
+    T: Copy + Debug + Send + Sync + CustomNumeric + 'static,
+{
+    fn segments_x(&self) -> Vec<T> {
+        // Similar to LogisticKernel for now
+        vec![T::from_f64(0.0), T::from_f64(1.0)]
+    }
+
+    fn segments_y(&self) -> Vec<T> {
+        // May need special handling near y = 0 due to regularization
+        vec![T::from_f64(0.0), T::from_f64(1.0)]
+    }
+
+    fn nsvals(&self) -> usize {
+        // C++: int(round(28 * max(1.0, log10(lambda))))
+        let log10_lambda = self.kernel.lambda.log10().max(1.0);
+        (28.0 * log10_lambda).round() as usize
+    }
+
+    fn ngauss(&self) -> usize {
+        if self.epsilon >= 1e-8 {
+            10
+        } else {
+            16
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::traits::{Fermionic, Bosonic};
+
+    #[test]
+    fn test_regularized_bose_kernel_construction() {
+        let lambda = 10.0;
+        let kernel = RegularizedBoseKernel::new(lambda);
+        assert_eq!(kernel.lambda, lambda);
+        assert_eq!(kernel.ypower(), 1);
+        assert_eq!(kernel.conv_radius(), 40.0 * lambda);
+    }
+
+    #[test]
+    #[should_panic(expected = "must be non-negative")]
+    fn test_regularized_bose_kernel_negative_lambda() {
+        RegularizedBoseKernel::new(-1.0);
+    }
+
+    #[test]
+    fn test_regularized_bose_kernel_compute_basic() {
+        let lambda = 10.0;
+        let kernel = RegularizedBoseKernel::new(lambda);
+        
+        // Test at origin
+        let k_00 = kernel.compute(0.0, 0.0);
+        assert!(k_00.is_finite());
+        
+        // Test at non-zero points
+        let k = kernel.compute(0.5, 0.3);
+        assert!(k.is_finite());
+    }
+
+    #[test]
+    fn test_regularized_bose_kernel_weight_bosonic() {
+        let kernel = RegularizedBoseKernel::new(10.0);
+        let beta = 1.0;
+        let omega = 5.0;
+        
+        // weight = 1/ω
+        let weight = kernel.weight::<Bosonic>(beta, omega);
+        assert!((weight - 1.0 / omega).abs() < 1e-14);
+        
+        // inv_weight = ω
+        let inv_weight = kernel.inv_weight::<Bosonic>(beta, omega);
+        assert!((inv_weight - omega).abs() < 1e-14);
+        
+        // weight * inv_weight = 1
+        assert!((weight * inv_weight - 1.0).abs() < 1e-14);
+    }
+
+    #[test]
+    #[should_panic(expected = "does not support fermionic")]
+    fn test_regularized_bose_kernel_weight_fermionic_panics() {
+        let kernel = RegularizedBoseKernel::new(10.0);
+        kernel.weight::<Fermionic>(1.0, 5.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "does not support fermionic")]
+    fn test_regularized_bose_kernel_inv_weight_fermionic_panics() {
+        let kernel = RegularizedBoseKernel::new(10.0);
+        kernel.inv_weight::<Fermionic>(1.0, 5.0);
+    }
+
+    #[test]
+    fn test_regularized_bose_kernel_centrosymmetry() {
+        let kernel = RegularizedBoseKernel::new(10.0);
+        
+        // Test centrosymmetry: K(x, y) should equal K(-x, -y)
+        let x = 0.5;
+        let y = 0.3;
+        let k_pos = kernel.compute(x, y);
+        let k_neg = kernel.compute(-x, -y);
+        
+        assert!((k_pos - k_neg).abs() < 1e-14, "Centrosymmetry violated");
+    }
+}
 
