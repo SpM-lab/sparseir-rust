@@ -397,18 +397,17 @@ fn test_regularized_bose_kernel_compute_different_lambdas() {
 }
 
 #[test]
-#[ignore]  // TODO: Fix sinh formula - sign issue with compute_reduced
 fn test_regularized_bose_kernel_compute_reduced_different_lambdas() {
     let lambdas = [10.0, 1e2];  // Smaller range than LogisticKernel
     // Test points for compute_reduced (x >= 0, y >= 0 for reduced kernel)
     let test_points = [
-        // (0.0, 0.0),  // Excluded - y=0 causes issues
+        (0.0, 0.0),
         (0.0, 0.5),
         (0.0, 1.0),
         (0.5, 0.01),   // Small y (tests near y=0 behavior)
         (0.5, 0.5),
         (0.5, 1.0),
-        // (1.0, 0.0),  // Excluded - y=0 causes issues
+        (1.0, 0.0),
         (1.0, 0.5),
         (1.0, 1.0),
     ];
