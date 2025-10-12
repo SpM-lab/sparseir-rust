@@ -80,29 +80,3 @@ pub fn normalize_tau<S: StatisticsType>(tau: f64, beta: f64) -> (f64, f64) {
         }
     };
 }
-
-/// Normalize τ to the range [0, β] for fermionic functions
-///
-/// Convenience wrapper for `normalize_tau::<Fermionic>(tau, beta)`.
-///
-/// # Deprecated
-/// Prefer using the generic `normalize_tau::<S>()` function.
-#[inline]
-pub fn normalize_tau_fermionic(tau: f64, beta: f64) -> (f64, f64) {
-    use crate::traits::Fermionic;
-    normalize_tau::<Fermionic>(tau, beta)
-}
-
-/// Normalize τ to the range [0, β] for bosonic functions
-///
-/// Convenience wrapper for `normalize_tau::<Bosonic>(tau, beta)`.
-/// Returns only the normalized τ value (sign is always 1.0 for bosons).
-///
-/// # Deprecated
-/// Prefer using the generic `normalize_tau::<S>()` function.
-#[inline]
-pub fn normalize_tau_bosonic(tau: f64, beta: f64) -> f64 {
-    use crate::traits::Bosonic;
-    normalize_tau::<Bosonic>(tau, beta).0
-}
-

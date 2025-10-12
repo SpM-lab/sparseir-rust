@@ -66,11 +66,12 @@ pub fn gtau_single_pole<S: StatisticsType>(tau: f64, omega: f64, beta: f64) -> f
 /// let g = fermionic_single_pole(tau, omega, beta);
 /// ```
 pub fn fermionic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
-    use crate::taufuncs::normalize_tau_fermionic;
+    use crate::taufuncs::normalize_tau;
+    use crate::traits::Fermionic;
     
     // Normalize τ to [0, β] and track sign from anti-periodicity
     // G(τ + β) = -G(τ) for fermions
-    let (tau_normalized, sign) = normalize_tau_fermionic(tau, beta);
+    let (tau_normalized, sign) = normalize_tau::<Fermionic>(tau, beta);
     
     sign * (-(-omega * tau_normalized).exp() / (1.0 + (-beta * omega).exp()))
 }
@@ -99,11 +100,12 @@ pub fn fermionic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
 /// let g = bosonic_single_pole(tau, omega, beta);
 /// ```
 pub fn bosonic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
-    use crate::taufuncs::normalize_tau_bosonic;
+    use crate::taufuncs::normalize_tau;
+    use crate::traits::Bosonic;
     
     // Normalize τ to [0, β] using periodicity
     // G(τ + β) = G(τ) for bosons
-    let tau_normalized = normalize_tau_bosonic(tau, beta);
+    let tau_normalized = normalize_tau::<Bosonic>(tau, beta).0;
     
     (-omega * tau_normalized).exp() / (1.0 - (-beta * omega).exp())
 }

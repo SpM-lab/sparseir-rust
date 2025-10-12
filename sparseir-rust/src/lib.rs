@@ -55,7 +55,7 @@ pub use dlr::{
 pub use fitter::{RealMatrixFitter, ComplexToRealFitter, ComplexMatrixFitter};
 pub use sampling::TauSampling;
 pub use matsubara_sampling::{MatsubaraSampling, MatsubaraSamplingPositiveOnly};
-pub use taufuncs::{normalize_tau, normalize_tau_fermionic, normalize_tau_bosonic};
+pub use taufuncs::normalize_tau;
 
 // Re-export external dependencies for convenience
 pub use twofloat::TwoFloat;

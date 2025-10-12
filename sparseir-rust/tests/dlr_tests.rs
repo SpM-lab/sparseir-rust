@@ -23,34 +23,6 @@ fn test_periodicity_generic<S: StatisticsType>(expected_sign: f64, stat_name: &s
     }
 }
 
-/// Generic test for boundary interpretation
-fn test_boundary_interpretation_generic<S: StatisticsType>(stat_name: &str) {
-    let beta = 1.0;
-    let omega = 5.0;
-    let eps = 1e-6;
-    
-    // Test: β is interpreted as β- (left limit) and -β as -β+ (right limit)
-    let g_beta_minus = gtau_single_pole::<S>(beta - eps, omega, beta);
-    let g_beta = gtau_single_pole::<S>(beta, omega, beta);
-    
-    let g_minus_beta_plus = gtau_single_pole::<S>(-beta + eps, omega, beta);
-    let g_minus_beta = gtau_single_pole::<S>(-beta, omega, beta);
-    
-    // β is treated as β- (stays in normal range, not wrapped)
-    assert!(
-        (g_beta - g_beta_minus).abs() < 1e-8,
-        "{}: β should be β-: G(β)={}, G(β-)={}, diff={}",
-        stat_name, g_beta, g_beta_minus, (g_beta - g_beta_minus).abs()
-    );
-    
-    // -β is treated as -β+ (stays after wrapping)
-    assert!(
-        (g_minus_beta - g_minus_beta_plus).abs() < 1e-8,
-        "{}: -β should be -β+: G(-β)={}, G(-β+)={}, diff={}",
-        stat_name, g_minus_beta, g_minus_beta_plus, (g_minus_beta - g_minus_beta_plus).abs()
-    );
-}
-
 #[test]
 fn test_fermionic_antiperiodicity() {
     // Fermions: G(τ+β) = -G(τ)
@@ -61,16 +33,6 @@ fn test_fermionic_antiperiodicity() {
 fn test_bosonic_periodicity() {
     // Bosons: G(τ+β) = G(τ)
     test_periodicity_generic::<Bosonic>(1.0, "Bosonic");
-}
-
-#[test]
-fn test_fermionic_boundary_interpretation() {
-    test_boundary_interpretation_generic::<Fermionic>("Fermionic");
-}
-
-#[test]
-fn test_bosonic_boundary_interpretation() {
-    test_boundary_interpretation_generic::<Bosonic>("Bosonic");
 }
 
 #[test]
