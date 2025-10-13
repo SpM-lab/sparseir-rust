@@ -29,6 +29,11 @@ pub type FermionicFreq = MatsubaraFreq<Fermionic>;
 pub type BosonicFreq = MatsubaraFreq<Bosonic>;
 
 impl<S: StatisticsType> MatsubaraFreq<S> {
+    /// Get the Matsubara index n
+    pub fn n(&self) -> i64 {
+        self.n
+    }
+
     /// Create a new Matsubara frequency
     ///
     /// # Arguments

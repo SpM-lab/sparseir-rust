@@ -6,6 +6,8 @@
 use std::sync::Arc;
 use sparseir_rust::kernel::{LogisticKernel, RegularizedBoseKernel, CentrosymmKernel};
 use sparseir_rust::sve::SVEResult;
+use sparseir_rust::basis::FiniteTempBasis;
+use sparseir_rust::{Bosonic, Fermionic};
 
 /// Opaque kernel type for C API (compatible with libsparseir)
 ///
@@ -26,6 +28,24 @@ pub struct spir_kernel {
 #[repr(C)]
 pub struct spir_sve_result {
     inner: Arc<SVEResult>,
+}
+
+/// Opaque basis type for C API (compatible with libsparseir)
+///
+/// Represents a finite temperature basis (IR or DLR).
+///
+/// Note: Named `spir_basis` to match libsparseir C++ API exactly.
+#[repr(C)]
+pub struct spir_basis {
+    inner: BasisType,
+}
+
+/// Internal basis type (not exposed to C)
+pub(crate) enum BasisType {
+    LogisticFermionic(Arc<FiniteTempBasis<LogisticKernel, Fermionic>>),
+    LogisticBosonic(Arc<FiniteTempBasis<LogisticKernel, Bosonic>>),
+    RegularizedBoseFermionic(Arc<FiniteTempBasis<RegularizedBoseKernel, Fermionic>>),
+    RegularizedBoseBosonic(Arc<FiniteTempBasis<RegularizedBoseKernel, Bosonic>>),
 }
 
 /// Internal kernel type (not exposed to C)
@@ -100,6 +120,101 @@ impl spir_sve_result {
         let (u_part, s_part, v_part) = self.inner.part(Some(epsilon), max_size);
         let truncated = SVEResult::new(u_part, s_part, v_part, epsilon);
         Self::new(truncated)
+    }
+
+    /// Get inner SVEResult for basis construction
+    pub(crate) fn inner(&self) -> &Arc<SVEResult> {
+        &self.inner
+    }
+}
+
+impl spir_basis {
+    pub(crate) fn new_logistic_fermionic(basis: FiniteTempBasis<LogisticKernel, Fermionic>) -> Self {
+        Self {
+            inner: BasisType::LogisticFermionic(Arc::new(basis)),
+        }
+    }
+
+    pub(crate) fn new_logistic_bosonic(basis: FiniteTempBasis<LogisticKernel, Bosonic>) -> Self {
+        Self {
+            inner: BasisType::LogisticBosonic(Arc::new(basis)),
+        }
+    }
+
+    pub(crate) fn new_regularized_bose_fermionic(basis: FiniteTempBasis<RegularizedBoseKernel, Fermionic>) -> Self {
+        Self {
+            inner: BasisType::RegularizedBoseFermionic(Arc::new(basis)),
+        }
+    }
+
+    pub(crate) fn new_regularized_bose_bosonic(basis: FiniteTempBasis<RegularizedBoseKernel, Bosonic>) -> Self {
+        Self {
+            inner: BasisType::RegularizedBoseBosonic(Arc::new(basis)),
+        }
+    }
+
+    pub(crate) fn size(&self) -> usize {
+        match &self.inner {
+            BasisType::LogisticFermionic(b) => b.size(),
+            BasisType::LogisticBosonic(b) => b.size(),
+            BasisType::RegularizedBoseFermionic(b) => b.size(),
+            BasisType::RegularizedBoseBosonic(b) => b.size(),
+        }
+    }
+
+    pub(crate) fn svals(&self) -> Vec<f64> {
+        match &self.inner {
+            BasisType::LogisticFermionic(b) => b.s.clone(),
+            BasisType::LogisticBosonic(b) => b.s.clone(),
+            BasisType::RegularizedBoseFermionic(b) => b.s.clone(),
+            BasisType::RegularizedBoseBosonic(b) => b.s.clone(),
+        }
+    }
+
+    pub(crate) fn statistics(&self) -> i32 {
+        // 0 = Bosonic, 1 = Fermionic (matching libsparseir)
+        match &self.inner {
+            BasisType::LogisticFermionic(_) => 1,
+            BasisType::LogisticBosonic(_) => 0,
+            BasisType::RegularizedBoseFermionic(_) => 1,
+            BasisType::RegularizedBoseBosonic(_) => 0,
+        }
+    }
+
+    pub(crate) fn beta(&self) -> f64 {
+        match &self.inner {
+            BasisType::LogisticFermionic(b) => b.beta,
+            BasisType::LogisticBosonic(b) => b.beta,
+            BasisType::RegularizedBoseFermionic(b) => b.beta,
+            BasisType::RegularizedBoseBosonic(b) => b.beta,
+        }
+    }
+
+    pub(crate) fn wmax(&self) -> f64 {
+        match &self.inner {
+            BasisType::LogisticFermionic(b) => b.wmax(),
+            BasisType::LogisticBosonic(b) => b.wmax(),
+            BasisType::RegularizedBoseFermionic(b) => b.wmax(),
+            BasisType::RegularizedBoseBosonic(b) => b.wmax(),
+        }
+    }
+
+    pub(crate) fn default_tau_sampling_points(&self) -> Vec<f64> {
+        match &self.inner {
+            BasisType::LogisticFermionic(b) => b.default_tau_sampling_points(),
+            BasisType::LogisticBosonic(b) => b.default_tau_sampling_points(),
+            BasisType::RegularizedBoseFermionic(b) => b.default_tau_sampling_points(),
+            BasisType::RegularizedBoseBosonic(b) => b.default_tau_sampling_points(),
+        }
+    }
+
+    pub(crate) fn default_matsubara_sampling_points(&self, positive_only: bool) -> Vec<i64> {
+        match &self.inner {
+            BasisType::LogisticFermionic(b) => b.default_matsubara_sampling_points_i64(positive_only),
+            BasisType::LogisticBosonic(b) => b.default_matsubara_sampling_points_i64(positive_only),
+            BasisType::RegularizedBoseFermionic(b) => b.default_matsubara_sampling_points_i64(positive_only),
+            BasisType::RegularizedBoseBosonic(b) => b.default_matsubara_sampling_points_i64(positive_only),
+        }
     }
 }
 

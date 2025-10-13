@@ -6,10 +6,12 @@
 mod types;
 mod kernel;
 mod sve;
+mod basis;
 
 pub use types::*;
 pub use kernel::*;
 pub use sve::*;
+pub use basis::*;
 
 /// Error codes for C API (compatible with libsparseir)
 pub type StatusCode = libc::c_int;

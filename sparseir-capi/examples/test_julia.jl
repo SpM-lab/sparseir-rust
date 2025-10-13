@@ -255,6 +255,100 @@ ccall((:spir_sve_result_release, libpath), Cvoid, (Ptr{Cvoid},), sve_truncated)
 ccall((:spir_sve_result_release, libpath), Cvoid, (Ptr{Cvoid},), sve)
 kernel_release(kernel)
 
+# Test 6: Basis construction
+println("\n📝 Test 6: Basis Construction")
+kernel = kernel_logistic_new(10.0)
+
+# Create basis
+status_basis = Ref{Int32}(0)
+basis = ccall(
+    (:spir_basis_new, libpath),
+    Ptr{Cvoid},
+    (Int32, Float64, Float64, Float64, Ptr{Cvoid}, Ptr{Cvoid}, Int32, Ref{Int32}),
+    1,      # Fermionic
+    10.0,   # beta
+    1.0,    # omega_max
+    1e-6,   # epsilon
+    kernel, # kernel
+    C_NULL, # sve (will compute)
+    -1,     # max_size
+    status_basis
+)
+
+if basis == C_NULL || status_basis[] != SPIR_COMPUTATION_SUCCESS
+    error("Failed to create basis: status = $(status_basis[])")
+end
+
+# Get basis size
+basis_size = Ref{Int32}(0)
+status_size = ccall(
+    (:spir_basis_get_size, libpath),
+    Int32,
+    (Ptr{Cvoid}, Ref{Int32}),
+    basis, basis_size
+)
+
+if status_size != SPIR_COMPUTATION_SUCCESS
+    error("Failed to get basis size: status = $status_size")
+end
+
+println("✅ Created basis")
+println("   Size: $(basis_size[])")
+
+# Get statistics
+stats = Ref{Int32}(0)
+status_stats = ccall(
+    (:spir_basis_get_stats, libpath),
+    Int32,
+    (Ptr{Cvoid}, Ref{Int32}),
+    basis, stats
+)
+println("   Statistics: $(stats[] == 1 ? "Fermionic" : "Bosonic")")
+
+# Get tau sampling points
+n_taus = Ref{Int32}(0)
+ccall(
+    (:spir_basis_get_n_default_taus, libpath),
+    Int32,
+    (Ptr{Cvoid}, Ref{Int32}),
+    basis, n_taus
+)
+
+tau_points = Vector{Float64}(undef, n_taus[])
+ccall(
+    (:spir_basis_get_default_taus, libpath),
+    Int32,
+    (Ptr{Cvoid}, Ptr{Float64}),
+    basis, tau_points
+)
+
+println("   Tau sampling points: $(n_taus[])")
+println("   First 3: $(tau_points[1:min(3, end)])")
+
+# Get Matsubara sampling points
+n_matsus = Ref{Int32}(0)
+ccall(
+    (:spir_basis_get_n_default_matsus, libpath),
+    Int32,
+    (Ptr{Cvoid}, Bool, Ref{Int32}),
+    basis, true, n_matsus  # positive_only = true
+)
+
+matsu_points = Vector{Int64}(undef, n_matsus[])
+ccall(
+    (:spir_basis_get_default_matsus, libpath),
+    Int32,
+    (Ptr{Cvoid}, Bool, Ptr{Int64}),
+    basis, true, matsu_points
+)
+
+println("   Matsubara sampling points (positive): $(n_matsus[])")
+println("   First 3: $(matsu_points[1:min(3, end)])")
+
+# Cleanup
+ccall((:spir_basis_release, libpath), Cvoid, (Ptr{Cvoid},), basis)
+kernel_release(kernel)
+
 println("\n" * "=" ^ 50)
 println("✅ All tests passed!")
 

@@ -22,6 +22,11 @@
 typedef struct Arc_SVEResult Arc_SVEResult;
 
 /**
+ * Internal basis type (not exposed to C)
+ */
+typedef struct BasisType BasisType;
+
+/**
  * Internal kernel type (not exposed to C)
  */
 typedef struct KernelType KernelType;
@@ -30,6 +35,17 @@ typedef struct KernelType KernelType;
  * Error codes for C API (compatible with libsparseir)
  */
 typedef int StatusCode;
+
+/**
+ * Opaque basis type for C API (compatible with libsparseir)
+ *
+ * Represents a finite temperature basis (IR or DLR).
+ *
+ * Note: Named `spir_basis` to match libsparseir C++ API exactly.
+ */
+typedef struct spir_basis {
+    struct BasisType inner;
+} spir_basis;
 
 /**
  * Opaque kernel type for C API (compatible with libsparseir)
@@ -75,6 +91,154 @@ typedef struct spir_sve_result {
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
+
+/**
+ * Get default Matsubara sampling points
+ *
+ * # Arguments
+ * * `b` - Basis object
+ * * `positive_only` - If true, return only positive frequencies
+ * * `points` - Pre-allocated array to store Matsubara indices
+ *
+ * # Returns
+ * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_INVALID_ARGUMENT` (-6) if b or points is null
+ * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
+ */
+StatusCode spir_basis_get_default_matsus(const struct spir_basis *b,
+                                         bool positive_only,
+                                         int64_t *points);
+
+/**
+ * Get default tau sampling points
+ *
+ * # Arguments
+ * * `b` - Basis object
+ * * `points` - Pre-allocated array to store tau points
+ *
+ * # Returns
+ * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_INVALID_ARGUMENT` (-6) if b or points is null
+ * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
+ */
+StatusCode spir_basis_get_default_taus(const struct spir_basis *b, double *points);
+
+/**
+ * Get the number of default Matsubara sampling points
+ *
+ * # Arguments
+ * * `b` - Basis object
+ * * `positive_only` - If true, return only positive frequencies
+ * * `num_points` - Pointer to store the number of points
+ *
+ * # Returns
+ * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_INVALID_ARGUMENT` (-6) if b or num_points is null
+ * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
+ */
+StatusCode spir_basis_get_n_default_matsus(const struct spir_basis *b,
+                                           bool positive_only,
+                                           int *num_points);
+
+/**
+ * Get the number of default tau sampling points
+ *
+ * # Arguments
+ * * `b` - Basis object
+ * * `num_points` - Pointer to store the number of points
+ *
+ * # Returns
+ * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_INVALID_ARGUMENT` (-6) if b or num_points is null
+ * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
+ */
+StatusCode spir_basis_get_n_default_taus(const struct spir_basis *b, int *num_points);
+
+/**
+ * Get singular values (alias for spir_basis_get_svals for libsparseir compatibility)
+ */
+StatusCode spir_basis_get_singular_values(const struct spir_basis *b, double *svals);
+
+/**
+ * Get the number of basis functions
+ *
+ * # Arguments
+ * * `b` - Basis object
+ * * `size` - Pointer to store the size
+ *
+ * # Returns
+ * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_INVALID_ARGUMENT` (-6) if b or size is null
+ * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
+ */
+StatusCode spir_basis_get_size(const struct spir_basis *b, int *size);
+
+/**
+ * Get statistics type (Fermionic or Bosonic) of a basis
+ *
+ * # Arguments
+ * * `b` - Basis object
+ * * `statistics` - Pointer to store statistics (0 = Bosonic, 1 = Fermionic)
+ *
+ * # Returns
+ * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_INVALID_ARGUMENT` (-6) if b or statistics is null
+ * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
+ */
+StatusCode spir_basis_get_stats(const struct spir_basis *b, int *statistics);
+
+/**
+ * Get singular values from a basis
+ *
+ * # Arguments
+ * * `b` - Basis object
+ * * `svals` - Pre-allocated array to store singular values (size must be >= basis size)
+ *
+ * # Returns
+ * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_INVALID_ARGUMENT` (-6) if b or svals is null
+ * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
+ */
+StatusCode spir_basis_get_svals(const struct spir_basis *b, double *svals);
+
+/**
+ * Create a finite temperature basis (libsparseir compatible)
+ *
+ * # Arguments
+ * * `statistics` - 0 for Bosonic, 1 for Fermionic
+ * * `beta` - Inverse temperature (must be > 0)
+ * * `omega_max` - Frequency cutoff (must be > 0)
+ * * `epsilon` - Accuracy target (must be > 0)
+ * * `k` - Kernel object (can be NULL if sve is provided)
+ * * `sve` - Pre-computed SVE result (can be NULL, will compute if needed)
+ * * `max_size` - Maximum basis size (-1 for no limit)
+ * * `status` - Pointer to store status code
+ *
+ * # Returns
+ * * Pointer to basis object, or NULL on failure
+ *
+ * # Safety
+ * The caller must ensure `status` is a valid pointer.
+ */
+struct spir_basis *spir_basis_new(int statistics,
+                                  double beta,
+                                  double omega_max,
+                                  double epsilon,
+                                  const struct spir_kernel *k,
+                                  const struct spir_sve_result *sve,
+                                  int max_size,
+                                  StatusCode *status);
+
+/**
+ * Release a basis object
+ *
+ * # Arguments
+ * * `b` - Basis to release (can be NULL)
+ *
+ * # Safety
+ * After calling this function, the basis pointer is invalid and must not be used.
+ */
+void spir_basis_release(struct spir_basis *b);
 
 /**
  * Compute kernel value K(x, y)

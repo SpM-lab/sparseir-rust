@@ -11,6 +11,13 @@ use crate::polyfourier::PiecewiseLegendreFTVector;
 use crate::sve::{SVEResult, compute_sve, TworkType};
 use crate::traits::{StatisticsType, Fermionic, Bosonic};
 
+// Re-export Statistics enum for C-API
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Statistics {
+    Fermionic,
+    Bosonic,
+}
+
 /// Finite temperature basis for imaginary time/frequency Green's functions
 ///
 /// For a continuation kernel `K` from real frequencies `ω ∈ [-ωmax, ωmax]` to
@@ -73,6 +80,20 @@ where
     K: KernelProperties + CentrosymmKernel + Clone + 'static,
     S: StatisticsType,
 {
+    /// Get the frequency cutoff ωmax
+    pub fn wmax(&self) -> f64 {
+        self.kernel.lambda() / self.beta
+    }
+
+    /// Get default Matsubara sampling points as i64 indices (for C-API)
+    pub fn default_matsubara_sampling_points_i64(&self, positive_only: bool) -> Vec<i64>
+    where
+        S: 'static,
+    {
+        let freqs = self.default_matsubara_sampling_points(positive_only);
+        freqs.into_iter().map(|f| f.n()).collect()
+    }
+
     /// Create a new FiniteTempBasis
     ///
     /// # Arguments
