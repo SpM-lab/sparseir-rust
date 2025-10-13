@@ -25,7 +25,7 @@
 typedef struct KernelType KernelType;
 
 /**
- * Error codes for C API
+ * Error codes for C API (compatible with libsparseir)
  */
 typedef int SparseIRStatus;
 
@@ -39,13 +39,23 @@ typedef struct SparseIRKernel {
     struct KernelType inner;
 } SparseIRKernel;
 
-#define SPIR_SUCCESS 0
+#define SPIR_COMPUTATION_SUCCESS 0
 
-#define SPIR_ERROR_NULL_POINTER -1
+#define SPIR_GET_IMPL_FAILED -1
 
-#define SPIR_ERROR_INVALID_ARGUMENT -2
+#define SPIR_INVALID_DIMENSION -2
 
-#define SPIR_ERROR_PANIC -99
+#define SPIR_INPUT_DIMENSION_MISMATCH -3
+
+#define SPIR_OUTPUT_DIMENSION_MISMATCH -4
+
+#define SPIR_NOT_SUPPORTED -5
+
+#define SPIR_INVALID_ARGUMENT -6
+
+#define SPIR_INTERNAL_ERROR -7
+
+#define SPIR_SUCCESS SPIR_COMPUTATION_SUCCESS
 
 #ifdef __cplusplus
 extern "C" {
@@ -62,8 +72,8 @@ extern "C" {
  *
  * # Returns
  * * `SPIR_SUCCESS` on success
- * * `SPIR_ERROR_NULL_POINTER` if kernel or out is null
- * * `SPIR_ERROR_PANIC` if internal panic occurs
+ * * `SPIR_INVALID_ARGUMENT` if kernel or out is null
+ * * `SPIR_INTERNAL_ERROR` if internal panic occurs
  */
 SparseIRStatus spir_kernel_compute(const struct SparseIRKernel *kernel,
                                    double x,
@@ -75,57 +85,51 @@ SparseIRStatus spir_kernel_compute(const struct SparseIRKernel *kernel,
  *
  * # Arguments
  * * `kernel` - Kernel object
- * * `out` - Pointer to store the lambda value
+ * * `lambda_out` - Pointer to store the lambda value
  *
  * # Returns
  * * `SPIR_SUCCESS` on success
- * * `SPIR_ERROR_NULL_POINTER` if kernel or out is null
- * * `SPIR_ERROR_PANIC` if internal panic occurs
+ * * `SPIR_INVALID_ARGUMENT` if kernel or lambda_out is null
+ * * `SPIR_INTERNAL_ERROR` if internal panic occurs
  */
-SparseIRStatus spir_kernel_lambda(const struct SparseIRKernel *kernel, double *out);
+SparseIRStatus spir_kernel_lambda(const struct SparseIRKernel *kernel, double *lambda_out);
 
 /**
  * Create a new Logistic kernel
  *
  * # Arguments
  * * `lambda` - The kernel parameter Λ = β * ωmax (must be > 0)
- * * `out` - Pointer to store the created kernel
+ * * `status` - Pointer to store the status code
  *
  * # Returns
- * * `SPIR_SUCCESS` on success
- * * `SPIR_ERROR_NULL_POINTER` if out is null
- * * `SPIR_ERROR_INVALID_ARGUMENT` if lambda <= 0
- * * `SPIR_ERROR_PANIC` if internal panic occurs
+ * * Pointer to the newly created kernel object, or NULL if creation fails
  *
  * # Safety
- * The caller must ensure `out` is a valid pointer.
+ * The caller must ensure `status` is a valid pointer.
  *
  * # Example (C)
  * ```c
- * SparseIRKernel* kernel = NULL;
- * int status = spir_kernel_logistic_new(10.0, &kernel);
- * if (status == SPIR_SUCCESS) {
+ * int status;
+ * SparseIRKernel* kernel = spir_kernel_logistic_new(10.0, &status);
+ * if (kernel != NULL) {
  *     // Use kernel...
  *     spir_kernel_release(kernel);
  * }
  * ```
  */
-SparseIRStatus spir_kernel_logistic_new(double lambda, struct SparseIRKernel **out);
+struct SparseIRKernel *spir_kernel_logistic_new(double lambda, SparseIRStatus *status);
 
 /**
  * Create a new RegularizedBose kernel
  *
  * # Arguments
  * * `lambda` - The kernel parameter Λ = β * ωmax (must be > 0)
- * * `out` - Pointer to store the created kernel
+ * * `status` - Pointer to store the status code
  *
  * # Returns
- * * `SPIR_SUCCESS` on success
- * * `SPIR_ERROR_NULL_POINTER` if out is null
- * * `SPIR_ERROR_INVALID_ARGUMENT` if lambda <= 0
- * * `SPIR_ERROR_PANIC` if internal panic occurs
+ * * Pointer to the newly created kernel object, or NULL if creation fails
  */
-SparseIRStatus spir_kernel_regularized_bose_new(double lambda, struct SparseIRKernel **out);
+struct SparseIRKernel *spir_kernel_regularized_bose_new(double lambda, SparseIRStatus *status);
 
 /**
  * Release a kernel object

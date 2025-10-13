@@ -10,11 +10,18 @@ const libpath = "../target/debug/libsparseir_capi.dylib"  # macOS
 # const libpath = "../target/debug/libsparseir_capi.so"   # Linux
 # const libpath = "../target/debug/sparseir_capi.dll"     # Windows
 
-# Error codes
-const SPIR_SUCCESS = Int32(0)
-const SPIR_ERROR_NULL_POINTER = Int32(-1)
-const SPIR_ERROR_INVALID_ARGUMENT = Int32(-2)
-const SPIR_ERROR_PANIC = Int32(-99)
+# Error codes (compatible with libsparseir)
+const SPIR_COMPUTATION_SUCCESS = Int32(0)
+const SPIR_GET_IMPL_FAILED = Int32(-1)
+const SPIR_INVALID_DIMENSION = Int32(-2)
+const SPIR_INPUT_DIMENSION_MISMATCH = Int32(-3)
+const SPIR_OUTPUT_DIMENSION_MISMATCH = Int32(-4)
+const SPIR_NOT_SUPPORTED = Int32(-5)
+const SPIR_INVALID_ARGUMENT = Int32(-6)
+const SPIR_INTERNAL_ERROR = Int32(-7)
+
+# Aliases
+const SPIR_SUCCESS = SPIR_COMPUTATION_SUCCESS
 
 # Opaque type
 mutable struct SparseIRKernel end
@@ -23,38 +30,38 @@ mutable struct SparseIRKernel end
 Create a Logistic kernel
 """
 function kernel_logistic_new(lambda::Float64)
-    kernel_ptr = Ref{Ptr{SparseIRKernel}}()
-    status = ccall(
+    status = Ref{Int32}(0)
+    kernel = ccall(
         (:spir_kernel_logistic_new, libpath),
-        Int32,
-        (Float64, Ref{Ptr{SparseIRKernel}}),
-        lambda, kernel_ptr
+        Ptr{SparseIRKernel},
+        (Float64, Ref{Int32}),
+        lambda, status
     )
     
-    if status != SPIR_SUCCESS
-        error("Failed to create kernel: status = $status")
+    if kernel == C_NULL
+        error("Failed to create kernel: status = $(status[])")
     end
     
-    return kernel_ptr[]
+    return kernel
 end
 
 """
 Create a RegularizedBose kernel
 """
 function kernel_regularized_bose_new(lambda::Float64)
-    kernel_ptr = Ref{Ptr{SparseIRKernel}}()
-    status = ccall(
+    status = Ref{Int32}(0)
+    kernel = ccall(
         (:spir_kernel_regularized_bose_new, libpath),
-        Int32,
-        (Float64, Ref{Ptr{SparseIRKernel}}),
-        lambda, kernel_ptr
+        Ptr{SparseIRKernel},
+        (Float64, Ref{Int32}),
+        lambda, status
     )
     
-    if status != SPIR_SUCCESS
-        error("Failed to create kernel: status = $status")
+    if kernel == C_NULL
+        error("Failed to create kernel: status = $(status[])")
     end
     
-    return kernel_ptr[]
+    return kernel
 end
 
 """
