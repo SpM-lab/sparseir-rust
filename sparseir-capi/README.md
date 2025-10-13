@@ -1,0 +1,153 @@
+# SparseIR C-API
+
+C-compatible interface to the SparseIR Rust library.
+
+## Overview
+
+This crate provides a C API for the SparseIR library, enabling usage from languages like:
+- Julia ✅ (tested)
+- Python (via ctypes/cffi)
+- Fortran (via ISO_C_BINDING)
+- C/C++
+
+## Features
+
+### Currently Implemented ✅
+
+- **Kernel API** (5 functions)
+  - `spir_kernel_logistic_new()` - Create LogisticKernel
+  - `spir_kernel_regularized_bose_new()` - Create RegularizedBoseKernel
+  - `spir_kernel_release()` - Free kernel
+  - `spir_kernel_lambda()` - Get λ parameter
+  - `spir_kernel_compute()` - Compute K(x, y)
+
+### Error Handling 🛡️
+
+All C-API functions use `catch_unwind()` to prevent panics from crossing the FFI boundary:
+- Returns error codes instead of panicking
+- Process remains stable even on internal errors
+- Safe for production use
+
+## Building
+
+```bash
+# Build shared library (.dylib on macOS, .so on Linux, .dll on Windows)
+cargo build --release
+
+# Run tests
+cargo test
+```
+
+## Usage Examples
+
+### Julia
+
+```julia
+# Load library
+const lib = "../target/release/libsparseir_capi.dylib"
+
+# Create kernel
+kernel_ptr = Ref{Ptr{Cvoid}}()
+status = ccall((:spir_kernel_logistic_new, lib), 
+               Int32, (Float64, Ref{Ptr{Cvoid}}), 
+               10.0, kernel_ptr)
+
+# Compute kernel value
+result = Ref{Float64}()
+status = ccall((:spir_kernel_compute, lib),
+               Int32, (Ptr{Cvoid}, Float64, Float64, Ref{Float64}),
+               kernel_ptr[], 0.5, 0.5, result)
+
+println("K(0.5, 0.5) = ", result[])
+
+# Release
+ccall((:spir_kernel_release, lib), Cvoid, (Ptr{Cvoid},), kernel_ptr[])
+```
+
+See `examples/test_julia.jl` for a complete example.
+
+### C
+
+```c
+#include "sparseir_capi.h"
+#include <stdio.h>
+
+int main() {
+    SparseIRKernel* kernel = NULL;
+    int status = spir_kernel_logistic_new(10.0, &kernel);
+    
+    if (status != SPIR_SUCCESS) {
+        fprintf(stderr, "Failed to create kernel\n");
+        return 1;
+    }
+    
+    double result;
+    status = spir_kernel_compute(kernel, 0.5, 0.5, &result);
+    printf("K(0.5, 0.5) = %f\n", result);
+    
+    spir_kernel_release(kernel);
+    return 0;
+}
+```
+
+## Testing
+
+Run the Julia example:
+```bash
+cd examples
+julia test_julia.jl
+```
+
+## Memory Management
+
+All objects returned by `*_new()` functions **must** be released with their corresponding `*_release()` function:
+- `spir_kernel_release()`
+- (more to come: `spir_basis_release()`, etc.)
+
+## Error Codes
+
+| Code | Name | Description |
+|------|------|-------------|
+| `0` | `SPIR_SUCCESS` | Operation succeeded |
+| `-1` | `SPIR_ERROR_NULL_POINTER` | NULL pointer argument |
+| `-2` | `SPIR_ERROR_INVALID_ARGUMENT` | Invalid argument value |
+| `-99` | `SPIR_ERROR_PANIC` | Internal panic (bug) |
+
+## Implementation Status
+
+- [x] Kernel API (5/5 functions) ✅
+- [ ] SVE API (0/10 functions)
+- [ ] Basis API (0/15 functions)
+- [ ] Sampling API (0/15 functions)
+- [ ] DLR API (0/8 functions)
+
+See [C-API_IMPLEMENTATION_PLAN.md](../C-API_IMPLEMENTATION_PLAN.md) for details.
+
+## Architecture
+
+```
+┌──────────────┐
+│ Julia/Python │  ← High-level languages
+└──────┬───────┘
+       │ ccall/ctypes
+┌──────▼───────┐
+│   C-API      │  ← This crate (FFI boundary)
+│ catch_unwind │  ← Panic protection
+└──────┬───────┘
+       │
+┌──────▼───────┐
+│ sparseir-rust│  ← Core Rust implementation
+└──────────────┘
+```
+
+### Safety Features
+
+1. **Input Validation** - User errors return error codes (don't panic)
+2. **Panic Catching** - `catch_unwind()` at FFI boundary prevents UB
+3. **Arc-based Sharing** - Efficient memory management for large objects
+4. **Type Safety** - Opaque pointers hide implementation details
+
+## License
+
+MIT
+

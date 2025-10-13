@@ -1,0 +1,27 @@
+[package]
+name = "sparseir-capi"
+version = "0.1.0"
+edition = "2021"
+authors = ["SparseIR Contributors"]
+description = "C API for SparseIR Rust implementation"
+license = "MIT"
+
+[lib]
+name = "sparseir_capi"
+# Build both dynamic and static libraries
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+# Main SparseIR library
+sparseir-rust = { path = "../sparseir-rust" }
+
+# Error code type
+libc = "0.2"
+
+[profile.release]
+# Keep symbols for C API
+strip = false
+# Optimize for size and speed
+opt-level = 3
+lto = true
+codegen-units = 1
