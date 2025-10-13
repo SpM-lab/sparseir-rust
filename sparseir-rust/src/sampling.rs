@@ -101,13 +101,13 @@ where
     ///
     /// # Arguments
     /// * `basis` - Any basis implementing the `Basis` trait
-    /// * `sampling_points` - Custom sampling points in τ ∈ [0, β]
+    /// * `sampling_points` - Custom sampling points in τ ∈ [-β, β]
     ///
     /// # Returns
     /// A new TauSampling object
     ///
     /// # Panics
-    /// Panics if `sampling_points` is empty or if any point is outside [0, β]
+    /// Panics if `sampling_points` is empty or if any point is outside [-β, β]
     pub fn with_sampling_points(
         basis: &impl crate::basis_trait::Basis<S>,
         sampling_points: Vec<f64>,

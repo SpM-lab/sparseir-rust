@@ -45,10 +45,11 @@ fn test_default_tau_sampling_points_conditioning() {
     let tau_points = basis.default_tau_sampling_points();
     println!("Number of sampling points: {}", tau_points.len());
     
-    // Verify range: [0, beta]
+    // Verify range: [-beta/2, beta/2] (matches C++ implementation)
+    let beta_half = beta / 2.0;
     for &tau in &tau_points {
-        assert!(tau >= 0.0 && tau <= beta, 
-                "tau={} out of range [0, {}]", tau, beta);
+        assert!(tau >= -beta_half && tau <= beta_half, 
+                "tau={} out of range [{}, {}]", tau, -beta_half, beta_half);
     }
     
     // Verify sorted (monotonically increasing)
@@ -58,35 +59,26 @@ fn test_default_tau_sampling_points_conditioning() {
                 i, tau_points[i], i-1, tau_points[i-1]);
     }
     
-    // Verify symmetry around beta/2
-    // Points should come in pairs: tau and (beta - tau)
-    let mid = beta / 2.0;
+    // Verify symmetry around 0 (for range [-beta/2, beta/2])
+    // Points should come in pairs: tau and -tau
     let tol = 1e-10;
     
     for &tau in &tau_points {
-        let tau_reflected = beta - tau;
+        let tau_reflected = -tau;
         let has_pair = tau_points.iter()
             .any(|&t| (t - tau_reflected).abs() < tol);
-        assert!(has_pair || (tau - mid).abs() < tol,
-                "tau={} lacks symmetric pair around beta/2", tau);
+        assert!(has_pair || tau.abs() < tol,
+                "tau={} lacks symmetric pair around 0", tau);
     }
-    println!("✅ Sampling points are symmetric around beta/2");
+    println!("✅ Sampling points are symmetric around 0");
     
     // Evaluate sampling matrix: matrix[i,l] = u_l(tau_i)
-    use mdarray::DTensor;
+    // Use the Basis trait method which handles tau normalization
+    use sparseir_rust::basis_trait::Basis;
+    let matrix = basis.evaluate_tau(&tau_points);
     
     let num_points = tau_points.len();
     let basis_size = basis.size();
-    let mut matrix = DTensor::<f64, 2>::from_elem([num_points, basis_size], 0.0);
-    
-    for i in 0..num_points {
-        let tau = tau_points[i];
-        let u_vals = basis.u.evaluate_at_many(&[tau]);
-        for l in 0..basis_size {
-            matrix[[i, l]] = u_vals[[l, 0]];
-        }
-    }
-    
     println!("Sampling matrix shape: {}x{}", num_points, basis_size);
     
     // Compute SVD using mdarray-linalg (Faer backend)

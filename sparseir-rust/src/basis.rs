@@ -227,7 +227,7 @@ where
     ///
     /// C++ implementation: libsparseir/include/sparseir/basis.hpp:229-270
     ///
-    /// Returns sampling points in imaginary time τ ∈ [0, β].
+    /// Returns sampling points in imaginary time τ ∈ [-β/2, β/2].
     pub fn default_tau_sampling_points(&self) -> Vec<f64> {
         let sz = self.size();
         
@@ -268,26 +268,20 @@ where
         // C++: std::sort(smpl_taus.data(), smpl_taus.data() + smpl_taus.size());
         smpl_taus.sort_by(|a, b| a.partial_cmp(b).unwrap());
         
-        // C++: Convert negative values to [beta/2, beta]
-        //      for (auto i = 0; i < smpl_taus.size(); ++i) {
-        //          if (smpl_taus(i) < 0.0) {
-        //              smpl_taus(i) += this->beta;
-        //          }
-        //      }
-        for tau in &mut smpl_taus {
-            if *tau < 0.0 {
-                *tau += self.beta;
+        // C++: Check if the number of sampling points is even
+        if smpl_taus.len() % 2 != 0 {
+            panic!("The number of tau sampling points is odd!");
+        }
+        
+        // C++: Check if tau = 0 is not in the sampling points
+        for &tau in &smpl_taus {
+            if tau.abs() < 1e-10 {
+                eprintln!("Warning: tau = 0 is in the sampling points (absolute error: {})", tau.abs());
             }
         }
         
-        // C++: Note - C++ implementation at line 262-268 shows that after
-        //      converting negative values, the array is NOT re-sorted.
-        //      However, this means some points may be out of order.
-        //      Let's check the C++ code again...
-        //
-        // Re-sort after conversion to ensure monotonic order
-        smpl_taus.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        
+        // C++ implementation returns tau in [-beta/2, beta/2] (does NOT convert to [0, beta])
+        // This matches the natural range for centrosymmetric kernels
         smpl_taus
     }
     
@@ -427,16 +421,24 @@ where
     
     fn evaluate_tau(&self, tau: &[f64]) -> mdarray::DTensor<f64, 2> {
         use mdarray::DTensor;
+        use crate::taufuncs::normalize_tau;
         
         let n_points = tau.len();
         let basis_size = self.size();
         
         // Evaluate each basis function at all tau points
         // Result: matrix[i, l] = u_l(tau[i])
+        // Note: tau can be in [-beta, beta] and will be normalized to [0, beta]
+        // self.u polynomials are already scaled to tau ∈ [0, beta] domain
         DTensor::<f64, 2>::from_fn([n_points, basis_size], |idx| {
             let i = idx[0];  // tau index
             let l = idx[1];  // basis function index
-            self.u[l].evaluate(tau[i])
+            
+            // Normalize tau to [0, beta] with statistics-dependent sign
+            let (tau_norm, sign) = normalize_tau::<S>(tau[i], self.beta);
+            
+            // Evaluate basis function directly (u polynomials are in tau domain)
+            sign * self.u[l].evaluate(tau_norm)
         })
     }
     
