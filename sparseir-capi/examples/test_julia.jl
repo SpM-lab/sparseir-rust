@@ -176,6 +176,85 @@ catch e
     println("✅ Correctly caught error: $e")
 end
 
+# Test 5: SVE computation
+println("\n📝 Test 5: SVE Computation")
+kernel = kernel_logistic_new(10.0)
+
+# Compute SVE
+status = Ref{Int32}(0)
+sve = ccall(
+    (:spir_sve_result_new, libpath),
+    Ptr{Cvoid},
+    (Ptr{Cvoid}, Float64, Float64, Int32, Int32, Int32, Ref{Int32}),
+    kernel, 1e-6, -1.0, -1, -1, -1, status
+)
+
+if sve == C_NULL || status[] != SPIR_COMPUTATION_SUCCESS
+    error("Failed to compute SVE: status = $(status[])")
+end
+
+# Get SVE size
+size = Ref{Int32}(0)
+status_size = ccall(
+    (:spir_sve_result_get_size, libpath),
+    Int32,
+    (Ptr{Cvoid}, Ref{Int32}),
+    sve, size
+)
+
+if status_size != SPIR_COMPUTATION_SUCCESS
+    error("Failed to get SVE size: status = $status_size")
+end
+
+println("✅ Computed SVE")
+println("   Size: $(size[])")
+
+# Get singular values
+svals = Vector{Float64}(undef, size[])
+status_svals = ccall(
+    (:spir_sve_result_get_svals, libpath),
+    Int32,
+    (Ptr{Cvoid}, Ptr{Float64}),
+    sve, svals
+)
+
+if status_svals != SPIR_COMPUTATION_SUCCESS
+    error("Failed to get singular values: status = $status_svals")
+end
+
+println("   First 5 singular values:")
+for i in 1:min(5, length(svals))
+    println("     s[$i] = $(svals[i])")
+end
+
+# Test truncation
+status_truncate = Ref{Int32}(0)
+sve_truncated = ccall(
+    (:spir_sve_result_truncate, libpath),
+    Ptr{Cvoid},
+    (Ptr{Cvoid}, Float64, Int32, Ref{Int32}),
+    sve, 1e-4, div(size[], 2), status_truncate
+)
+
+if sve_truncated == C_NULL || status_truncate[] != SPIR_COMPUTATION_SUCCESS
+    error("Failed to truncate SVE: status = $(status_truncate[])")
+end
+
+size_truncated = Ref{Int32}(0)
+ccall(
+    (:spir_sve_result_get_size, libpath),
+    Int32,
+    (Ptr{Cvoid}, Ref{Int32}),
+    sve_truncated, size_truncated
+)
+
+println("   Truncated size: $(size_truncated[])")
+
+# Cleanup
+ccall((:spir_sve_result_release, libpath), Cvoid, (Ptr{Cvoid},), sve_truncated)
+ccall((:spir_sve_result_release, libpath), Cvoid, (Ptr{Cvoid},), sve)
+kernel_release(kernel)
+
 println("\n" * "=" ^ 50)
 println("✅ All tests passed!")
 

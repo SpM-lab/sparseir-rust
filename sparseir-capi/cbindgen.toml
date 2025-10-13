@@ -43,6 +43,7 @@ include_version = true
 # Include these items
 include = [
     "spir_kernel",
+    "spir_sve_result",
     "StatusCode",
 ]
 

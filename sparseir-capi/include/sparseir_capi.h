@@ -19,6 +19,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+typedef struct Arc_SVEResult Arc_SVEResult;
+
 /**
  * Internal kernel type (not exposed to C)
  */
@@ -40,6 +42,17 @@ typedef int StatusCode;
 typedef struct spir_kernel {
     struct KernelType inner;
 } spir_kernel;
+
+/**
+ * Opaque SVE result type for C API (compatible with libsparseir)
+ *
+ * Contains singular values and singular functions from SVE computation.
+ *
+ * Note: Named `spir_sve_result` to match libsparseir C++ API exactly.
+ */
+typedef struct spir_sve_result {
+    struct Arc_SVEResult inner;
+} spir_sve_result;
 
 #define SPIR_COMPUTATION_SUCCESS 0
 
@@ -140,6 +153,95 @@ struct spir_kernel *spir_logistic_kernel_new(double lambda, StatusCode *status);
  * * Pointer to the newly created kernel object, or NULL if creation fails
  */
 struct spir_kernel *spir_reg_bose_kernel_new(double lambda, StatusCode *status);
+
+/**
+ * Get the number of singular values in an SVE result
+ *
+ * # Arguments
+ * * `sve` - SVE result object
+ * * `size` - Pointer to store the size
+ *
+ * # Returns
+ * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_INVALID_ARGUMENT` (-6) if sve or size is null
+ * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
+ */
+StatusCode spir_sve_result_get_size(const struct spir_sve_result *sve, int *size);
+
+/**
+ * Get singular values from an SVE result
+ *
+ * # Arguments
+ * * `sve` - SVE result object
+ * * `svals` - Pre-allocated array to store singular values (size must be >= result size)
+ *
+ * # Returns
+ * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_INVALID_ARGUMENT` (-6) if sve or svals is null
+ * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
+ */
+StatusCode spir_sve_result_get_svals(const struct spir_sve_result *sve, double *svals);
+
+/**
+ * Compute Singular Value Expansion (SVE) of a kernel (libsparseir compatible)
+ *
+ * # Arguments
+ * * `k` - Kernel object
+ * * `epsilon` - Accuracy target for the basis
+ * * `cutoff` - Cutoff value for singular values (-1 for default: 2*sqrt(machine_epsilon))
+ * * `lmax` - Maximum number of Legendre polynomials (currently ignored, auto-determined)
+ * * `n_gauss` - Number of Gauss points for integration (currently ignored, auto-determined)
+ * * `Twork` - Working precision: 0=Float64, 1=Float64x2, -1=Auto
+ * * `status` - Pointer to store status code
+ *
+ * # Returns
+ * * Pointer to SVE result, or NULL on failure
+ *
+ * # Safety
+ * The caller must ensure `status` is a valid pointer.
+ *
+ * # Note
+ * Parameters `lmax` and `n_gauss` are accepted for libsparseir compatibility but
+ * currently ignored. The Rust implementation automatically determines optimal values.
+ */
+struct spir_sve_result *spir_sve_result_new(const struct spir_kernel *k,
+                                            double epsilon,
+                                            double cutoff,
+                                            int _lmax,
+                                            int _n_gauss,
+                                            int twork,
+                                            StatusCode *status);
+
+/**
+ * Release an SVE result object
+ *
+ * # Arguments
+ * * `sve` - SVE result to release (can be NULL)
+ *
+ * # Safety
+ * After calling this function, the sve pointer is invalid and must not be used.
+ */
+void spir_sve_result_release(struct spir_sve_result *sve);
+
+/**
+ * Truncate an SVE result
+ *
+ * # Arguments
+ * * `sve` - SVE result object
+ * * `epsilon` - New accuracy target
+ * * `max_size` - Maximum number of singular values to keep (-1 for no limit)
+ * * `status` - Pointer to store status code
+ *
+ * # Returns
+ * * Pointer to new truncated SVE result, or NULL on failure
+ *
+ * # Safety
+ * The caller must ensure `status` is a valid pointer.
+ */
+struct spir_sve_result *spir_sve_result_truncate(const struct spir_sve_result *sve,
+                                                 double epsilon,
+                                                 int max_size,
+                                                 StatusCode *status);
 
 #ifdef __cplusplus
 }  // extern "C"
