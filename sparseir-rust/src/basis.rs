@@ -47,19 +47,23 @@ where
     pub beta: f64,
     
     /// Left singular functions on imaginary time axis τ ∈ [0, β]
-    pub u: PiecewiseLegendrePolyVector,
+    /// Arc for efficient sharing (large immutable data)
+    pub u: Arc<PiecewiseLegendrePolyVector>,
     
     /// Right singular functions on real frequency axis ω ∈ [-ωmax, ωmax]
-    pub v: PiecewiseLegendrePolyVector,
+    /// Arc for efficient sharing (large immutable data)
+    pub v: Arc<PiecewiseLegendrePolyVector>,
     
     /// Singular values
     pub s: Vec<f64>,
     
     /// Left singular functions on Matsubara frequency axis (Fourier transform of u)
-    pub uhat: PiecewiseLegendreFTVector<S>,
+    /// Arc for efficient sharing (large immutable data)
+    pub uhat: Arc<PiecewiseLegendreFTVector<S>>,
     
     /// Full uhat (before truncation to basis size)
-    pub uhat_full: PiecewiseLegendreFTVector<S>,
+    /// Arc for efficient sharing (large immutable data, used for Matsubara sampling)
+    pub uhat_full: Arc<PiecewiseLegendreFTVector<S>>,
     
     _phantom: std::marker::PhantomData<S>,
 }
@@ -193,11 +197,11 @@ where
             sve_result: Arc::new(sve_result),
             accuracy,
             beta,
-            u,
-            v,
+            u: Arc::new(u),
+            v: Arc::new(v),
             s,
-            uhat,
-            uhat_full,
+            uhat: Arc::new(uhat),
+            uhat_full: Arc::new(uhat_full),
             _phantom: std::marker::PhantomData,
         }
     }
