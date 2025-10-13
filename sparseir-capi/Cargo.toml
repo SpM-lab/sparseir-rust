@@ -18,6 +18,9 @@ sparseir-rust = { path = "../sparseir-rust" }
 # Error code type
 libc = "0.2"
 
+[build-dependencies]
+cbindgen = "0.27"
+
 [profile.release]
 # Keep symbols for C API
 strip = false

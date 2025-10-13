@@ -1,0 +1,7 @@
+# Generated header backups
+include/*.bak
+
+# Build artifacts
+target/
+Cargo.lock
+
