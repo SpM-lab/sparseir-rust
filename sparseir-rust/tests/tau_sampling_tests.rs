@@ -158,13 +158,11 @@ where
 }
 
 #[test]
-#[ignore] // TODO: RegularizedBoseKernel TauSampling requires higher precision (TwoFloat) for sampling points
 fn test_regularized_bose_evaluate_nd_real() {
     test_regularized_bose_evaluate_nd_roundtrip::<f64>();
 }
 
 #[test]
-#[ignore] // TODO: RegularizedBoseKernel TauSampling requires higher precision (TwoFloat) for sampling points
 fn test_regularized_bose_evaluate_nd_complex() {
     test_regularized_bose_evaluate_nd_roundtrip::<Complex<f64>>();
 }

@@ -270,6 +270,7 @@ where
         S: 'static,
     {
         let poles = basis.default_omega_sampling_points();
+        assert!(basis.size() <= poles.len(), "The number of poles must be greater than or equal to the basis size");
         Self::with_poles(basis, poles)
     }
     

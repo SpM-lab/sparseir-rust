@@ -116,14 +116,14 @@ where
         S: 'static,
     {
         assert!(!sampling_points.is_empty(), "No sampling points given");
+        assert!(basis.size() <= sampling_points.len(), "The number of sampling points must be greater than or equal to the basis size");
         
         let beta = basis.beta();
         for &tau in &sampling_points {
             assert!(
-                tau >= 0.0 && tau <= beta,
-                "Sampling point τ={} is outside [0, β={}]",
-                tau,
-                beta
+                tau >= -beta && tau <= beta,
+                "Sampling point τ={} is outside [-β, β]",
+                tau
             );
         }
         

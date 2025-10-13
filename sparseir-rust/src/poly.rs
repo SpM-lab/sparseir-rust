@@ -372,8 +372,9 @@ impl PiecewiseLegendrePoly {
 
     /// Find roots of the polynomial using C++ compatible algorithm
     pub fn roots(&self) -> Vec<f64> {
-        // Refine the grid by factor of 2 (like C++ implementation)
-        let refined_grid = self.refine_grid(&self.knots, 2);
+        // Refine the grid by factor of 4 for better root finding
+        // (C++ uses 2, but RegularizedBoseKernel needs finer resolution)
+        let refined_grid = self.refine_grid(&self.knots, 4);
 
         // Find all roots using the refined grid
         self.find_all_roots(&refined_grid)
