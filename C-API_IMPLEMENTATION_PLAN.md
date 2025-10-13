@@ -65,13 +65,22 @@ All opaque types use the `DECLARE_OPAQUE_TYPE` macro which generates:
 
 ### Phase 2: Opaque Type Infrastructure (Priority 2)
 
-**Strategy**: Use `Box` for ownership, `Arc` for shared ownership
+**Strategy**: Use `Arc` for all opaque type internals
+
+**Design Rationale**:
+- ✅ C-API objects are **immutable** (create once, use many times)
+- ✅ `Arc<T>` enforces **read-only access** (only `&T`, never `&mut T`)
+- ✅ **Safe sharing** between related objects (basis→kernel, sampling→basis)
+- ✅ **Any-order release** - Arc manages lifetimes automatically
+- ✅ **Thread-safe** - Atomic reference counting
 
 ```rust
 // types.rs
 
 use std::sync::Arc;
 use sparseir_rust::kernel::{LogisticKernel, RegularizedBoseKernel};
+use sparseir_rust::basis::FiniteTempBasis;
+use sparseir_rust::sampling::TauSampling;
 
 /// Opaque kernel type - can hold different kernel types
 pub enum KernelType {
@@ -81,10 +90,22 @@ pub enum KernelType {
 
 #[repr(C)]
 pub struct spir_kernel {
-    inner: Arc<KernelType>,
+    inner: Arc<KernelType>,  // Immutable, shareable
 }
 
-// Similar patterns for other opaque types
+#[repr(C)]
+pub struct spir_basis {
+    kernel: Arc<KernelType>,  // Share kernel reference
+    inner: Arc<BasisType>,    // Immutable basis data
+}
+
+#[repr(C)]
+pub struct spir_sampling {
+    basis: Arc<BasisType>,    // Share basis reference
+    inner: Arc<SamplingType>, // Immutable sampling data
+}
+
+// All opaque types follow this pattern
 ```
 
 ### Phase 3: Function Categories (Priority by dependency)
@@ -188,26 +209,62 @@ pub struct spir_kernel {
 
 ### 1. Memory Management Pattern
 
+**Design Principle**: Use `Arc` for all opaque types
+- C-API objects are **immutable by design** (created once, never modified)
+- `Arc` provides **read-only access** (no `&mut T`)
+- Multiple references are **thread-safe** and **memory-safe**
+- Automatic cleanup when last reference is dropped
+
 ```rust
-// Ownership: Box for single ownership
+// Standard pattern for all opaque types
+pub struct spir_kernel {
+    inner: Arc<KernelType>,  // Immutable, shareable
+}
+
 #[no_mangle]
 pub extern "C" fn spir_kernel_release(ptr: *mut spir_kernel) {
     if !ptr.is_null() {
-        unsafe { drop(Box::from_raw(ptr)); }
+        unsafe { drop(Box::from_raw(ptr)); }  // Decrement Arc ref count
     }
 }
 
-// Sharing: Arc for shared ownership
 #[no_mangle]
 pub extern "C" fn spir_kernel_clone(ptr: *const spir_kernel) -> *mut spir_kernel {
     if ptr.is_null() { return std::ptr::null_mut(); }
     unsafe {
         let kernel = &*ptr;
         Box::into_raw(Box::new(spir_kernel {
-            inner: Arc::clone(&kernel.inner),
+            inner: Arc::clone(&kernel.inner),  // Increment Arc ref count
         }))
     }
 }
+
+// Benefits:
+// ✅ Safe sharing between basis, sampling, dlr objects
+// ✅ No dangling pointers (Arc keeps data alive)
+// ✅ Thread-safe (Atomic reference counting)
+// ✅ Read-only guarantee (Arc<T> only gives &T, not &mut T)
+```
+
+**Real-world example**:
+```rust
+// User's C code:
+kernel = spir_logistic_kernel_new(10.0, &status);
+basis = spir_basis_new(kernel, 1.0, 1e-6, &status);
+tau_sampling = spir_tau_sampling_new(basis, &status);
+matsu_sampling = spir_matsu_sampling_new(basis, true, &status);
+
+// Release kernel - basis still holds Arc reference
+spir_kernel_release(kernel);  // Arc refcount: 2→1, kernel still alive!
+
+// Use samplings (kernel data still valid via basis → kernel chain)
+spir_sampling_eval(tau_sampling, ...);    // ✅ Safe!
+spir_sampling_eval(matsu_sampling, ...);  // ✅ Safe!
+
+// Release in any order - Arc manages lifetime
+spir_sampling_release(tau_sampling);      // Arc refcount decrements
+spir_basis_release(basis);                // Arc refcount decrements
+spir_sampling_release(matsu_sampling);    // Last reference → free memory
 ```
 
 ### 2. Error Handling Pattern
