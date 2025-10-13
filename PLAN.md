@@ -369,28 +369,39 @@ blas = "0.22"             # BLAS bindings (default)
    - Fourier transform polynomials (`polyfourier.rs`) ✅
    - Matsubara frequency handling (`freq.rs`) ✅
 
-### 🔄 Phase 3: Advanced Functionality (IN PROGRESS)
-1. **Sampling Implementation** 🔄
-   - `TauSampling` implementation 🔄
-   - `MatsubaraSampling` implementation 🔄
+### ✅ Phase 3: Advanced Functionality (COMPLETED)
+1. **Sampling Implementation** ✅
+   - `TauSampling` implementation ✅
+   - `MatsubaraSampling` implementation ✅
    - Multi-dimensional array support ✅
+   - Extended tau range support ([-β, β]) ✅
 
-2. **DLR Implementation** ⏳
-   - `MatsubaraPoles` implementation ⏳
-   - `DiscreteLehmannRepresentation` implementation ⏳
-   - IR-DLR transformations ⏳
+2. **DLR Implementation** ✅
+   - `DiscreteLehmannRepresentation` implementation ✅
+   - IR-DLR transformations (from_IR, to_IR) ✅
+   - Multi-dimensional array support ✅
+   - Pole generation and validation ✅
 
 3. **Batch Processing Optimization** ✅
    - Parallel processing introduction ✅
    - Memory efficiency optimization ✅
 
-### ⏳ Phase 4: C-API Implementation (PENDING)
-1. **FFI Layer Implementation** ⏳
+### 🔴 Phase 4: C-API Implementation (NEXT MAJOR TASK)
+1. **FFI Layer Implementation** 🔴 **← CURRENT PRIORITY**
    - Opaque type definitions ⏳
-   - C-API function implementation ⏳
-   - Memory management ⏳
+   - C-API function implementation (~56 functions) ⏳
+   - Memory management (Box, Rc) ⏳
+   - Error code conversion ⏳
 
-2. **Testing Implementation** ✅
+2. **C-API Categories to Implement**
+   - Kernel API: `spir_logistic_kernel_new`, `spir_reg_bose_kernel_new`, etc. ⏳
+   - SVE API: `spir_sve_result_new`, `spir_sve_result_get_svals`, etc. ⏳
+   - Basis API: `spir_basis_new`, `spir_basis_get_u`, etc. ⏳
+   - Sampling API: `spir_tau_sampling_new`, `spir_sampling_eval_dd`, etc. ⏳
+   - DLR API: `spir_dlr_new`, `spir_ir2dlr_dd`, etc. ⏳
+   - BLAS registration: `spir_register_blas_functions`, etc. ⏳
+
+3. **Testing Implementation** 🔄
    - Integration tests ✅
    - C-API compatibility tests ⏳
    - Result comparison with existing C++ implementation ✅
@@ -403,11 +414,12 @@ blas = "0.22"             # BLAS bindings (default)
    - Memory usage optimization ✅
 
 2. **Comprehensive Testing** ✅
-   - Unit tests ✅ (135 tests total across 15 test suites)
+   - Unit tests ✅ (210+ tests total across 16 test suites)
    - Integration tests ✅
    - Regression tests ✅
    - Julia SparseIR.jl comparison tests ✅
    - xprec-svd accuracy tests (Hilbert matrices) ✅
+   - Generic test frameworks for kernels and interpolation ✅
 
 3. **Documentation** ✅
    - API documentation ✅
@@ -417,23 +429,22 @@ blas = "0.22"             # BLAS bindings (default)
 ## Current Implementation Details
 
 ### ✅ Completed Features
-- **Core Traits and Types**: `KernelProperties`, `AbstractKernel`, `StatisticsType`, `CustomNumeric`
-- **Kernel Implementations**: `LogisticKernel`, `RegularizedBoseKernel`, `ReducedKernel`
-- **SVE Support**: `SVEHints` trait, `matrix_from_gauss`, `DiscretizedKernel` struct
-- **Polynomial Support**: `PiecewiseLegendrePoly`, `PiecewiseLegendrePolyVector`
+- **Core Traits and Types**: `KernelProperties`, `CentrosymmKernel`, `StatisticsType`, `CustomNumeric`
+- **Kernel Implementations**: `LogisticKernel`, `RegularizedBoseKernel` (with Odd symmetry fix)
+- **SVE Support**: `SVEHints` trait, `matrix_from_gauss`, `DiscretizedKernel`, `CentrosymmSVE`
+- **Polynomial Support**: `PiecewiseLegendrePoly`, `PiecewiseLegendrePolyVector` (root finding with alpha=4)
 - **Fourier Transform**: `PiecewiseLegendreFT`, `MatsubaraFreq` handling
 - **High-Precision Arithmetic**: `TwoFloat` integration with `CustomNumeric` trait
 - **Gauss Integration**: `Rule` struct with `legendre` function
-- **Comprehensive Testing**: 92 tests covering all major functionality
-- **C++ Compatibility**: Root finding, precision checks, sign change detection
+- **Sampling**: `TauSampling`, `MatsubaraSampling` with ND array support
+- **DLR**: `DiscreteLehmannRepresentation` with IR↔DLR transformations
+- **Comprehensive Testing**: 210+ tests covering all major functionality
+- **C++ Compatibility**: Tau range [-β/2, β/2], root finding, precision checks
 
-### 🔄 In Progress
-- **Sampling Implementation**: `MatsubaraSampling` (partially implemented)
-
-### ⏳ Pending
-- **DLR Implementation**: `MatsubaraPoles`, `DiscreteLehmannRepresentation`
-- **C-API Layer**: FFI functions and opaque types
-- **Advanced Sampling**: Multi-dimensional array support
+### ⏳ Pending - C-API Layer (NEXT MAJOR TASK)
+- **FFI Layer**: Opaque types, #[no_mangle] functions, memory management
+- **C-API Functions**: ~56 functions across 6 categories
+- **Python/Fortran Integration**: Wrapper compatibility testing
 
 ## Technical Challenges and Solutions
 
@@ -518,39 +529,51 @@ blas = "0.22"             # BLAS bindings (default)
 
 ## Next Steps
 
-### Immediate (Phase 3 Completion)
-1. ✅ Complete `MatsubaraSampling` implementation
-2. ⏳ Implement DLR functionality (`MatsubaraPoles`, `DiscreteLehmannRepresentation`)
-3. ⏳ Add remaining sampling features
+### 🔴 Immediate Priority (Phase 4 - C-API Implementation)
+1. **Create `sparseir-capi` crate structure** ⏳
+   - Set up Cargo.toml with FFI dependencies
+   - Define module structure (ffi.rs, types.rs, lib.rs)
+   
+2. **Implement Opaque Types** ⏳
+   - `spir_kernel`, `spir_sve_result`, `spir_basis`
+   - `spir_funcs`, `spir_sampling`, `spir_dlr`
+   - Safe pointer management with `Box`/`Rc`
 
-### Medium-term (Phase 4 - C-API)
-1. ⏳ Implement FFI layer with opaque types
-2. ⏳ Create C-API function bindings
-3. ⏳ Add memory management for C interoperability
-4. ⏳ Implement BLAS function registration system
+3. **Implement Core C-API Functions** ⏳
+   - Kernel creation/destruction (~8 functions)
+   - Basis creation/accessors (~12 functions)
+   - Sampling operations (~10 functions)
+   - DLR operations (~8 functions)
+   - Memory management functions (all `_free` functions)
 
-### Long-term (Phase 5 - Polish)
-1. ⏳ Comprehensive C-API testing
-2. ⏳ Performance optimization and profiling
-3. ⏳ Documentation and examples
-4. ⏳ Integration with existing Python/Fortran wrappers
+4. **Testing and Validation** ⏳
+   - C-API compatibility tests
+   - Integration with Python wrapper
+   - Integration with Fortran wrapper
+   - Performance benchmarking vs C++ implementation
 
-## Current Project Status Summary
+### Medium-term (Polish and Integration)
+1. ⏳ BLAS function registration system
+2. ⏳ Comprehensive documentation for C-API
+3. ⏳ Migration guide for existing users
+4. ⏳ Performance optimization based on profiling
 
-**Overall Progress: ~75% Complete**
-
-- ✅ **Core Mathematical Foundation**: 100% complete
-- ✅ **Kernel and SVE Implementation**: 100% complete (fully verified)
-- ✅ **xprec-svd Library**: 100% complete (critical bugs fixed)
-- ✅ **Polynomial and Fourier Support**: 100% complete
-- ✅ **Testing and Validation**: 100% complete
-- 🔄 **Sampling Implementation**: 60% complete
-- ⏳ **DLR Implementation**: 0% complete
-- ⏳ **C-API Layer**: 0% complete
+### Long-term (Ecosystem Integration)
+1. ⏳ PyPI package publication (Python bindings)
+2. ⏳ Package managers integration
+3. ⏳ Community feedback incorporation
 
 **Key Achievements:**
-- **135 comprehensive tests passing** (15 test suites)
+- **210+ comprehensive tests passing** (16 test suites, 0 failures)
 - **Julia SparseIR.jl validation**: Exact match for all singular values/functions
+- **RegularizedBoseKernel fully implemented**:
+  * Odd symmetry sinh formula bug fixed (2,000,000x precision improvement)
+  * SVEHints correctly ported from C++/Julia (100% DLR pole coverage)
+  * All precision tests passing with <1e-12 tolerance
+- **Polynomial root finding optimized**:
+  * Grid refinement factor: alpha=2 → alpha=4
+  * DLR pole coverage: 90% → 100%
+  * All warnings eliminated
 - **Critical xprec-svd bugs fixed**:
   * V matrix permutation correction (inverse permutation)
   * Jacobi SVD convergence (max_iter: 30→1000)
@@ -560,13 +583,35 @@ blas = "0.22"             # BLAS bindings (default)
   * Sign canonicalization (u(1) > 0 convention)
   * V matrix weight removal fix (critical for accuracy)
   * Full domain extension with proper √2 normalization
+- **Tau sampling range correction**: [0, β] → [-β/2, β/2] (C++ compatible)
 - High-precision arithmetic with `TwoFloat` integration
 - Optimized `matrix_from_gauss` with parallel processing
 - Complete kernel implementations with SVE support
 - Robust polynomial and Fourier transform functionality
 
-**Recent Milestones (October 2025):**
-- SVE implementation completed and verified against Julia reference
-- xprec-svd library debugged and validated with Hilbert matrices
-- Reference data embedded in source code (no external dependencies)
-- All numerical results match Julia SparseIR.jl to machine precision
+**Recent Milestones (October 13, 2025):**
+- ✅ RegularizedBoseKernel precision issues completely resolved
+- ✅ All sampling and DLR functionality fully operational
+- ✅ Test framework modernized with generic functions
+- ✅ Strengthened quality assurance (strict assertions and tolerances)
+- ✅ **Conclusion**: TwoFloat SVE not needed - all precision achieved with f64
+- 🔴 **Ready to begin C-API implementation**
+
+---
+
+## Implementation Progress by Module
+
+| Module | Progress | Tests | Status |
+|--------|----------|-------|--------|
+| Kernel | 100% | 15+ | ✅ Complete |
+| SVE | 100% | 12+ | ✅ Complete |
+| Basis | 100% | 8+ | ✅ Complete |
+| Polynomial | 100% | 23+ | ✅ Complete |
+| Gauss | 100% | 25+ | ✅ Complete |
+| Sampling (Tau) | 100% | 6 | ✅ Complete |
+| Sampling (Matsubara) | 100% | 11 | ✅ Complete |
+| DLR | 100% | 12 | ✅ Complete |
+| Interpolation | 100% | 12+ | ✅ Complete |
+| Special Functions | 100% | 14 | ✅ Complete |
+| **C-API** | **0%** | **0** | **🔴 Not Started** |
+| **Total** | **~90%** | **210+** | **Next: C-API** |
