@@ -42,16 +42,16 @@ include_version = true
 [export]
 # Include these items
 include = [
-    "SparseIRKernel",
+    "spir_kernel",
     "StatusCode",
 ]
 
 # Prefix for all symbols (optional)
 # prefix = "spir_"
 
-# Renaming
-[export.rename]
-"StatusCode" = "SparseIRStatus"
+# Renaming - keep StatusCode as int (libsparseir compatible)
+# [export.rename]
+# No renaming needed - StatusCode is typedef'd as libc::c_int
 
 # Enum configuration
 [enum]

@@ -4,7 +4,7 @@
 
 use std::panic::catch_unwind;
 
-use crate::types::SparseIRKernel;
+use crate::types::spir_kernel;
 use crate::{StatusCode, SPIR_SUCCESS, SPIR_INVALID_ARGUMENT, SPIR_INTERNAL_ERROR};
 
 /// Create a new Logistic kernel
@@ -22,17 +22,17 @@ use crate::{StatusCode, SPIR_SUCCESS, SPIR_INVALID_ARGUMENT, SPIR_INTERNAL_ERROR
 /// # Example (C)
 /// ```c
 /// int status;
-/// SparseIRKernel* kernel = spir_kernel_logistic_new(10.0, &status);
+/// spir_kernel* kernel = spir_logistic_kernel_new(10.0, &status);
 /// if (kernel != NULL) {
 ///     // Use kernel...
 ///     spir_kernel_release(kernel);
 /// }
 /// ```
 #[no_mangle]
-pub extern "C" fn spir_kernel_logistic_new(
+pub extern "C" fn spir_logistic_kernel_new(
     lambda: f64,
     status: *mut StatusCode,
-) -> *mut SparseIRKernel {
+) -> *mut spir_kernel {
     // Input validation
     if status.is_null() {
         return std::ptr::null_mut();
@@ -45,7 +45,7 @@ pub extern "C" fn spir_kernel_logistic_new(
 
     // Catch panics to prevent unwinding across FFI boundary
     let result = catch_unwind(|| {
-        let kernel = SparseIRKernel::new_logistic(lambda);
+        let kernel = spir_kernel::new_logistic(lambda);
         Box::into_raw(Box::new(kernel))
     });
 
@@ -70,10 +70,10 @@ pub extern "C" fn spir_kernel_logistic_new(
 /// # Returns
 /// * Pointer to the newly created kernel object, or NULL if creation fails
 #[no_mangle]
-pub extern "C" fn spir_kernel_regularized_bose_new(
+pub extern "C" fn spir_reg_bose_kernel_new(
     lambda: f64,
     status: *mut StatusCode,
-) -> *mut SparseIRKernel {
+) -> *mut spir_kernel {
     if status.is_null() {
         return std::ptr::null_mut();
     }
@@ -84,7 +84,7 @@ pub extern "C" fn spir_kernel_regularized_bose_new(
     }
 
     let result = catch_unwind(|| {
-        let kernel = SparseIRKernel::new_regularized_bose(lambda);
+        let kernel = spir_kernel::new_regularized_bose(lambda);
         Box::into_raw(Box::new(kernel))
     });
 
@@ -108,7 +108,7 @@ pub extern "C" fn spir_kernel_regularized_bose_new(
 /// # Safety
 /// After calling this function, the kernel pointer is invalid and must not be used.
 #[no_mangle]
-pub extern "C" fn spir_kernel_release(kernel: *mut SparseIRKernel) {
+pub extern "C" fn spir_kernel_release(kernel: *mut spir_kernel) {
     if !kernel.is_null() {
         let _ = catch_unwind(|| unsafe {
             // Convert back to Box and drop
@@ -129,7 +129,7 @@ pub extern "C" fn spir_kernel_release(kernel: *mut SparseIRKernel) {
 /// * `SPIR_INTERNAL_ERROR` if internal panic occurs
 #[no_mangle]
 pub extern "C" fn spir_kernel_lambda(
-    kernel: *const SparseIRKernel,
+    kernel: *const spir_kernel,
     lambda_out: *mut f64,
 ) -> StatusCode {
     if kernel.is_null() || lambda_out.is_null() {
@@ -159,7 +159,7 @@ pub extern "C" fn spir_kernel_lambda(
 /// * `SPIR_INTERNAL_ERROR` if internal panic occurs
 #[no_mangle]
 pub extern "C" fn spir_kernel_compute(
-    kernel: *const SparseIRKernel,
+    kernel: *const spir_kernel,
     x: f64,
     y: f64,
     out: *mut f64,
@@ -185,7 +185,7 @@ mod tests {
     #[test]
     fn test_logistic_kernel_creation() {
         let mut status = SPIR_INTERNAL_ERROR;
-        let kernel = spir_kernel_logistic_new(10.0, &mut status);
+        let kernel = spir_logistic_kernel_new(10.0, &mut status);
         
         assert_eq!(status, SPIR_SUCCESS);
         assert!(!kernel.is_null());
@@ -196,7 +196,7 @@ mod tests {
     #[test]
     fn test_regularized_bose_kernel_creation() {
         let mut status = SPIR_INTERNAL_ERROR;
-        let kernel = spir_kernel_regularized_bose_new(10.0, &mut status);
+        let kernel = spir_reg_bose_kernel_new(10.0, &mut status);
         
         assert_eq!(status, SPIR_SUCCESS);
         assert!(!kernel.is_null());
@@ -207,7 +207,7 @@ mod tests {
     #[test]
     fn test_kernel_lambda() {
         let mut status = SPIR_INTERNAL_ERROR;
-        let kernel = spir_kernel_logistic_new(10.0, &mut status);
+        let kernel = spir_logistic_kernel_new(10.0, &mut status);
         assert_eq!(status, SPIR_SUCCESS);
         
         let mut lambda = 0.0;
@@ -222,7 +222,7 @@ mod tests {
     #[test]
     fn test_kernel_compute() {
         let mut status = SPIR_INTERNAL_ERROR;
-        let kernel = spir_kernel_logistic_new(10.0, &mut status);
+        let kernel = spir_logistic_kernel_new(10.0, &mut status);
         assert_eq!(status, SPIR_SUCCESS);
         
         let mut result = 0.0;
@@ -237,7 +237,7 @@ mod tests {
     #[test]
     fn test_null_pointer_errors() {
         // Null status pointer
-        let kernel = spir_kernel_logistic_new(10.0, ptr::null_mut());
+        let kernel = spir_logistic_kernel_new(10.0, ptr::null_mut());
         assert!(kernel.is_null());
         
         // Null kernel pointer
@@ -251,12 +251,12 @@ mod tests {
         let mut status = SPIR_SUCCESS;
         
         // Zero lambda
-        let kernel = spir_kernel_logistic_new(0.0, &mut status);
+        let kernel = spir_logistic_kernel_new(0.0, &mut status);
         assert_eq!(status, SPIR_INVALID_ARGUMENT);
         assert!(kernel.is_null());
         
         // Negative lambda
-        let kernel = spir_kernel_logistic_new(-1.0, &mut status);
+        let kernel = spir_logistic_kernel_new(-1.0, &mut status);
         assert_eq!(status, SPIR_INVALID_ARGUMENT);
         assert!(kernel.is_null());
     }

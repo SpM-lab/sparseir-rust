@@ -6,12 +6,14 @@
 use std::sync::Arc;
 use sparseir_rust::kernel::{LogisticKernel, RegularizedBoseKernel, CentrosymmKernel};
 
-/// Opaque kernel type for C API
+/// Opaque kernel type for C API (compatible with libsparseir)
 ///
 /// This is a tagged union that can hold either LogisticKernel or RegularizedBoseKernel.
 /// The actual type is determined by which constructor was used.
+///
+/// Note: Named `spir_kernel` to match libsparseir C++ API exactly.
 #[repr(C)]
-pub struct SparseIRKernel {
+pub struct spir_kernel {
     inner: KernelType,
 }
 
@@ -21,7 +23,7 @@ pub(crate) enum KernelType {
     RegularizedBose(Arc<RegularizedBoseKernel>),
 }
 
-impl SparseIRKernel {
+impl spir_kernel {
     pub(crate) fn new_logistic(lambda: f64) -> Self {
         Self {
             inner: KernelType::Logistic(Arc::new(LogisticKernel::new(lambda))),

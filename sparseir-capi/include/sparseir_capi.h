@@ -27,17 +27,19 @@ typedef struct KernelType KernelType;
 /**
  * Error codes for C API (compatible with libsparseir)
  */
-typedef int SparseIRStatus;
+typedef int StatusCode;
 
 /**
- * Opaque kernel type for C API
+ * Opaque kernel type for C API (compatible with libsparseir)
  *
  * This is a tagged union that can hold either LogisticKernel or RegularizedBoseKernel.
  * The actual type is determined by which constructor was used.
+ *
+ * Note: Named `spir_kernel` to match libsparseir C++ API exactly.
  */
-typedef struct SparseIRKernel {
+typedef struct spir_kernel {
     struct KernelType inner;
-} SparseIRKernel;
+} spir_kernel;
 
 #define SPIR_COMPUTATION_SUCCESS 0
 
@@ -75,10 +77,7 @@ extern "C" {
  * * `SPIR_INVALID_ARGUMENT` if kernel or out is null
  * * `SPIR_INTERNAL_ERROR` if internal panic occurs
  */
-SparseIRStatus spir_kernel_compute(const struct SparseIRKernel *kernel,
-                                   double x,
-                                   double y,
-                                   double *out);
+StatusCode spir_kernel_compute(const struct spir_kernel *kernel, double x, double y, double *out);
 
 /**
  * Get the lambda parameter of a kernel
@@ -92,7 +91,18 @@ SparseIRStatus spir_kernel_compute(const struct SparseIRKernel *kernel,
  * * `SPIR_INVALID_ARGUMENT` if kernel or lambda_out is null
  * * `SPIR_INTERNAL_ERROR` if internal panic occurs
  */
-SparseIRStatus spir_kernel_lambda(const struct SparseIRKernel *kernel, double *lambda_out);
+StatusCode spir_kernel_lambda(const struct spir_kernel *kernel, double *lambda_out);
+
+/**
+ * Release a kernel object
+ *
+ * # Arguments
+ * * `kernel` - Kernel to release (can be NULL)
+ *
+ * # Safety
+ * After calling this function, the kernel pointer is invalid and must not be used.
+ */
+void spir_kernel_release(struct spir_kernel *kernel);
 
 /**
  * Create a new Logistic kernel
@@ -110,14 +120,14 @@ SparseIRStatus spir_kernel_lambda(const struct SparseIRKernel *kernel, double *l
  * # Example (C)
  * ```c
  * int status;
- * SparseIRKernel* kernel = spir_kernel_logistic_new(10.0, &status);
+ * spir_kernel* kernel = spir_logistic_kernel_new(10.0, &status);
  * if (kernel != NULL) {
  *     // Use kernel...
  *     spir_kernel_release(kernel);
  * }
  * ```
  */
-struct SparseIRKernel *spir_kernel_logistic_new(double lambda, SparseIRStatus *status);
+struct spir_kernel *spir_logistic_kernel_new(double lambda, StatusCode *status);
 
 /**
  * Create a new RegularizedBose kernel
@@ -129,18 +139,7 @@ struct SparseIRKernel *spir_kernel_logistic_new(double lambda, SparseIRStatus *s
  * # Returns
  * * Pointer to the newly created kernel object, or NULL if creation fails
  */
-struct SparseIRKernel *spir_kernel_regularized_bose_new(double lambda, SparseIRStatus *status);
-
-/**
- * Release a kernel object
- *
- * # Arguments
- * * `kernel` - Kernel to release (can be NULL)
- *
- * # Safety
- * After calling this function, the kernel pointer is invalid and must not be used.
- */
-void spir_kernel_release(struct SparseIRKernel *kernel);
+struct spir_kernel *spir_reg_bose_kernel_new(double lambda, StatusCode *status);
 
 #ifdef __cplusplus
 }  // extern "C"

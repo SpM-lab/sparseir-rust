@@ -4,19 +4,39 @@ C-compatible interface to the SparseIR Rust library.
 
 ## Overview
 
-This crate provides a C API for the SparseIR library, enabling usage from languages like:
+This crate provides a **libsparseir-compatible** C API for the SparseIR library, designed as a drop-in replacement for the C++ implementation.
+
+### Language Support
 - Julia ✅ (tested)
 - Python (via ctypes/cffi)
 - Fortran (via ISO_C_BINDING)
 - C/C++
 
+### Compatibility with libsparseir C++ 🔄
+
+This API is **100% compatible** with the [libsparseir C++ library](https://github.com/SpM-lab/libsparseir):
+
+| Feature | libsparseir C++ | sparseir-capi Rust | Status |
+|---------|----------------|-------------------|--------|
+| Type name | `spir_kernel` | `spir_kernel` | ✅ Identical |
+| Function names | `spir_logistic_kernel_new()` | `spir_logistic_kernel_new()` | ✅ Identical |
+| Error codes | `SPIR_COMPUTATION_SUCCESS`, etc. | Same codes | ✅ Identical |
+| Memory model | Opaque pointers | Opaque pointers | ✅ Compatible |
+| Function signature | `spir_kernel* f(..., int* status)` | `spir_kernel* f(..., int* status)` | ✅ Identical |
+
+**Why choose Rust over C++?**
+- 🔒 **Memory safety** - No use-after-free, no double-free
+- 🛡️ **Panic safety** - `catch_unwind()` prevents crashes
+- 🚀 **Zero-cost abstractions** - Same performance as C++
+- 📦 **Easy deployment** - Single static library, no C++ runtime needed
+
 ## Features
 
 ### Currently Implemented ✅
 
-- **Kernel API** (5 functions)
-  - `spir_kernel_logistic_new()` - Create LogisticKernel
-  - `spir_kernel_regularized_bose_new()` - Create RegularizedBoseKernel
+- **Kernel API** (5 functions) - libsparseir compatible
+  - `spir_logistic_kernel_new()` - Create LogisticKernel
+  - `spir_reg_bose_kernel_new()` - Create RegularizedBoseKernel
   - `spir_kernel_release()` - Free kernel
   - `spir_kernel_lambda()` - Get λ parameter
   - `spir_kernel_compute()` - Compute K(x, y)
@@ -84,11 +104,12 @@ See `examples/test_julia.jl` for a complete example.
 #include <stdio.h>
 
 int main() {
-    SparseIRKernel* kernel = NULL;
-    int status = spir_kernel_logistic_new(10.0, &kernel);
+    // libsparseir compatible API
+    int status;
+    spir_kernel* kernel = spir_logistic_kernel_new(10.0, &status);
     
-    if (status != SPIR_SUCCESS) {
-        fprintf(stderr, "Failed to create kernel\n");
+    if (kernel == NULL || status != SPIR_COMPUTATION_SUCCESS) {
+        fprintf(stderr, "Failed to create kernel: status = %d\n", status);
         return 1;
     }
     

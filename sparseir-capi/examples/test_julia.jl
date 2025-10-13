@@ -24,7 +24,7 @@ const SPIR_INTERNAL_ERROR = Int32(-7)
 const SPIR_SUCCESS = SPIR_COMPUTATION_SUCCESS
 
 # Opaque type
-mutable struct SparseIRKernel end
+mutable struct spir_kernel end
 
 """
 Create a Logistic kernel
@@ -32,8 +32,8 @@ Create a Logistic kernel
 function kernel_logistic_new(lambda::Float64)
     status = Ref{Int32}(0)
     kernel = ccall(
-        (:spir_kernel_logistic_new, libpath),
-        Ptr{SparseIRKernel},
+        (:spir_logistic_kernel_new, libpath),
+        Ptr{spir_kernel},
         (Float64, Ref{Int32}),
         lambda, status
     )
@@ -51,8 +51,8 @@ Create a RegularizedBose kernel
 function kernel_regularized_bose_new(lambda::Float64)
     status = Ref{Int32}(0)
     kernel = ccall(
-        (:spir_kernel_regularized_bose_new, libpath),
-        Ptr{SparseIRKernel},
+        (:spir_reg_bose_kernel_new, libpath),
+        Ptr{spir_kernel},
         (Float64, Ref{Int32}),
         lambda, status
     )
@@ -67,11 +67,11 @@ end
 """
 Release a kernel
 """
-function kernel_release(kernel::Ptr{SparseIRKernel})
+function kernel_release(kernel::Ptr{spir_kernel})
     ccall(
         (:spir_kernel_release, libpath),
         Cvoid,
-        (Ptr{SparseIRKernel},),
+        (Ptr{spir_kernel},),
         kernel
     )
 end
@@ -79,12 +79,12 @@ end
 """
 Get lambda parameter
 """
-function kernel_lambda(kernel::Ptr{SparseIRKernel})
+function kernel_lambda(kernel::Ptr{spir_kernel})
     lambda = Ref{Float64}()
     status = ccall(
         (:spir_kernel_lambda, libpath),
         Int32,
-        (Ptr{SparseIRKernel}, Ref{Float64}),
+        (Ptr{spir_kernel}, Ref{Float64}),
         kernel, lambda
     )
     
@@ -98,12 +98,12 @@ end
 """
 Compute kernel value K(x, y)
 """
-function kernel_compute(kernel::Ptr{SparseIRKernel}, x::Float64, y::Float64)
+function kernel_compute(kernel::Ptr{spir_kernel}, x::Float64, y::Float64)
     result = Ref{Float64}()
     status = ccall(
         (:spir_kernel_compute, libpath),
         Int32,
-        (Ptr{SparseIRKernel}, Float64, Float64, Ref{Float64}),
+        (Ptr{spir_kernel}, Float64, Float64, Ref{Float64}),
         kernel, x, y, result
     )
     
