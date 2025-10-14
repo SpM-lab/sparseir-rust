@@ -8,6 +8,8 @@ use sparseir_rust::kernel::{LogisticKernel, RegularizedBoseKernel, CentrosymmKer
 use sparseir_rust::sve::SVEResult;
 use sparseir_rust::basis::FiniteTempBasis;
 use sparseir_rust::{Bosonic, Fermionic};
+use sparseir_rust::poly::PiecewiseLegendrePolyVector;
+use sparseir_rust::polyfourier::PiecewiseLegendreFTVector;
 
 /// Opaque kernel type for C API (compatible with libsparseir)
 ///
@@ -37,7 +39,7 @@ pub struct spir_sve_result {
 /// Note: Named `spir_basis` to match libsparseir C++ API exactly.
 #[repr(C)]
 pub struct spir_basis {
-    inner: BasisType,
+    pub(crate) inner: BasisType,
 }
 
 /// Internal basis type (not exposed to C)
@@ -214,6 +216,57 @@ impl spir_basis {
             BasisType::LogisticBosonic(b) => b.default_matsubara_sampling_points_i64(positive_only),
             BasisType::RegularizedBoseFermionic(b) => b.default_matsubara_sampling_points_i64(positive_only),
             BasisType::RegularizedBoseBosonic(b) => b.default_matsubara_sampling_points_i64(positive_only),
+        }
+    }
+}
+
+/// Internal enum to hold different function types
+pub(crate) enum FuncsType {
+    /// u, v: imaginary-time and real-frequency basis functions
+    PolyVector(Arc<PiecewiseLegendrePolyVector>),
+    
+    /// uhat: Matsubara-frequency basis functions (Fermionic)
+    FTVectorFermionic(Arc<PiecewiseLegendreFTVector<Fermionic>>),
+    
+    /// uhat: Matsubara-frequency basis functions (Bosonic)
+    FTVectorBosonic(Arc<PiecewiseLegendreFTVector<Bosonic>>),
+}
+
+/// Opaque funcs type for C API (compatible with libsparseir)
+///
+/// Wraps piecewise Legendre polynomial representations:
+/// - PiecewiseLegendrePolyVector for u and v
+/// - PiecewiseLegendreFTVector for uhat
+///
+/// Note: Named `spir_funcs` to match libsparseir C++ API exactly.
+#[repr(C)]
+pub struct spir_funcs {
+    inner: FuncsType,
+    beta: f64,
+}
+
+impl spir_funcs {
+    /// Create a new funcs object from a PiecewiseLegendrePolyVector
+    pub(crate) fn from_poly_vector(poly: Arc<PiecewiseLegendrePolyVector>, beta: f64) -> Self {
+        Self {
+            inner: FuncsType::PolyVector(poly),
+            beta,
+        }
+    }
+
+    /// Create a new funcs object from a PiecewiseLegendreFTVector (Fermionic)
+    pub(crate) fn from_ft_vector_fermionic(ft: Arc<PiecewiseLegendreFTVector<Fermionic>>, beta: f64) -> Self {
+        Self {
+            inner: FuncsType::FTVectorFermionic(ft),
+            beta,
+        }
+    }
+
+    /// Create a new funcs object from a PiecewiseLegendreFTVector (Bosonic)
+    pub(crate) fn from_ft_vector_bosonic(ft: Arc<PiecewiseLegendreFTVector<Bosonic>>, beta: f64) -> Self {
+        Self {
+            inner: FuncsType::FTVectorBosonic(ft),
+            beta,
         }
     }
 }

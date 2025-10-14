@@ -27,6 +27,11 @@ typedef struct Arc_SVEResult Arc_SVEResult;
 typedef struct BasisType BasisType;
 
 /**
+ * Internal enum to hold different function types
+ */
+typedef struct FuncsType FuncsType;
+
+/**
  * Internal kernel type (not exposed to C)
  */
 typedef struct KernelType KernelType;
@@ -46,6 +51,20 @@ typedef int StatusCode;
 typedef struct spir_basis {
     struct BasisType inner;
 } spir_basis;
+
+/**
+ * Opaque funcs type for C API (compatible with libsparseir)
+ *
+ * Wraps piecewise Legendre polynomial representations:
+ * - PiecewiseLegendrePolyVector for u and v
+ * - PiecewiseLegendreFTVector for uhat
+ *
+ * Note: Named `spir_funcs` to match libsparseir C++ API exactly.
+ */
+typedef struct spir_funcs {
+    struct FuncsType inner;
+    double beta;
+} spir_funcs;
 
 /**
  * Opaque kernel type for C API (compatible with libsparseir)
@@ -202,6 +221,54 @@ StatusCode spir_basis_get_stats(const struct spir_basis *b, int *statistics);
 StatusCode spir_basis_get_svals(const struct spir_basis *b, double *svals);
 
 /**
+ * Gets the basis functions in imaginary time (τ) domain
+ *
+ * # Arguments
+ * * `b` - Pointer to the finite temperature basis object
+ * * `status` - Pointer to store the status code
+ *
+ * # Returns
+ * Pointer to the basis functions object (`spir_funcs`), or NULL if creation fails
+ *
+ * # Safety
+ * The caller must ensure that `b` is a valid pointer, and must call
+ * `spir_funcs_release()` on the returned pointer when done.
+ */
+struct spir_funcs *spir_basis_get_u(const struct spir_basis *b, StatusCode *status);
+
+/**
+ * Gets the basis functions in Matsubara frequency domain
+ *
+ * # Arguments
+ * * `b` - Pointer to the finite temperature basis object
+ * * `status` - Pointer to store the status code
+ *
+ * # Returns
+ * Pointer to the basis functions object (`spir_funcs`), or NULL if creation fails
+ *
+ * # Safety
+ * The caller must ensure that `b` is a valid pointer, and must call
+ * `spir_funcs_release()` on the returned pointer when done.
+ */
+struct spir_funcs *spir_basis_get_uhat(const struct spir_basis *b, StatusCode *status);
+
+/**
+ * Gets the basis functions in real frequency (ω) domain
+ *
+ * # Arguments
+ * * `b` - Pointer to the finite temperature basis object
+ * * `status` - Pointer to store the status code
+ *
+ * # Returns
+ * Pointer to the basis functions object (`spir_funcs`), or NULL if creation fails
+ *
+ * # Safety
+ * The caller must ensure that `b` is a valid pointer, and must call
+ * `spir_funcs_release()` on the returned pointer when done.
+ */
+struct spir_funcs *spir_basis_get_v(const struct spir_basis *b, StatusCode *status);
+
+/**
  * Create a finite temperature basis (libsparseir compatible)
  *
  * # Arguments
@@ -239,6 +306,18 @@ struct spir_basis *spir_basis_new(int statistics,
  * After calling this function, the basis pointer is invalid and must not be used.
  */
 void spir_basis_release(struct spir_basis *b);
+
+/**
+ * Releases a funcs object
+ *
+ * # Arguments
+ * * `funcs` - Pointer to the funcs object to release
+ *
+ * # Safety
+ * The caller must ensure that `funcs` is a valid pointer returned from a previous
+ * `spir_basis_get_u/v/uhat()` call, and that it is not used after this function returns.
+ */
+void spir_funcs_release(struct spir_funcs *funcs);
 
 /**
  * Compute kernel value K(x, y)

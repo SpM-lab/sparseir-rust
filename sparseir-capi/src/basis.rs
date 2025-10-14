@@ -6,7 +6,7 @@ use std::panic::catch_unwind;
 
 use sparseir_rust::basis::FiniteTempBasis;
 
-use crate::types::{spir_kernel, spir_sve_result, spir_basis};
+use crate::types::{spir_kernel, spir_sve_result, spir_basis, spir_funcs};
 use crate::{StatusCode, SPIR_SUCCESS, SPIR_INVALID_ARGUMENT, SPIR_INTERNAL_ERROR};
 
 /// Create a finite temperature basis (libsparseir compatible)
@@ -547,6 +547,210 @@ mod tests {
 
         spir_basis_release(basis);
         spir_kernel_release(kernel);
+    }
+}
+
+/// Gets the basis functions in imaginary time (τ) domain
+///
+/// # Arguments
+/// * `b` - Pointer to the finite temperature basis object
+/// * `status` - Pointer to store the status code
+///
+/// # Returns
+/// Pointer to the basis functions object (`spir_funcs`), or NULL if creation fails
+///
+/// # Safety
+/// The caller must ensure that `b` is a valid pointer, and must call
+/// `spir_funcs_release()` on the returned pointer when done.
+#[no_mangle]
+pub unsafe extern "C" fn spir_basis_get_u(
+    b: *const spir_basis,
+    status: *mut StatusCode,
+) -> *mut spir_funcs {
+    use crate::types::{spir_funcs, BasisType};
+    use std::panic::catch_unwind;
+
+    if status.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    if b.is_null() {
+        unsafe { *status = SPIR_INVALID_ARGUMENT; }
+        return std::ptr::null_mut();
+    }
+
+    let result = catch_unwind(|| unsafe {
+        let basis_ref = &*b;
+        let beta = basis_ref.beta();
+        
+        let funcs = match &basis_ref.inner {
+            BasisType::LogisticFermionic(basis) => {
+                spir_funcs::from_poly_vector(basis.u.clone(), beta)
+            },
+            BasisType::LogisticBosonic(basis) => {
+                spir_funcs::from_poly_vector(basis.u.clone(), beta)
+            },
+            BasisType::RegularizedBoseFermionic(basis) => {
+                spir_funcs::from_poly_vector(basis.u.clone(), beta)
+            },
+            BasisType::RegularizedBoseBosonic(basis) => {
+                spir_funcs::from_poly_vector(basis.u.clone(), beta)
+            },
+        };
+
+        Result::<*mut spir_funcs, String>::Ok(Box::into_raw(Box::new(funcs)))
+    });
+
+    match result {
+        Ok(Ok(ptr)) => {
+            unsafe { *status = SPIR_SUCCESS; }
+            ptr
+        },
+        Ok(Err(msg)) => {
+            eprintln!("Error in spir_basis_get_u: {}", msg);
+            unsafe { *status = SPIR_INTERNAL_ERROR; }
+            std::ptr::null_mut()
+        },
+        Err(_) => {
+            unsafe { *status = SPIR_INTERNAL_ERROR; }
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// Gets the basis functions in real frequency (ω) domain
+///
+/// # Arguments
+/// * `b` - Pointer to the finite temperature basis object
+/// * `status` - Pointer to store the status code
+///
+/// # Returns
+/// Pointer to the basis functions object (`spir_funcs`), or NULL if creation fails
+///
+/// # Safety
+/// The caller must ensure that `b` is a valid pointer, and must call
+/// `spir_funcs_release()` on the returned pointer when done.
+#[no_mangle]
+pub unsafe extern "C" fn spir_basis_get_v(
+    b: *const spir_basis,
+    status: *mut StatusCode,
+) -> *mut spir_funcs {
+    use crate::types::{spir_funcs, BasisType};
+    use std::panic::catch_unwind;
+
+    if status.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    if b.is_null() {
+        unsafe { *status = SPIR_INVALID_ARGUMENT; }
+        return std::ptr::null_mut();
+    }
+
+    let result = catch_unwind(|| unsafe {
+        let basis_ref = &*b;
+        let beta = basis_ref.beta();
+        
+        let funcs = match &basis_ref.inner {
+            BasisType::LogisticFermionic(basis) => {
+                spir_funcs::from_poly_vector(basis.v.clone(), beta)
+            },
+            BasisType::LogisticBosonic(basis) => {
+                spir_funcs::from_poly_vector(basis.v.clone(), beta)
+            },
+            BasisType::RegularizedBoseFermionic(basis) => {
+                spir_funcs::from_poly_vector(basis.v.clone(), beta)
+            },
+            BasisType::RegularizedBoseBosonic(basis) => {
+                spir_funcs::from_poly_vector(basis.v.clone(), beta)
+            },
+        };
+
+        Result::<*mut spir_funcs, String>::Ok(Box::into_raw(Box::new(funcs)))
+    });
+
+    match result {
+        Ok(Ok(ptr)) => {
+            unsafe { *status = SPIR_SUCCESS; }
+            ptr
+        },
+        Ok(Err(msg)) => {
+            eprintln!("Error in spir_basis_get_v: {}", msg);
+            unsafe { *status = SPIR_INTERNAL_ERROR; }
+            std::ptr::null_mut()
+        },
+        Err(_) => {
+            unsafe { *status = SPIR_INTERNAL_ERROR; }
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// Gets the basis functions in Matsubara frequency domain
+///
+/// # Arguments
+/// * `b` - Pointer to the finite temperature basis object
+/// * `status` - Pointer to store the status code
+///
+/// # Returns
+/// Pointer to the basis functions object (`spir_funcs`), or NULL if creation fails
+///
+/// # Safety
+/// The caller must ensure that `b` is a valid pointer, and must call
+/// `spir_funcs_release()` on the returned pointer when done.
+#[no_mangle]
+pub unsafe extern "C" fn spir_basis_get_uhat(
+    b: *const spir_basis,
+    status: *mut StatusCode,
+) -> *mut spir_funcs {
+    use crate::types::{spir_funcs, BasisType};
+    use std::panic::catch_unwind;
+
+    if status.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    if b.is_null() {
+        unsafe { *status = SPIR_INVALID_ARGUMENT; }
+        return std::ptr::null_mut();
+    }
+
+    let result = catch_unwind(|| unsafe {
+        let basis_ref = &*b;
+        let beta = basis_ref.beta();
+        
+        let funcs = match &basis_ref.inner {
+            BasisType::LogisticFermionic(basis) => {
+                spir_funcs::from_ft_vector_fermionic(basis.uhat.clone(), beta)
+            },
+            BasisType::LogisticBosonic(basis) => {
+                spir_funcs::from_ft_vector_bosonic(basis.uhat.clone(), beta)
+            },
+            BasisType::RegularizedBoseFermionic(basis) => {
+                spir_funcs::from_ft_vector_fermionic(basis.uhat.clone(), beta)
+            },
+            BasisType::RegularizedBoseBosonic(basis) => {
+                spir_funcs::from_ft_vector_bosonic(basis.uhat.clone(), beta)
+            },
+        };
+
+        Result::<*mut spir_funcs, String>::Ok(Box::into_raw(Box::new(funcs)))
+    });
+
+    match result {
+        Ok(Ok(ptr)) => {
+            unsafe { *status = SPIR_SUCCESS; }
+            ptr
+        },
+        Ok(Err(msg)) => {
+            eprintln!("Error in spir_basis_get_uhat: {}", msg);
+            unsafe { *status = SPIR_INTERNAL_ERROR; }
+            std::ptr::null_mut()
+        },
+        Err(_) => {
+            unsafe { *status = SPIR_INTERNAL_ERROR; }
+            std::ptr::null_mut()
+        }
     }
 }
 

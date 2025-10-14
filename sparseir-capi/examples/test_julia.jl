@@ -349,6 +349,82 @@ println("   First 3: $(matsu_points[1:min(3, end)])")
 ccall((:spir_basis_release, libpath), Cvoid, (Ptr{Cvoid},), basis)
 kernel_release(kernel)
 
+# Test 7: Funcs API
+println("\n📝 Test 7: Funcs API (u, v, uhat)")
+kernel = kernel_logistic_new(10.0)
+
+# Create basis
+status_basis = Ref{Int32}(0)
+basis = ccall(
+    (:spir_basis_new, libpath),
+    Ptr{Cvoid},
+    (Int32, Float64, Float64, Float64, Ptr{Cvoid}, Ptr{Cvoid}, Int32, Ref{Int32}),
+    1,      # Fermionic
+    10.0,   # beta
+    1.0,    # omega_max
+    1e-6,   # epsilon
+    kernel,
+    C_NULL,
+    -1,
+    status_basis
+)
+
+if basis == C_NULL || status_basis[] != SPIR_COMPUTATION_SUCCESS
+    error("Failed to create basis: status = $(status_basis[])")
+end
+
+# Get u funcs (imaginary-time basis functions)
+status_u = Ref{Int32}(0)
+u_funcs = ccall(
+    (:spir_basis_get_u, libpath),
+    Ptr{Cvoid},
+    (Ptr{Cvoid}, Ref{Int32}),
+    basis, status_u
+)
+
+if u_funcs == C_NULL || status_u[] != SPIR_COMPUTATION_SUCCESS
+    error("Failed to get u funcs: status = $(status_u[])")
+end
+
+println("✅ Got u funcs (imaginary-time basis functions)")
+
+# Get v funcs (real-frequency basis functions)
+status_v = Ref{Int32}(0)
+v_funcs = ccall(
+    (:spir_basis_get_v, libpath),
+    Ptr{Cvoid},
+    (Ptr{Cvoid}, Ref{Int32}),
+    basis, status_v
+)
+
+if v_funcs == C_NULL || status_v[] != SPIR_COMPUTATION_SUCCESS
+    error("Failed to get v funcs: status = $(status_v[])")
+end
+
+println("✅ Got v funcs (real-frequency basis functions)")
+
+# Get uhat funcs (Matsubara-frequency basis functions)
+status_uhat = Ref{Int32}(0)
+uhat_funcs = ccall(
+    (:spir_basis_get_uhat, libpath),
+    Ptr{Cvoid},
+    (Ptr{Cvoid}, Ref{Int32}),
+    basis, status_uhat
+)
+
+if uhat_funcs == C_NULL || status_uhat[] != SPIR_COMPUTATION_SUCCESS
+    error("Failed to get uhat funcs: status = $(status_uhat[])")
+end
+
+println("✅ Got uhat funcs (Matsubara-frequency basis functions)")
+
+# Cleanup
+ccall((:spir_funcs_release, libpath), Cvoid, (Ptr{Cvoid},), u_funcs)
+ccall((:spir_funcs_release, libpath), Cvoid, (Ptr{Cvoid},), v_funcs)
+ccall((:spir_funcs_release, libpath), Cvoid, (Ptr{Cvoid},), uhat_funcs)
+ccall((:spir_basis_release, libpath), Cvoid, (Ptr{Cvoid},), basis)
+kernel_release(kernel)
+
 println("\n" * "=" ^ 50)
 println("✅ All tests passed!")
 
