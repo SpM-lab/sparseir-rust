@@ -618,6 +618,110 @@ ccall((:spir_funcs_release, libpath), Cvoid, (Ptr{Cvoid},), uhat_funcs)
 ccall((:spir_basis_release, libpath), Cvoid, (Ptr{Cvoid},), basis)
 kernel_release(kernel)
 
+# Test 10: Clone and Slice Functions
+println("\n📝 Test 10: Clone and Slice Functions")
+kernel = kernel_logistic_new(10.0)
+
+# Create basis
+status_basis = Ref{Int32}(0)
+basis = ccall(
+    (:spir_basis_new, libpath),
+    Ptr{Cvoid},
+    (Int32, Float64, Float64, Float64, Ptr{Cvoid}, Ptr{Cvoid}, Int32, Ref{Int32}),
+    1,      # Fermionic
+    10.0,   # beta
+    1.0,    # omega_max
+    1e-6,   # epsilon
+    kernel,
+    C_NULL,
+    -1,
+    status_basis
+)
+
+# Get u funcs
+status_u = Ref{Int32}(0)
+u_funcs = ccall((:spir_basis_get_u, libpath), Ptr{Cvoid}, (Ptr{Cvoid}, Ref{Int32}), basis, status_u)
+
+# Test is_assigned
+is_assigned = ccall((:spir_funcs_is_assigned, libpath), Int32, (Ptr{Cvoid},), u_funcs)
+println("✅ is_assigned for valid object: $is_assigned")
+@assert is_assigned == 1
+
+is_null_assigned = ccall((:spir_funcs_is_assigned, libpath), Int32, (Ptr{Cvoid},), C_NULL)
+println("✅ is_assigned for null: $is_null_assigned")
+@assert is_null_assigned == 0
+
+# Test clone
+cloned_funcs = ccall((:spir_funcs_clone, libpath), Ptr{Cvoid}, (Ptr{Cvoid},), u_funcs)
+@assert cloned_funcs != C_NULL
+println("✅ Cloned funcs successfully")
+
+# Check cloned size
+u_size = Ref{Int32}(0)
+ccall((:spir_funcs_get_size, libpath), Int32, (Ptr{Cvoid}, Ref{Int32}), u_funcs, u_size)
+cloned_size = Ref{Int32}(0)
+ccall((:spir_funcs_get_size, libpath), Int32, (Ptr{Cvoid}, Ref{Int32}), cloned_funcs, cloned_size)
+@assert cloned_size[] == u_size[]
+println("✅ Cloned funcs has same size ($(u_size[]))")
+
+# Test slice
+indices = Int32[0, 2, 4]  # Select first, third, fifth functions (0-indexed)
+slice_status = Ref{Int32}(0)
+sliced_funcs = ccall(
+    (:spir_funcs_get_slice, libpath),
+    Ptr{Cvoid},
+    (Ptr{Cvoid}, Int32, Ptr{Int32}, Ref{Int32}),
+    u_funcs,
+    length(indices),
+    indices,
+    slice_status
+)
+
+@assert slice_status[] == SPIR_COMPUTATION_SUCCESS
+@assert sliced_funcs != C_NULL
+println("✅ Created slice with $(length(indices)) functions")
+
+# Check sliced size
+sliced_size = Ref{Int32}(0)
+ccall((:spir_funcs_get_size, libpath), Int32, (Ptr{Cvoid}, Ref{Int32}), sliced_funcs, sliced_size)
+@assert sliced_size[] == length(indices)
+println("✅ Sliced funcs has correct size ($(sliced_size[]))")
+
+# Evaluate sliced functions
+sliced_values = Vector{Float64}(undef, sliced_size[])
+status_eval = ccall(
+    (:spir_funcs_eval, libpath),
+    Int32,
+    (Ptr{Cvoid}, Float64, Ptr{Float64}),
+    sliced_funcs, 0.0, sliced_values
+)
+@assert status_eval == SPIR_COMPUTATION_SUCCESS
+println("✅ Sliced funcs evaluates correctly")
+println("   Values: $(sliced_values)")
+
+# Test error case: negative index
+bad_indices = Int32[-1]
+bad_status = Ref{Int32}(0)
+bad_slice = ccall(
+    (:spir_funcs_get_slice, libpath),
+    Ptr{Cvoid},
+    (Ptr{Cvoid}, Int32, Ptr{Int32}, Ref{Int32}),
+    u_funcs,
+    length(bad_indices),
+    bad_indices,
+    bad_status
+)
+@assert bad_status[] == SPIR_INVALID_ARGUMENT
+@assert bad_slice == C_NULL
+println("✅ Negative index correctly rejected")
+
+# Cleanup
+ccall((:spir_funcs_release, libpath), Cvoid, (Ptr{Cvoid},), sliced_funcs)
+ccall((:spir_funcs_release, libpath), Cvoid, (Ptr{Cvoid},), cloned_funcs)
+ccall((:spir_funcs_release, libpath), Cvoid, (Ptr{Cvoid},), u_funcs)
+ccall((:spir_basis_release, libpath), Cvoid, (Ptr{Cvoid},), basis)
+kernel_release(kernel)
+
 println("\n" * "=" ^ 50)
 println("✅ All tests passed!")
 

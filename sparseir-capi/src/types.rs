@@ -231,6 +231,7 @@ impl spir_basis {
 }
 
 /// Internal enum to hold different function types
+#[derive(Clone)]
 pub(crate) enum FuncsType {
     /// Continuous functions (u or v): PiecewiseLegendrePolyVector
     /// statistics: -1 for v (omega, no periodicity)
@@ -260,8 +261,8 @@ pub(crate) enum FuncsType {
 /// Note: Named `spir_funcs` to match libsparseir C++ API exactly.
 #[repr(C)]
 pub struct spir_funcs {
-    inner: FuncsType,
-    beta: f64,
+    pub(crate) inner: FuncsType,
+    pub(crate) beta: f64,
 }
 
 impl spir_funcs {
@@ -481,6 +482,97 @@ impl spir_funcs {
                 }
             },
             _ => None,
+        }
+    }
+
+    /// Create a new funcs object containing a subset of functions
+    ///
+    /// # Arguments
+    /// * `indices` - Slice of indices specifying which functions to include
+    ///
+    /// # Returns
+    /// A new `spir_funcs` object with only the selected functions, or None if indices are invalid
+    pub(crate) fn get_slice(&self, indices: &[usize]) -> Option<Self> {
+        use sparseir_rust::poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
+        
+        match &self.inner {
+            FuncsType::PolyVector { poly, statistics } => {
+                // Check that all indices are valid
+                if indices.iter().any(|&i| i >= poly.polyvec.len()) {
+                    return None;
+                }
+                
+                    // Extract the selected polynomials
+                    let new_polyvec: Vec<PiecewiseLegendrePoly> = indices
+                        .iter()
+                        .map(|&i| poly.polyvec[i].clone())
+                        .collect();
+                    
+                    let new_poly = Arc::new(PiecewiseLegendrePolyVector::new(new_polyvec));
+                
+                Some(Self {
+                    inner: FuncsType::PolyVector {
+                        poly: new_poly,
+                        statistics: *statistics,
+                    },
+                    beta: self.beta,
+                })
+            },
+            FuncsType::FTVector { ft_fermionic, ft_bosonic, statistics } => {
+                if *statistics == 1 {
+                    // Fermionic
+                    use sparseir_rust::traits::Fermionic;
+                    let ft = ft_fermionic.as_ref()?;
+                    
+                    // Check that all indices are valid
+                    if indices.iter().any(|&i| i >= ft.polyvec.len()) {
+                        return None;
+                    }
+                    
+                    // Extract the selected FT polynomials
+                    let new_polyvec: Vec<sparseir_rust::polyfourier::PiecewiseLegendreFT<Fermionic>> = indices
+                        .iter()
+                        .map(|&i| ft.polyvec[i].clone())
+                        .collect();
+                    
+                    let new_ft = Arc::new(PiecewiseLegendreFTVector::from_vector(new_polyvec));
+                    
+                    Some(Self {
+                        inner: FuncsType::FTVector {
+                            ft_fermionic: Some(new_ft),
+                            ft_bosonic: None,
+                            statistics: *statistics,
+                        },
+                        beta: self.beta,
+                    })
+                } else {
+                    // Bosonic
+                    use sparseir_rust::traits::Bosonic;
+                    let ft = ft_bosonic.as_ref()?;
+                    
+                    // Check that all indices are valid
+                    if indices.iter().any(|&i| i >= ft.polyvec.len()) {
+                        return None;
+                    }
+                    
+                    // Extract the selected FT polynomials
+                    let new_polyvec: Vec<sparseir_rust::polyfourier::PiecewiseLegendreFT<Bosonic>> = indices
+                        .iter()
+                        .map(|&i| ft.polyvec[i].clone())
+                        .collect();
+                    
+                    let new_ft = Arc::new(PiecewiseLegendreFTVector::from_vector(new_polyvec));
+                    
+                    Some(Self {
+                        inner: FuncsType::FTVector {
+                            ft_fermionic: None,
+                            ft_bosonic: Some(new_ft),
+                            statistics: *statistics,
+                        },
+                        beta: self.beta,
+                    })
+                }
+            },
         }
     }
 }

@@ -37,6 +37,20 @@ typedef struct FuncsType FuncsType;
 typedef struct KernelType KernelType;
 
 /**
+ * Opaque funcs type for C API (compatible with libsparseir)
+ *
+ * Wraps piecewise Legendre polynomial representations:
+ * - PiecewiseLegendrePolyVector for u and v
+ * - PiecewiseLegendreFTVector for uhat
+ *
+ * Note: Named `spir_funcs` to match libsparseir C++ API exactly.
+ */
+typedef struct spir_funcs {
+    struct FuncsType inner;
+    double beta;
+} spir_funcs;
+
+/**
  * Error codes for C API (compatible with libsparseir)
  */
 typedef int StatusCode;
@@ -51,20 +65,6 @@ typedef int StatusCode;
 typedef struct spir_basis {
     struct BasisType inner;
 } spir_basis;
-
-/**
- * Opaque funcs type for C API (compatible with libsparseir)
- *
- * Wraps piecewise Legendre polynomial representations:
- * - PiecewiseLegendrePolyVector for u and v
- * - PiecewiseLegendreFTVector for uhat
- *
- * Note: Named `spir_funcs` to match libsparseir C++ API exactly.
- */
-typedef struct spir_funcs {
-    struct FuncsType inner;
-    double beta;
-} spir_funcs;
 
 /**
  * Opaque kernel type for C API (compatible with libsparseir)
@@ -110,6 +110,17 @@ typedef struct spir_sve_result {
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
+
+/**
+ * Get the raw pointer for debugging (internal use only)
+ *
+ * # Arguments
+ * * `obj` - Pointer to the funcs object
+ *
+ * # Returns
+ * Raw pointer to the internal data structure
+ */
+const void *_spir_funcs_get_raw_ptr(const struct spir_funcs *obj);
 
 /**
  * Get default Matsubara sampling points
@@ -387,6 +398,21 @@ StatusCode spir_funcs_batch_eval_matsu(const struct spir_funcs *funcs,
                                        Complex64 *out);
 
 /**
+ * Clone a funcs object (creates a new reference with shared data)
+ *
+ * # Arguments
+ * * `src` - Pointer to the source funcs object
+ *
+ * # Returns
+ * A new pointer to a funcs object, or null if input is null
+ *
+ * # Safety
+ * The caller must ensure that `src` is a valid pointer.
+ * The returned pointer must be freed with `spir_funcs_release()`.
+ */
+struct spir_funcs *spir_funcs_clone(const struct spir_funcs *src);
+
+/**
  * Evaluate functions at a single point (continuous functions only)
  *
  * # Arguments
@@ -457,6 +483,38 @@ StatusCode spir_funcs_get_n_knots(const struct spir_funcs *funcs, int *n_knots);
  * Status code (SPIR_SUCCESS on success)
  */
 StatusCode spir_funcs_get_size(const struct spir_funcs *funcs, int *size);
+
+/**
+ * Extract a subset of functions by indices
+ *
+ * # Arguments
+ * * `funcs` - Pointer to the source funcs object
+ * * `nslice` - Number of functions to select (length of indices array)
+ * * `indices` - Array of indices specifying which functions to include
+ * * `status` - Pointer to store the status code
+ *
+ * # Returns
+ * Pointer to a new funcs object containing only the selected functions, or null on error
+ *
+ * # Safety
+ * The caller must ensure that `funcs` and `indices` are valid pointers.
+ * The returned pointer must be freed with `spir_funcs_release()`.
+ */
+struct spir_funcs *spir_funcs_get_slice(const struct spir_funcs *funcs,
+                                        int32_t nslice,
+                                        const int32_t *indices,
+                                        StatusCode *status);
+
+/**
+ * Check if a funcs object is assigned (non-null and valid)
+ *
+ * # Arguments
+ * * `obj` - Pointer to the funcs object
+ *
+ * # Returns
+ * 1 if the object is valid, 0 otherwise
+ */
+int32_t spir_funcs_is_assigned(const struct spir_funcs *obj);
 
 /**
  * Releases a funcs object

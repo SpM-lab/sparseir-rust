@@ -22,6 +22,143 @@ pub unsafe extern "C" fn spir_funcs_release(funcs: *mut spir_funcs) {
     let _ = Box::from_raw(funcs);
 }
 
+/// Clone a funcs object (creates a new reference with shared data)
+///
+/// # Arguments
+/// * `src` - Pointer to the source funcs object
+///
+/// # Returns
+/// A new pointer to a funcs object, or null if input is null
+///
+/// # Safety
+/// The caller must ensure that `src` is a valid pointer.
+/// The returned pointer must be freed with `spir_funcs_release()`.
+#[no_mangle]
+pub unsafe extern "C" fn spir_funcs_clone(src: *const spir_funcs) -> *mut spir_funcs {
+    if src.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    let result = std::panic::catch_unwind(|| {
+        let src_ref = &*src;
+        // Clone creates a new Box with the same Arc references (cheap)
+        let cloned = spir_funcs {
+            inner: src_ref.inner.clone(),
+            beta: src_ref.beta,
+        };
+        Box::into_raw(Box::new(cloned))
+    });
+
+    result.unwrap_or(std::ptr::null_mut())
+}
+
+/// Check if a funcs object is assigned (non-null and valid)
+///
+/// # Arguments
+/// * `obj` - Pointer to the funcs object
+///
+/// # Returns
+/// 1 if the object is valid, 0 otherwise
+#[no_mangle]
+pub extern "C" fn spir_funcs_is_assigned(obj: *const spir_funcs) -> i32 {
+    if obj.is_null() {
+        return 0;
+    }
+
+    let result = std::panic::catch_unwind(|| unsafe {
+        let _obj_ref = &*obj;
+        // If we can safely dereference, it's assigned
+        1
+    });
+
+    result.unwrap_or(0)
+}
+
+/// Get the raw pointer for debugging (internal use only)
+///
+/// # Arguments
+/// * `obj` - Pointer to the funcs object
+///
+/// # Returns
+/// Raw pointer to the internal data structure
+#[no_mangle]
+pub extern "C" fn _spir_funcs_get_raw_ptr(obj: *const spir_funcs) -> *const std::ffi::c_void {
+    if obj.is_null() {
+        return std::ptr::null();
+    }
+
+    obj as *const std::ffi::c_void
+}
+
+/// Extract a subset of functions by indices
+///
+/// # Arguments
+/// * `funcs` - Pointer to the source funcs object
+/// * `nslice` - Number of functions to select (length of indices array)
+/// * `indices` - Array of indices specifying which functions to include
+/// * `status` - Pointer to store the status code
+///
+/// # Returns
+/// Pointer to a new funcs object containing only the selected functions, or null on error
+///
+/// # Safety
+/// The caller must ensure that `funcs` and `indices` are valid pointers.
+/// The returned pointer must be freed with `spir_funcs_release()`.
+#[no_mangle]
+pub unsafe extern "C" fn spir_funcs_get_slice(
+    funcs: *const spir_funcs,
+    nslice: i32,
+    indices: *const i32,
+    status: *mut crate::StatusCode,
+) -> *mut spir_funcs {
+    use crate::{SPIR_SUCCESS, SPIR_INVALID_ARGUMENT, SPIR_INTERNAL_ERROR};
+    
+    if funcs.is_null() || indices.is_null() || status.is_null() {
+        if !status.is_null() {
+            *status = SPIR_INVALID_ARGUMENT;
+        }
+        return std::ptr::null_mut();
+    }
+    
+    if nslice < 0 {
+        *status = SPIR_INVALID_ARGUMENT;
+        return std::ptr::null_mut();
+    }
+    
+    let result = std::panic::catch_unwind(|| {
+        let funcs_ref = &*funcs;
+        
+        // Convert C indices to Rust Vec<usize>
+        let indices_slice = std::slice::from_raw_parts(indices, nslice as usize);
+        let mut rust_indices = Vec::with_capacity(nslice as usize);
+        
+        for &i in indices_slice {
+            if i < 0 {
+                *status = SPIR_INVALID_ARGUMENT;
+                return std::ptr::null_mut();
+            }
+            rust_indices.push(i as usize);
+        }
+        
+        // Get the slice
+        match funcs_ref.get_slice(&rust_indices) {
+            Some(sliced_funcs) => {
+                *status = SPIR_SUCCESS;
+                Box::into_raw(Box::new(sliced_funcs))
+            },
+            None => {
+                *status = SPIR_INVALID_ARGUMENT;
+                std::ptr::null_mut()
+            },
+        }
+    });
+    
+    result.unwrap_or_else(|_| {
+        *status = SPIR_INTERNAL_ERROR;
+        std::ptr::null_mut()
+    })
+}
+
 /// Gets the number of basis functions
 ///
 /// # Arguments
@@ -539,6 +676,122 @@ mod tests {
             spir_basis_release(basis);
             spir_kernel_release(kernel);
         }
+    }
+
+    #[test]
+    fn test_funcs_clone_and_slice() {
+        use std::ptr;
+        use crate::kernel::*;
+        use crate::basis::*;
+        use crate::{SPIR_SUCCESS, SPIR_INVALID_ARGUMENT};
+
+        // Create a kernel and basis
+        let mut kernel_status = crate::SPIR_INTERNAL_ERROR;
+        let kernel = spir_logistic_kernel_new(10.0, &mut kernel_status);
+        assert_eq!(kernel_status, SPIR_SUCCESS);
+
+        let mut basis_status = crate::SPIR_INTERNAL_ERROR;
+        let basis = spir_basis_new(
+            1, 10.0, 1.0, 1e-6, kernel, ptr::null(), -1, &mut basis_status,
+        );
+        assert_eq!(basis_status, SPIR_SUCCESS);
+
+        // Get u funcs
+        let mut u_status = crate::SPIR_INTERNAL_ERROR;
+        let u_funcs = unsafe { spir_basis_get_u(basis, &mut u_status) };
+        assert_eq!(u_status, SPIR_SUCCESS);
+
+        let mut size = 0;
+        let status = spir_funcs_get_size(u_funcs, &mut size);
+        assert_eq!(status, SPIR_SUCCESS);
+        println!("✓ Original funcs size: {}", size);
+
+        // Test is_assigned
+        let assigned = spir_funcs_is_assigned(u_funcs);
+        assert_eq!(assigned, 1);
+        println!("✓ is_assigned returned 1 for valid object");
+
+        let null_assigned = spir_funcs_is_assigned(ptr::null());
+        assert_eq!(null_assigned, 0);
+        println!("✓ is_assigned returned 0 for null pointer");
+
+        // Test clone
+        let cloned_funcs = unsafe { spir_funcs_clone(u_funcs) };
+        assert!(!cloned_funcs.is_null());
+        println!("✓ Cloned funcs successfully");
+
+        let mut cloned_size = 0;
+        let status = spir_funcs_get_size(cloned_funcs, &mut cloned_size);
+        assert_eq!(status, SPIR_SUCCESS);
+        assert_eq!(cloned_size, size);
+        println!("✓ Cloned funcs has same size as original");
+
+        // Test get_slice
+        let indices = vec![0i32, 2, 4]; // Select first, third, fifth functions
+        let mut slice_status = crate::SPIR_INTERNAL_ERROR;
+        let sliced_funcs = unsafe {
+            spir_funcs_get_slice(
+                u_funcs,
+                indices.len() as i32,
+                indices.as_ptr(),
+                &mut slice_status,
+            )
+        };
+        assert_eq!(slice_status, SPIR_SUCCESS);
+        assert!(!sliced_funcs.is_null());
+        println!("✓ Created slice with {} functions", indices.len());
+
+        let mut sliced_size = 0;
+        let status = spir_funcs_get_size(sliced_funcs, &mut sliced_size);
+        assert_eq!(status, SPIR_SUCCESS);
+        assert_eq!(sliced_size, indices.len() as i32);
+        println!("✓ Sliced funcs has correct size");
+
+        // Test that sliced functions evaluate correctly
+        let mut sliced_values = vec![0.0; sliced_size as usize];
+        let status = spir_funcs_eval(sliced_funcs, 0.0, sliced_values.as_mut_ptr());
+        assert_eq!(status, SPIR_SUCCESS);
+        println!("✓ Sliced funcs evaluates correctly");
+
+        // Test error case: invalid indices
+        let bad_indices = vec![-1i32];
+        let mut bad_status = SPIR_SUCCESS;
+        let bad_slice = unsafe {
+            spir_funcs_get_slice(
+                u_funcs,
+                bad_indices.len() as i32,
+                bad_indices.as_ptr(),
+                &mut bad_status,
+            )
+        };
+        assert_eq!(bad_status, SPIR_INVALID_ARGUMENT);
+        assert!(bad_slice.is_null());
+        println!("✓ Invalid indices correctly rejected");
+
+        // Test error case: out of range indices
+        let oor_indices = vec![0i32, size]; // size is out of range (0-indexed)
+        let mut oor_status = SPIR_SUCCESS;
+        let oor_slice = unsafe {
+            spir_funcs_get_slice(
+                u_funcs,
+                oor_indices.len() as i32,
+                oor_indices.as_ptr(),
+                &mut oor_status,
+            )
+        };
+        assert_eq!(oor_status, SPIR_INVALID_ARGUMENT);
+        assert!(oor_slice.is_null());
+        println!("✓ Out-of-range indices correctly rejected");
+
+        // Cleanup
+        unsafe {
+            spir_funcs_release(sliced_funcs);
+            spir_funcs_release(cloned_funcs);
+            spir_funcs_release(u_funcs);
+            spir_basis_release(basis);
+            spir_kernel_release(kernel);
+        }
+        println!("✓ All objects released successfully");
     }
 }
 
