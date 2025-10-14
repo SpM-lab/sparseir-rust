@@ -218,6 +218,15 @@ impl spir_basis {
             BasisType::RegularizedBoseBosonic(b) => b.default_matsubara_sampling_points_i64(positive_only),
         }
     }
+
+    pub(crate) fn default_omega_sampling_points(&self) -> Vec<f64> {
+        match &self.inner {
+            BasisType::LogisticFermionic(b) => b.default_omega_sampling_points(),
+            BasisType::LogisticBosonic(b) => b.default_omega_sampling_points(),
+            BasisType::RegularizedBoseFermionic(b) => b.default_omega_sampling_points(),
+            BasisType::RegularizedBoseBosonic(b) => b.default_omega_sampling_points(),
+        }
+    }
 }
 
 /// Internal enum to hold different function types

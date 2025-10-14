@@ -143,6 +143,21 @@ StatusCode spir_basis_get_default_matsus(const struct spir_basis *b,
 StatusCode spir_basis_get_default_taus(const struct spir_basis *b, double *points);
 
 /**
+ * Gets the default omega (real frequency) sampling points
+ *
+ * # Arguments
+ * * `b` - Pointer to the finite temperature basis object
+ * * `points` - Pre-allocated array to store the omega sampling points
+ *
+ * # Returns
+ * Status code (SPIR_SUCCESS on success)
+ *
+ * # Safety
+ * The caller must ensure that `points` has size >= `spir_basis_get_n_default_ws(b)`
+ */
+StatusCode spir_basis_get_default_ws(const struct spir_basis *b, double *points);
+
+/**
  * Get the number of default Matsubara sampling points
  *
  * # Arguments
@@ -172,6 +187,21 @@ StatusCode spir_basis_get_n_default_matsus(const struct spir_basis *b,
  * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
  */
 StatusCode spir_basis_get_n_default_taus(const struct spir_basis *b, int *num_points);
+
+/**
+ * Gets the number of default omega (real frequency) sampling points
+ *
+ * # Arguments
+ * * `b` - Pointer to the finite temperature basis object
+ * * `num_points` - Pointer to store the number of sampling points
+ *
+ * # Returns
+ * Status code (SPIR_SUCCESS on success)
+ *
+ * # Safety
+ * The caller must ensure that `b` and `num_points` are valid pointers
+ */
+StatusCode spir_basis_get_n_default_ws(const struct spir_basis *b, int *num_points);
 
 /**
  * Get singular values (alias for spir_basis_get_svals for libsparseir compatibility)

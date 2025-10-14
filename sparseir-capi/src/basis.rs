@@ -548,6 +548,51 @@ mod tests {
         spir_basis_release(basis);
         spir_kernel_release(kernel);
     }
+
+    #[test]
+    fn test_basis_omega_sampling() {
+        let mut kernel_status = SPIR_INTERNAL_ERROR;
+        let kernel = spir_logistic_kernel_new(10.0, &mut kernel_status);
+        
+        let mut basis_status = SPIR_INTERNAL_ERROR;
+        let basis = spir_basis_new(1, 10.0, 1.0, 1e-6, kernel, ptr::null(), -1, &mut basis_status);
+        
+        // Get number of omega points
+        let mut n_ws = 0;
+        let status = spir_basis_get_n_default_ws(basis, &mut n_ws);
+        assert_eq!(status, SPIR_SUCCESS);
+        assert!(n_ws > 0);
+        println!("Number of omega points: {}", n_ws);
+
+        // Get omega points
+        let mut ws = vec![0.0; n_ws as usize];
+        let status = spir_basis_get_default_ws(basis, ws.as_mut_ptr());
+        assert_eq!(status, SPIR_SUCCESS);
+
+        println!("First 5 omega points:");
+        for i in 0..std::cmp::min(5, ws.len()) {
+            println!("  w[{}] = {}", i, ws[i]);
+        }
+
+        // Test singular_values alias
+        let mut size = 0;
+        let status = spir_basis_get_size(basis, &mut size);
+        assert_eq!(status, SPIR_SUCCESS);
+        
+        let mut svals = vec![0.0; size as usize];
+        let status = spir_basis_get_singular_values(basis, svals.as_mut_ptr());
+        assert_eq!(status, SPIR_SUCCESS);
+        
+        // Verify it matches get_svals
+        let mut svals2 = vec![0.0; size as usize];
+        let status2 = spir_basis_get_svals(basis, svals2.as_mut_ptr());
+        assert_eq!(status2, SPIR_SUCCESS);
+        assert_eq!(svals, svals2);
+        println!("✓ get_singular_values matches get_svals");
+
+        spir_basis_release(basis);
+        spir_kernel_release(kernel);
+    }
 }
 
 /// Gets the basis functions in imaginary time (τ) domain
@@ -684,6 +729,66 @@ pub unsafe extern "C" fn spir_basis_get_v(
             std::ptr::null_mut()
         }
     }
+}
+
+/// Gets the number of default omega (real frequency) sampling points
+///
+/// # Arguments
+/// * `b` - Pointer to the finite temperature basis object
+/// * `num_points` - Pointer to store the number of sampling points
+///
+/// # Returns
+/// Status code (SPIR_SUCCESS on success)
+///
+/// # Safety
+/// The caller must ensure that `b` and `num_points` are valid pointers
+#[no_mangle]
+pub extern "C" fn spir_basis_get_n_default_ws(
+    b: *const spir_basis,
+    num_points: *mut libc::c_int,
+) -> StatusCode {
+    if b.is_null() || num_points.is_null() {
+        return SPIR_INVALID_ARGUMENT;
+    }
+
+    let result = catch_unwind(|| unsafe {
+        let basis = &*b;
+        let omega_points = basis.default_omega_sampling_points();
+        *num_points = omega_points.len() as libc::c_int;
+        SPIR_SUCCESS
+    });
+
+    result.unwrap_or(SPIR_INTERNAL_ERROR)
+}
+
+/// Gets the default omega (real frequency) sampling points
+///
+/// # Arguments
+/// * `b` - Pointer to the finite temperature basis object
+/// * `points` - Pre-allocated array to store the omega sampling points
+///
+/// # Returns
+/// Status code (SPIR_SUCCESS on success)
+///
+/// # Safety
+/// The caller must ensure that `points` has size >= `spir_basis_get_n_default_ws(b)`
+#[no_mangle]
+pub extern "C" fn spir_basis_get_default_ws(
+    b: *const spir_basis,
+    points: *mut f64,
+) -> StatusCode {
+    if b.is_null() || points.is_null() {
+        return SPIR_INVALID_ARGUMENT;
+    }
+
+    let result = catch_unwind(|| unsafe {
+        let basis = &*b;
+        let omega_points = basis.default_omega_sampling_points();
+        std::ptr::copy_nonoverlapping(omega_points.as_ptr(), points, omega_points.len());
+        SPIR_SUCCESS
+    });
+
+    result.unwrap_or(SPIR_INTERNAL_ERROR)
 }
 
 /// Gets the basis functions in Matsubara frequency domain

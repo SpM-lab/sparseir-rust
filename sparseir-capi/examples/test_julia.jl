@@ -425,6 +425,91 @@ ccall((:spir_funcs_release, libpath), Cvoid, (Ptr{Cvoid},), uhat_funcs)
 ccall((:spir_basis_release, libpath), Cvoid, (Ptr{Cvoid},), basis)
 kernel_release(kernel)
 
+# Test 8: Omega (real frequency) sampling points
+println("\n📝 Test 8: Omega Sampling Points")
+kernel = kernel_logistic_new(10.0)
+
+# Create basis
+status_basis = Ref{Int32}(0)
+basis = ccall(
+    (:spir_basis_new, libpath),
+    Ptr{Cvoid},
+    (Int32, Float64, Float64, Float64, Ptr{Cvoid}, Ptr{Cvoid}, Int32, Ref{Int32}),
+    1,      # Fermionic
+    10.0,   # beta
+    1.0,    # omega_max
+    1e-6,   # epsilon
+    kernel,
+    C_NULL,
+    -1,
+    status_basis
+)
+
+if basis == C_NULL || status_basis[] != SPIR_COMPUTATION_SUCCESS
+    error("Failed to create basis: status = $(status_basis[])")
+end
+
+# Get number of omega sampling points
+n_ws = Ref{Int32}(0)
+status_ws = ccall(
+    (:spir_basis_get_n_default_ws, libpath),
+    Int32,
+    (Ptr{Cvoid}, Ref{Int32}),
+    basis, n_ws
+)
+
+if status_ws != SPIR_COMPUTATION_SUCCESS
+    error("Failed to get number of omega points: status = $status_ws")
+end
+
+println("✅ Number of omega sampling points: $(n_ws[])")
+
+# Get omega sampling points
+ws = Vector{Float64}(undef, n_ws[])
+status_get_ws = ccall(
+    (:spir_basis_get_default_ws, libpath),
+    Int32,
+    (Ptr{Cvoid}, Ptr{Float64}),
+    basis, ws
+)
+
+if status_get_ws != SPIR_COMPUTATION_SUCCESS
+    error("Failed to get omega points: status = $status_get_ws")
+end
+
+println("   First 5 omega points:")
+for i in 1:min(5, length(ws))
+    println("     ω[$i] = $(ws[i])")
+end
+
+# Test singular_values alias
+basis_size = Ref{Int32}(0)
+ccall(
+    (:spir_basis_get_size, libpath),
+    Int32,
+    (Ptr{Cvoid}, Ref{Int32}),
+    basis, basis_size
+)
+
+svals_alias = Vector{Float64}(undef, basis_size[])
+status_alias = ccall(
+    (:spir_basis_get_singular_values, libpath),
+    Int32,
+    (Ptr{Cvoid}, Ptr{Float64}),
+    basis, svals_alias
+)
+
+if status_alias != SPIR_COMPUTATION_SUCCESS
+    error("Failed to get singular values via alias: status = $status_alias")
+end
+
+println("✅ get_singular_values (alias) works correctly")
+println("   First singular value: $(svals_alias[1])")
+
+# Cleanup
+ccall((:spir_basis_release, libpath), Cvoid, (Ptr{Cvoid},), basis)
+kernel_release(kernel)
+
 println("\n" * "=" ^ 50)
 println("✅ All tests passed!")
 
