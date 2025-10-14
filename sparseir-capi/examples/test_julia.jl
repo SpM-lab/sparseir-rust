@@ -510,6 +510,114 @@ println("   First singular value: $(svals_alias[1])")
 ccall((:spir_basis_release, libpath), Cvoid, (Ptr{Cvoid},), basis)
 kernel_release(kernel)
 
+# Test 9: Function Evaluation
+println("\n📝 Test 9: Function Evaluation")
+kernel = kernel_logistic_new(10.0)
+
+# Create basis
+status_basis = Ref{Int32}(0)
+basis = ccall(
+    (:spir_basis_new, libpath),
+    Ptr{Cvoid},
+    (Int32, Float64, Float64, Float64, Ptr{Cvoid}, Ptr{Cvoid}, Int32, Ref{Int32}),
+    1,      # Fermionic
+    10.0,   # beta
+    1.0,    # omega_max
+    1e-6,   # epsilon
+    kernel,
+    C_NULL,
+    -1,
+    status_basis
+)
+
+# Get u funcs
+status_u = Ref{Int32}(0)
+u_funcs = ccall((:spir_basis_get_u, libpath), Ptr{Cvoid}, (Ptr{Cvoid}, Ref{Int32}), basis, status_u)
+
+# Get size
+u_size = Ref{Int32}(0)
+ccall((:spir_funcs_get_size, libpath), Int32, (Ptr{Cvoid}, Ref{Int32}), u_funcs, u_size)
+
+println("✅ u funcs size: $(u_size[])")
+
+# Test single point evaluation
+u_values = Vector{Float64}(undef, u_size[])
+status_eval = ccall(
+    (:spir_funcs_eval, libpath),
+    Int32,
+    (Ptr{Cvoid}, Float64, Ptr{Float64}),
+    u_funcs, 0.0, u_values
+)
+
+if status_eval != SPIR_COMPUTATION_SUCCESS
+    error("Failed to evaluate u: status = $status_eval")
+end
+
+println("✅ Evaluated u at tau=0")
+println("   u[0](0) = $(u_values[1])")
+println("   u[1](0) = $(u_values[2])")
+
+# Test batch evaluation
+tau_points = [-5.0, -2.5, 0.0, 2.5, 5.0]
+u_batch = Matrix{Float64}(undef, u_size[], length(tau_points))  # column-major
+status_batch = ccall(
+    (:spir_funcs_batch_eval, libpath),
+    Int32,
+    (Ptr{Cvoid}, Int32, Int32, Ptr{Float64}, Ptr{Float64}),
+    u_funcs, 1, length(tau_points), tau_points, u_batch
+)
+
+if status_batch != SPIR_COMPUTATION_SUCCESS
+    error("Failed to batch evaluate u: status = $status_batch")
+end
+
+println("✅ Batch evaluated u at $(length(tau_points)) tau points")
+println("   u[0](tau) = $(u_batch[1, :])")
+
+# Get uhat funcs
+status_uhat = Ref{Int32}(0)
+uhat_funcs = ccall((:spir_basis_get_uhat, libpath), Ptr{Cvoid}, (Ptr{Cvoid}, Ref{Int32}), basis, status_uhat)
+
+# Test Matsubara evaluation
+uhat_values = Vector{ComplexF64}(undef, u_size[])
+status_matsu = ccall(
+    (:spir_funcs_eval_matsu, libpath),
+    Int32,
+    (Ptr{Cvoid}, Int64, Ptr{ComplexF64}),
+    uhat_funcs, Int64(1), uhat_values
+)
+
+if status_matsu != SPIR_COMPUTATION_SUCCESS
+    error("Failed to evaluate uhat: status = $status_matsu")
+end
+
+println("✅ Evaluated uhat at n=1 (iω_1)")
+println("   uhat[0](iω_1) = $(uhat_values[1])")
+println("   |uhat[0](iω_1)| = $(abs(uhat_values[1]))")
+
+# Test batch Matsubara evaluation
+matsu_ns = Int64[1, 3, 5, 7]
+uhat_batch = Matrix{ComplexF64}(undef, u_size[], length(matsu_ns))
+status_batch_matsu = ccall(
+    (:spir_funcs_batch_eval_matsu, libpath),
+    Int32,
+    (Ptr{Cvoid}, Int32, Int32, Ptr{Int64}, Ptr{ComplexF64}),
+    uhat_funcs, 1, length(matsu_ns), matsu_ns, uhat_batch
+)
+
+if status_batch_matsu != SPIR_COMPUTATION_SUCCESS
+    error("Failed to batch evaluate uhat: status = $status_batch_matsu")
+end
+
+println("✅ Batch evaluated uhat at $(length(matsu_ns)) Matsubara frequencies")
+println("   First column magnitudes: $(abs.(uhat_batch[1:3, 1]))")
+
+# Cleanup
+ccall((:spir_funcs_release, libpath), Cvoid, (Ptr{Cvoid},), u_funcs)
+ccall((:spir_funcs_release, libpath), Cvoid, (Ptr{Cvoid},), uhat_funcs)
+ccall((:spir_basis_release, libpath), Cvoid, (Ptr{Cvoid},), basis)
+kernel_release(kernel)
+
 println("\n" * "=" ^ 50)
 println("✅ All tests passed!")
 

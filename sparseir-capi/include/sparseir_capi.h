@@ -338,6 +338,88 @@ struct spir_basis *spir_basis_new(int statistics,
 void spir_basis_release(struct spir_basis *b);
 
 /**
+ * Batch evaluate functions at multiple points (continuous functions only)
+ *
+ * # Arguments
+ * * `funcs` - Pointer to the funcs object
+ * * `order` - Memory layout: 0 for row-major, 1 for column-major
+ * * `num_points` - Number of evaluation points
+ * * `xs` - Array of points to evaluate at
+ * * `out` - Pre-allocated array to store results
+ *
+ * # Returns
+ * Status code (SPIR_SUCCESS on success, SPIR_NOT_SUPPORTED if not continuous)
+ *
+ * # Safety
+ * - `xs` must have size >= `num_points`
+ * - `out` must have size >= `num_points * spir_funcs_get_size(funcs)`
+ * - Layout: row-major = out[point][func], column-major = out[func][point]
+ */
+StatusCode spir_funcs_batch_eval(const struct spir_funcs *funcs,
+                                 int order,
+                                 int num_points,
+                                 const double *xs,
+                                 double *out);
+
+/**
+ * Batch evaluate functions at multiple Matsubara frequencies
+ *
+ * # Arguments
+ * * `funcs` - Pointer to the funcs object
+ * * `order` - Memory layout: 0 for row-major, 1 for column-major
+ * * `num_freqs` - Number of Matsubara frequencies
+ * * `ns` - Array of Matsubara frequency indices
+ * * `out` - Pre-allocated array to store complex results
+ *
+ * # Returns
+ * Status code (SPIR_SUCCESS on success, SPIR_NOT_SUPPORTED if not Matsubara type)
+ *
+ * # Safety
+ * - `ns` must have size >= `num_freqs`
+ * - `out` must have size >= `num_freqs * spir_funcs_get_size(funcs)`
+ * - Complex numbers are laid out as [real, imag] pairs
+ * - Layout: row-major = out[freq][func], column-major = out[func][freq]
+ */
+StatusCode spir_funcs_batch_eval_matsu(const struct spir_funcs *funcs,
+                                       int order,
+                                       int num_freqs,
+                                       const int64_t *ns,
+                                       Complex64 *out);
+
+/**
+ * Evaluate functions at a single point (continuous functions only)
+ *
+ * # Arguments
+ * * `funcs` - Pointer to the funcs object
+ * * `x` - Point to evaluate at (tau coordinate in [-1, 1])
+ * * `out` - Pre-allocated array to store function values
+ *
+ * # Returns
+ * Status code (SPIR_SUCCESS on success, SPIR_NOT_SUPPORTED if not continuous)
+ *
+ * # Safety
+ * The caller must ensure that `out` has size >= `spir_funcs_get_size(funcs)`
+ */
+StatusCode spir_funcs_eval(const struct spir_funcs *funcs, double x, double *out);
+
+/**
+ * Evaluate functions at a single Matsubara frequency
+ *
+ * # Arguments
+ * * `funcs` - Pointer to the funcs object
+ * * `n` - Matsubara frequency index
+ * * `out` - Pre-allocated array to store complex function values
+ *
+ * # Returns
+ * Status code (SPIR_SUCCESS on success, SPIR_NOT_SUPPORTED if not Matsubara type)
+ *
+ * # Safety
+ * The caller must ensure that `out` has size >= `spir_funcs_get_size(funcs)`
+ * Complex numbers are laid out as [real, imag] pairs
+ */
+StatusCode spir_funcs_eval_matsu(const struct spir_funcs *funcs, int64_t n, Complex64 *out);
+
+/**
  * Gets the knot positions for continuous functions
  *
  * # Arguments

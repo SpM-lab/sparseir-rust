@@ -232,14 +232,23 @@ impl spir_basis {
 
 /// Internal enum to hold different function types
 pub(crate) enum FuncsType {
-    /// u, v: imaginary-time and real-frequency basis functions
-    PolyVector(Arc<PiecewiseLegendrePolyVector>),
+    /// Continuous functions (u or v): PiecewiseLegendrePolyVector
+    /// statistics: -1 for v (omega, no periodicity)
+    ///              0 for u (tau, Bosonic)
+    ///              1 for u (tau, Fermionic)
+    PolyVector {
+        poly: Arc<PiecewiseLegendrePolyVector>,
+        statistics: i32,
+    },
     
-    /// uhat: Matsubara-frequency basis functions (Fermionic)
-    FTVectorFermionic(Arc<PiecewiseLegendreFTVector<Fermionic>>),
-    
-    /// uhat: Matsubara-frequency basis functions (Bosonic)
-    FTVectorBosonic(Arc<PiecewiseLegendreFTVector<Bosonic>>),
+    /// Fourier-transformed functions (uhat): PiecewiseLegendreFTVector
+    /// statistics: 0 for Bosonic, 1 for Fermionic
+    /// Only one of ft_fermionic/ft_bosonic is Some, the other is None
+    FTVector {
+        ft_fermionic: Option<Arc<PiecewiseLegendreFTVector<Fermionic>>>,
+        ft_bosonic: Option<Arc<PiecewiseLegendreFTVector<Bosonic>>>,
+        statistics: i32,
+    },
 }
 
 /// Opaque funcs type for C API (compatible with libsparseir)
@@ -256,26 +265,50 @@ pub struct spir_funcs {
 }
 
 impl spir_funcs {
-    /// Create a new funcs object from a PiecewiseLegendrePolyVector
-    pub(crate) fn from_poly_vector(poly: Arc<PiecewiseLegendrePolyVector>, beta: f64) -> Self {
+    /// Create u funcs (tau-domain, Fermionic)
+    pub(crate) fn from_u_fermionic(poly: Arc<PiecewiseLegendrePolyVector>, beta: f64) -> Self {
         Self {
-            inner: FuncsType::PolyVector(poly),
+            inner: FuncsType::PolyVector { poly, statistics: 1 },
             beta,
         }
     }
 
-    /// Create a new funcs object from a PiecewiseLegendreFTVector (Fermionic)
-    pub(crate) fn from_ft_vector_fermionic(ft: Arc<PiecewiseLegendreFTVector<Fermionic>>, beta: f64) -> Self {
+    /// Create u funcs (tau-domain, Bosonic)
+    pub(crate) fn from_u_bosonic(poly: Arc<PiecewiseLegendrePolyVector>, beta: f64) -> Self {
         Self {
-            inner: FuncsType::FTVectorFermionic(ft),
+            inner: FuncsType::PolyVector { poly, statistics: 0 },
             beta,
         }
     }
 
-    /// Create a new funcs object from a PiecewiseLegendreFTVector (Bosonic)
-    pub(crate) fn from_ft_vector_bosonic(ft: Arc<PiecewiseLegendreFTVector<Bosonic>>, beta: f64) -> Self {
+    /// Create v funcs (omega-domain, no statistics)
+    pub(crate) fn from_v(poly: Arc<PiecewiseLegendrePolyVector>, beta: f64) -> Self {
         Self {
-            inner: FuncsType::FTVectorBosonic(ft),
+            inner: FuncsType::PolyVector { poly, statistics: -1 },
+            beta,
+        }
+    }
+
+    /// Create uhat funcs (Matsubara-domain, Fermionic)
+    pub(crate) fn from_uhat_fermionic(ft: Arc<PiecewiseLegendreFTVector<Fermionic>>, beta: f64) -> Self {
+        Self {
+            inner: FuncsType::FTVector {
+                ft_fermionic: Some(ft),
+                ft_bosonic: None,
+                statistics: 1,
+            },
+            beta,
+        }
+    }
+
+    /// Create uhat funcs (Matsubara-domain, Bosonic)
+    pub(crate) fn from_uhat_bosonic(ft: Arc<PiecewiseLegendreFTVector<Bosonic>>, beta: f64) -> Self {
+        Self {
+            inner: FuncsType::FTVector {
+                ft_fermionic: None,
+                ft_bosonic: Some(ft),
+                statistics: 0,
+            },
             beta,
         }
     }
@@ -283,16 +316,23 @@ impl spir_funcs {
     /// Get the number of basis functions
     pub(crate) fn size(&self) -> usize {
         match &self.inner {
-            FuncsType::PolyVector(poly) => poly.polyvec.len(),
-            FuncsType::FTVectorFermionic(ft) => ft.polyvec.len(),
-            FuncsType::FTVectorBosonic(ft) => ft.polyvec.len(),
+            FuncsType::PolyVector { poly, .. } => poly.polyvec.len(),
+            FuncsType::FTVector { ft_fermionic, ft_bosonic, .. } => {
+                if let Some(ft) = ft_fermionic {
+                    ft.polyvec.len()
+                } else if let Some(ft) = ft_bosonic {
+                    ft.polyvec.len()
+                } else {
+                    0
+                }
+            },
         }
     }
 
     /// Get knots for continuous functions (PolyVector only)
     pub(crate) fn knots(&self) -> Option<Vec<f64>> {
         match &self.inner {
-            FuncsType::PolyVector(poly) => {
+            FuncsType::PolyVector { poly, .. } => {
                 // Get unique knots from all polynomials
                 let mut all_knots = Vec::new();
                 for p in &poly.polyvec {
@@ -309,19 +349,30 @@ impl spir_funcs {
         }
     }
 
-    /// Evaluate at a single tau point (for continuous functions only)
+    /// Evaluate at a single tau/omega point (for continuous functions only)
     ///
     /// # Arguments
-    /// * `x` - Point in [-1, 1] where tau = beta/2 * (x + 1) - beta/2
+    /// * `x` - For u: tau ∈ [-beta, beta], For v: omega ∈ [-omega_max, omega_max]
     ///
     /// # Returns
     /// Vector of function values, or None if not continuous
     pub(crate) fn eval_continuous(&self, x: f64) -> Option<Vec<f64>> {
         match &self.inner {
-            FuncsType::PolyVector(poly) => {
+            FuncsType::PolyVector { poly, statistics } => {
+                // For u (tau functions): handle periodicity
+                // For v (omega functions): no periodicity (statistics = -1)
+                let (x_reg, sign) = if *statistics >= 0 {
+                    // u functions: regularize tau to [0, beta]
+                    let fermionic_sign = if *statistics == 1 { -1.0 } else { 1.0 };
+                    regularize_tau(x, self.beta, fermionic_sign)
+                } else {
+                    // v functions: no regularization needed
+                    (x, 1.0)
+                };
+                
                 let mut result = Vec::with_capacity(poly.polyvec.len());
                 for p in &poly.polyvec {
-                    result.push(p.evaluate(x));
+                    result.push(sign * p.evaluate(x_reg));
                 }
                 Some(result)
             },
@@ -337,40 +388,52 @@ impl spir_funcs {
     /// # Returns
     /// Vector of complex function values, or None if not FT type
     pub(crate) fn eval_matsubara(&self, n: i64) -> Option<Vec<num_complex::Complex64>> {
-        use num_complex::Complex64;
-        
         match &self.inner {
-            FuncsType::FTVectorFermionic(ft) => {
-                let freq = MatsubaraFreq::<Fermionic>::new(n).ok()?;
-                let mut result = Vec::with_capacity(ft.polyvec.len());
-                for p in &ft.polyvec {
-                    result.push(p.evaluate(&freq));
+            FuncsType::FTVector { ft_fermionic, ft_bosonic, statistics } => {
+                if *statistics == 1 {
+                    // Fermionic
+                    let ft = ft_fermionic.as_ref()?;
+                    let freq = MatsubaraFreq::<Fermionic>::new(n).ok()?;
+                    let mut result = Vec::with_capacity(ft.polyvec.len());
+                    for p in &ft.polyvec {
+                        result.push(p.evaluate(&freq));
+                    }
+                    Some(result)
+                } else {
+                    // Bosonic
+                    let ft = ft_bosonic.as_ref()?;
+                    let freq = MatsubaraFreq::<Bosonic>::new(n).ok()?;
+                    let mut result = Vec::with_capacity(ft.polyvec.len());
+                    for p in &ft.polyvec {
+                        result.push(p.evaluate(&freq));
+                    }
+                    Some(result)
                 }
-                Some(result)
-            },
-            FuncsType::FTVectorBosonic(ft) => {
-                let freq = MatsubaraFreq::<Bosonic>::new(n).ok()?;
-                let mut result = Vec::with_capacity(ft.polyvec.len());
-                for p in &ft.polyvec {
-                    result.push(p.evaluate(&freq));
-                }
-                Some(result)
             },
             _ => None,
         }
     }
 
-    /// Batch evaluate at multiple tau points
+    /// Batch evaluate at multiple tau/omega points
     pub(crate) fn batch_eval_continuous(&self, xs: &[f64]) -> Option<Vec<Vec<f64>>> {
         match &self.inner {
-            FuncsType::PolyVector(poly) => {
+            FuncsType::PolyVector { poly, statistics } => {
                 let n_funcs = poly.polyvec.len();
                 let n_points = xs.len();
                 let mut result = vec![vec![0.0; n_points]; n_funcs];
                 
+                let fermionic_sign = if *statistics == 1 { -1.0 } else { 1.0 };
+                
                 for (i, p) in poly.polyvec.iter().enumerate() {
                     for (j, &x) in xs.iter().enumerate() {
-                        result[i][j] = p.evaluate(x);
+                        let (x_reg, sign) = if *statistics >= 0 {
+                            // u functions: regularize tau
+                            regularize_tau(x, self.beta, fermionic_sign)
+                        } else {
+                            // v functions: no regularization
+                            (x, 1.0)
+                        };
+                        result[i][j] = sign * p.evaluate(x_reg);
                     }
                 }
                 Some(result)
@@ -384,35 +447,74 @@ impl spir_funcs {
         use num_complex::Complex64;
         
         match &self.inner {
-            FuncsType::FTVectorFermionic(ft) => {
-                let n_funcs = ft.polyvec.len();
-                let n_points = ns.len();
-                let mut result = vec![vec![Complex64::new(0.0, 0.0); n_points]; n_funcs];
-                
-                for (i, p) in ft.polyvec.iter().enumerate() {
-                    for (j, &n) in ns.iter().enumerate() {
-                        if let Ok(freq) = MatsubaraFreq::<Fermionic>::new(n) {
-                            result[i][j] = p.evaluate(&freq);
+            FuncsType::FTVector { ft_fermionic, ft_bosonic, statistics } => {
+                if *statistics == 1 {
+                    // Fermionic
+                    let ft = ft_fermionic.as_ref()?;
+                    let n_funcs = ft.polyvec.len();
+                    let n_points = ns.len();
+                    let mut result = vec![vec![Complex64::new(0.0, 0.0); n_points]; n_funcs];
+                    
+                    for (i, p) in ft.polyvec.iter().enumerate() {
+                        for (j, &n) in ns.iter().enumerate() {
+                            if let Ok(freq) = MatsubaraFreq::<Fermionic>::new(n) {
+                                result[i][j] = p.evaluate(&freq);
+                            }
                         }
                     }
-                }
-                Some(result)
-            },
-            FuncsType::FTVectorBosonic(ft) => {
-                let n_funcs = ft.polyvec.len();
-                let n_points = ns.len();
-                let mut result = vec![vec![Complex64::new(0.0, 0.0); n_points]; n_funcs];
-                
-                for (i, p) in ft.polyvec.iter().enumerate() {
-                    for (j, &n) in ns.iter().enumerate() {
-                        if let Ok(freq) = MatsubaraFreq::<Bosonic>::new(n) {
-                            result[i][j] = p.evaluate(&freq);
+                    Some(result)
+                } else {
+                    // Bosonic
+                    let ft = ft_bosonic.as_ref()?;
+                    let n_funcs = ft.polyvec.len();
+                    let n_points = ns.len();
+                    let mut result = vec![vec![Complex64::new(0.0, 0.0); n_points]; n_funcs];
+                    
+                    for (i, p) in ft.polyvec.iter().enumerate() {
+                        for (j, &n) in ns.iter().enumerate() {
+                            if let Ok(freq) = MatsubaraFreq::<Bosonic>::new(n) {
+                                result[i][j] = p.evaluate(&freq);
+                            }
                         }
                     }
+                    Some(result)
                 }
-                Some(result)
             },
             _ => None,
+        }
+    }
+}
+
+/// Regularize tau coordinate to [0, beta]
+///
+/// Handles periodicity for tau functions:
+/// - tau ∈ (0, beta] → (tau, sign=1.0)
+/// - tau ∈ [-beta, 0) → (tau+beta, sign=fermionic_sign)
+/// - tau = 0 → (0, sign=1.0)
+///
+/// # Arguments
+/// * `tau` - Imaginary time coordinate
+/// * `beta` - Inverse temperature
+/// * `fermionic_sign` - Sign for negative tau: -1.0 for Fermionic, +1.0 for Bosonic
+///
+/// # Returns
+/// (tau_regularized, sign)
+fn regularize_tau(tau: f64, beta: f64, fermionic_sign: f64) -> (f64, f64) {
+    if tau < -beta || tau > beta {
+        panic!("tau {} is outside range [-beta={}, beta={}]", tau, beta, beta);
+    }
+
+    if tau > 0.0 && tau <= beta {
+        (tau, 1.0)
+    } else if tau >= -beta && tau < 0.0 {
+        (tau + beta, fermionic_sign)
+    } else {
+        // tau == 0.0 (or -0.0)
+        // Check sign bit for -0.0 vs +0.0
+        if tau.is_sign_negative() {
+            (beta, fermionic_sign)
+        } else {
+            (0.0, 1.0)
         }
     }
 }

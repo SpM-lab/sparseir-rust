@@ -630,16 +630,16 @@ pub unsafe extern "C" fn spir_basis_get_u(
         
         let funcs = match &basis_ref.inner {
             BasisType::LogisticFermionic(basis) => {
-                spir_funcs::from_poly_vector(basis.u.clone(), beta)
+                spir_funcs::from_u_fermionic(basis.u.clone(), beta)
             },
             BasisType::LogisticBosonic(basis) => {
-                spir_funcs::from_poly_vector(basis.u.clone(), beta)
+                spir_funcs::from_u_bosonic(basis.u.clone(), beta)
             },
             BasisType::RegularizedBoseFermionic(basis) => {
-                spir_funcs::from_poly_vector(basis.u.clone(), beta)
+                spir_funcs::from_u_fermionic(basis.u.clone(), beta)
             },
             BasisType::RegularizedBoseBosonic(basis) => {
-                spir_funcs::from_poly_vector(basis.u.clone(), beta)
+                spir_funcs::from_u_bosonic(basis.u.clone(), beta)
             },
         };
 
@@ -698,16 +698,16 @@ pub unsafe extern "C" fn spir_basis_get_v(
         
         let funcs = match &basis_ref.inner {
             BasisType::LogisticFermionic(basis) => {
-                spir_funcs::from_poly_vector(basis.v.clone(), beta)
+                spir_funcs::from_v(basis.v.clone(), beta)
             },
             BasisType::LogisticBosonic(basis) => {
-                spir_funcs::from_poly_vector(basis.v.clone(), beta)
+                spir_funcs::from_v(basis.v.clone(), beta)
             },
             BasisType::RegularizedBoseFermionic(basis) => {
-                spir_funcs::from_poly_vector(basis.v.clone(), beta)
+                spir_funcs::from_v(basis.v.clone(), beta)
             },
             BasisType::RegularizedBoseBosonic(basis) => {
-                spir_funcs::from_poly_vector(basis.v.clone(), beta)
+                spir_funcs::from_v(basis.v.clone(), beta)
             },
         };
 
@@ -826,16 +826,16 @@ pub unsafe extern "C" fn spir_basis_get_uhat(
         
         let funcs = match &basis_ref.inner {
             BasisType::LogisticFermionic(basis) => {
-                spir_funcs::from_ft_vector_fermionic(basis.uhat.clone(), beta)
+                spir_funcs::from_uhat_fermionic(basis.uhat.clone(), beta)
             },
             BasisType::LogisticBosonic(basis) => {
-                spir_funcs::from_ft_vector_bosonic(basis.uhat.clone(), beta)
+                spir_funcs::from_uhat_bosonic(basis.uhat.clone(), beta)
             },
             BasisType::RegularizedBoseFermionic(basis) => {
-                spir_funcs::from_ft_vector_fermionic(basis.uhat.clone(), beta)
+                spir_funcs::from_uhat_fermionic(basis.uhat.clone(), beta)
             },
             BasisType::RegularizedBoseBosonic(basis) => {
-                spir_funcs::from_ft_vector_bosonic(basis.uhat.clone(), beta)
+                spir_funcs::from_uhat_bosonic(basis.uhat.clone(), beta)
             },
         };
 
