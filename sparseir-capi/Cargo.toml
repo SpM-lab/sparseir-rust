@@ -18,6 +18,9 @@ sparseir-rust = { path = "../sparseir-rust" }
 # Error code type
 libc = "0.2"
 
+# Complex numbers
+num-complex = "0.4"
+
 [build-dependencies]
 cbindgen = "0.27"
 

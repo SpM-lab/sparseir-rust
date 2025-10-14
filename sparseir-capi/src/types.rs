@@ -10,6 +10,7 @@ use sparseir_rust::basis::FiniteTempBasis;
 use sparseir_rust::{Bosonic, Fermionic};
 use sparseir_rust::poly::PiecewiseLegendrePolyVector;
 use sparseir_rust::polyfourier::PiecewiseLegendreFTVector;
+use sparseir_rust::freq::MatsubaraFreq;
 
 /// Opaque kernel type for C API (compatible with libsparseir)
 ///
@@ -283,8 +284,8 @@ impl spir_funcs {
     pub(crate) fn size(&self) -> usize {
         match &self.inner {
             FuncsType::PolyVector(poly) => poly.polyvec.len(),
-            FuncsType::FTVectorFermionic(ft) => ft.len(),
-            FuncsType::FTVectorBosonic(ft) => ft.len(),
+            FuncsType::FTVectorFermionic(ft) => ft.polyvec.len(),
+            FuncsType::FTVectorBosonic(ft) => ft.polyvec.len(),
         }
     }
 
@@ -305,6 +306,113 @@ impl spir_funcs {
                 Some(all_knots)
             },
             _ => None, // FT vectors don't have knots in the traditional sense
+        }
+    }
+
+    /// Evaluate at a single tau point (for continuous functions only)
+    ///
+    /// # Arguments
+    /// * `x` - Point in [-1, 1] where tau = beta/2 * (x + 1) - beta/2
+    ///
+    /// # Returns
+    /// Vector of function values, or None if not continuous
+    pub(crate) fn eval_continuous(&self, x: f64) -> Option<Vec<f64>> {
+        match &self.inner {
+            FuncsType::PolyVector(poly) => {
+                let mut result = Vec::with_capacity(poly.polyvec.len());
+                for p in &poly.polyvec {
+                    result.push(p.evaluate(x));
+                }
+                Some(result)
+            },
+            _ => None,
+        }
+    }
+
+    /// Evaluate at a single Matsubara frequency (for FT functions only)
+    ///
+    /// # Arguments
+    /// * `n` - Matsubara frequency index
+    ///
+    /// # Returns
+    /// Vector of complex function values, or None if not FT type
+    pub(crate) fn eval_matsubara(&self, n: i64) -> Option<Vec<num_complex::Complex64>> {
+        use num_complex::Complex64;
+        
+        match &self.inner {
+            FuncsType::FTVectorFermionic(ft) => {
+                let freq = MatsubaraFreq::<Fermionic>::new(n).ok()?;
+                let mut result = Vec::with_capacity(ft.polyvec.len());
+                for p in &ft.polyvec {
+                    result.push(p.evaluate(&freq));
+                }
+                Some(result)
+            },
+            FuncsType::FTVectorBosonic(ft) => {
+                let freq = MatsubaraFreq::<Bosonic>::new(n).ok()?;
+                let mut result = Vec::with_capacity(ft.polyvec.len());
+                for p in &ft.polyvec {
+                    result.push(p.evaluate(&freq));
+                }
+                Some(result)
+            },
+            _ => None,
+        }
+    }
+
+    /// Batch evaluate at multiple tau points
+    pub(crate) fn batch_eval_continuous(&self, xs: &[f64]) -> Option<Vec<Vec<f64>>> {
+        match &self.inner {
+            FuncsType::PolyVector(poly) => {
+                let n_funcs = poly.polyvec.len();
+                let n_points = xs.len();
+                let mut result = vec![vec![0.0; n_points]; n_funcs];
+                
+                for (i, p) in poly.polyvec.iter().enumerate() {
+                    for (j, &x) in xs.iter().enumerate() {
+                        result[i][j] = p.evaluate(x);
+                    }
+                }
+                Some(result)
+            },
+            _ => None,
+        }
+    }
+
+    /// Batch evaluate at multiple Matsubara frequencies
+    pub(crate) fn batch_eval_matsubara(&self, ns: &[i64]) -> Option<Vec<Vec<num_complex::Complex64>>> {
+        use num_complex::Complex64;
+        
+        match &self.inner {
+            FuncsType::FTVectorFermionic(ft) => {
+                let n_funcs = ft.polyvec.len();
+                let n_points = ns.len();
+                let mut result = vec![vec![Complex64::new(0.0, 0.0); n_points]; n_funcs];
+                
+                for (i, p) in ft.polyvec.iter().enumerate() {
+                    for (j, &n) in ns.iter().enumerate() {
+                        if let Ok(freq) = MatsubaraFreq::<Fermionic>::new(n) {
+                            result[i][j] = p.evaluate(&freq);
+                        }
+                    }
+                }
+                Some(result)
+            },
+            FuncsType::FTVectorBosonic(ft) => {
+                let n_funcs = ft.polyvec.len();
+                let n_points = ns.len();
+                let mut result = vec![vec![Complex64::new(0.0, 0.0); n_points]; n_funcs];
+                
+                for (i, p) in ft.polyvec.iter().enumerate() {
+                    for (j, &n) in ns.iter().enumerate() {
+                        if let Ok(freq) = MatsubaraFreq::<Bosonic>::new(n) {
+                            result[i][j] = p.evaluate(&freq);
+                        }
+                    }
+                }
+                Some(result)
+            },
+            _ => None,
         }
     }
 }
