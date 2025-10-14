@@ -338,6 +338,45 @@ struct spir_basis *spir_basis_new(int statistics,
 void spir_basis_release(struct spir_basis *b);
 
 /**
+ * Gets the knot positions for continuous functions
+ *
+ * # Arguments
+ * * `funcs` - Pointer to the funcs object
+ * * `knots` - Pre-allocated array to store knot positions
+ *
+ * # Returns
+ * Status code (SPIR_SUCCESS on success, SPIR_NOT_SUPPORTED if not continuous)
+ *
+ * # Safety
+ * The caller must ensure that `knots` has size >= `spir_funcs_get_n_knots(funcs)`
+ */
+StatusCode spir_funcs_get_knots(const struct spir_funcs *funcs, double *knots);
+
+/**
+ * Gets the number of knots for continuous functions
+ *
+ * # Arguments
+ * * `funcs` - Pointer to the funcs object
+ * * `n_knots` - Pointer to store the number of knots
+ *
+ * # Returns
+ * Status code (SPIR_SUCCESS on success, SPIR_NOT_SUPPORTED if not continuous)
+ */
+StatusCode spir_funcs_get_n_knots(const struct spir_funcs *funcs, int *n_knots);
+
+/**
+ * Gets the number of basis functions
+ *
+ * # Arguments
+ * * `funcs` - Pointer to the funcs object
+ * * `size` - Pointer to store the number of functions
+ *
+ * # Returns
+ * Status code (SPIR_SUCCESS on success)
+ */
+StatusCode spir_funcs_get_size(const struct spir_funcs *funcs, int *size);
+
+/**
  * Releases a funcs object
  *
  * # Arguments

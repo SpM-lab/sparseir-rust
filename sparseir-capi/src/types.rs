@@ -278,5 +278,34 @@ impl spir_funcs {
             beta,
         }
     }
+
+    /// Get the number of basis functions
+    pub(crate) fn size(&self) -> usize {
+        match &self.inner {
+            FuncsType::PolyVector(poly) => poly.polyvec.len(),
+            FuncsType::FTVectorFermionic(ft) => ft.len(),
+            FuncsType::FTVectorBosonic(ft) => ft.len(),
+        }
+    }
+
+    /// Get knots for continuous functions (PolyVector only)
+    pub(crate) fn knots(&self) -> Option<Vec<f64>> {
+        match &self.inner {
+            FuncsType::PolyVector(poly) => {
+                // Get unique knots from all polynomials
+                let mut all_knots = Vec::new();
+                for p in &poly.polyvec {
+                    for &knot in &p.knots {
+                        if !all_knots.iter().any(|&k: &f64| (k - knot).abs() < 1e-14) {
+                            all_knots.push(knot);
+                        }
+                    }
+                }
+                all_knots.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                Some(all_knots)
+            },
+            _ => None, // FT vectors don't have knots in the traditional sense
+        }
+    }
 }
 
