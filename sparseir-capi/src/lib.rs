@@ -3,6 +3,9 @@
 //! This crate provides a C-compatible interface to the SparseIR library,
 //! enabling usage from languages like Julia, Python, Fortran, and C++.
 
+#[macro_use]
+mod macros;
+
 mod types;
 mod kernel;
 mod sve;

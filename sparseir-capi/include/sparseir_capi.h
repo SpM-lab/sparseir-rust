@@ -37,20 +37,6 @@ typedef struct FuncsType FuncsType;
 typedef struct KernelType KernelType;
 
 /**
- * Opaque funcs type for C API (compatible with libsparseir)
- *
- * Wraps piecewise Legendre polynomial representations:
- * - PiecewiseLegendrePolyVector for u and v
- * - PiecewiseLegendreFTVector for uhat
- *
- * Note: Named `spir_funcs` to match libsparseir C++ API exactly.
- */
-typedef struct spir_funcs {
-    struct FuncsType inner;
-    double beta;
-} spir_funcs;
-
-/**
  * Error codes for C API (compatible with libsparseir)
  */
 typedef int StatusCode;
@@ -65,6 +51,20 @@ typedef int StatusCode;
 typedef struct spir_basis {
     struct BasisType inner;
 } spir_basis;
+
+/**
+ * Opaque funcs type for C API (compatible with libsparseir)
+ *
+ * Wraps piecewise Legendre polynomial representations:
+ * - PiecewiseLegendrePolyVector for u and v
+ * - PiecewiseLegendreFTVector for uhat
+ *
+ * Note: Named `spir_funcs` to match libsparseir C++ API exactly.
+ */
+typedef struct spir_funcs {
+    struct FuncsType inner;
+    double beta;
+} spir_funcs;
 
 /**
  * Opaque kernel type for C API (compatible with libsparseir)
@@ -110,17 +110,6 @@ typedef struct spir_sve_result {
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
-
-/**
- * Get the raw pointer for debugging (internal use only)
- *
- * # Arguments
- * * `obj` - Pointer to the funcs object
- *
- * # Returns
- * Raw pointer to the internal data structure
- */
-const void *_spir_funcs_get_raw_ptr(const struct spir_funcs *obj);
 
 /**
  * Get default Matsubara sampling points
@@ -338,17 +327,6 @@ struct spir_basis *spir_basis_new(int statistics,
                                   StatusCode *status);
 
 /**
- * Release a basis object
- *
- * # Arguments
- * * `b` - Basis to release (can be NULL)
- *
- * # Safety
- * After calling this function, the basis pointer is invalid and must not be used.
- */
-void spir_basis_release(struct spir_basis *b);
-
-/**
  * Batch evaluate functions at multiple points (continuous functions only)
  *
  * # Arguments
@@ -396,21 +374,6 @@ StatusCode spir_funcs_batch_eval_matsu(const struct spir_funcs *funcs,
                                        int num_freqs,
                                        const int64_t *ns,
                                        Complex64 *out);
-
-/**
- * Clone a funcs object (creates a new reference with shared data)
- *
- * # Arguments
- * * `src` - Pointer to the source funcs object
- *
- * # Returns
- * A new pointer to a funcs object, or null if input is null
- *
- * # Safety
- * The caller must ensure that `src` is a valid pointer.
- * The returned pointer must be freed with `spir_funcs_release()`.
- */
-struct spir_funcs *spir_funcs_clone(const struct spir_funcs *src);
 
 /**
  * Evaluate functions at a single point (continuous functions only)
@@ -506,29 +469,6 @@ struct spir_funcs *spir_funcs_get_slice(const struct spir_funcs *funcs,
                                         StatusCode *status);
 
 /**
- * Check if a funcs object is assigned (non-null and valid)
- *
- * # Arguments
- * * `obj` - Pointer to the funcs object
- *
- * # Returns
- * 1 if the object is valid, 0 otherwise
- */
-int32_t spir_funcs_is_assigned(const struct spir_funcs *obj);
-
-/**
- * Releases a funcs object
- *
- * # Arguments
- * * `funcs` - Pointer to the funcs object to release
- *
- * # Safety
- * The caller must ensure that `funcs` is a valid pointer returned from a previous
- * `spir_basis_get_u/v/uhat()` call, and that it is not used after this function returns.
- */
-void spir_funcs_release(struct spir_funcs *funcs);
-
-/**
  * Compute kernel value K(x, y)
  *
  * # Arguments
@@ -557,17 +497,6 @@ StatusCode spir_kernel_compute(const struct spir_kernel *kernel, double x, doubl
  * * `SPIR_INTERNAL_ERROR` if internal panic occurs
  */
 StatusCode spir_kernel_lambda(const struct spir_kernel *kernel, double *lambda_out);
-
-/**
- * Release a kernel object
- *
- * # Arguments
- * * `kernel` - Kernel to release (can be NULL)
- *
- * # Safety
- * After calling this function, the kernel pointer is invalid and must not be used.
- */
-void spir_kernel_release(struct spir_kernel *kernel);
 
 /**
  * Create a new Logistic kernel
@@ -663,17 +592,6 @@ struct spir_sve_result *spir_sve_result_new(const struct spir_kernel *k,
                                             int _n_gauss,
                                             int twork,
                                             StatusCode *status);
-
-/**
- * Release an SVE result object
- *
- * # Arguments
- * * `sve` - SVE result to release (can be NULL)
- *
- * # Safety
- * After calling this function, the sve pointer is invalid and must not be used.
- */
-void spir_sve_result_release(struct spir_sve_result *sve);
 
 /**
  * Truncate an SVE result

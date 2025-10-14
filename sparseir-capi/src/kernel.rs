@@ -7,6 +7,9 @@ use std::panic::catch_unwind;
 use crate::types::spir_kernel;
 use crate::{StatusCode, SPIR_SUCCESS, SPIR_INVALID_ARGUMENT, SPIR_INTERNAL_ERROR};
 
+// Generate common opaque type functions: release, clone, is_assigned, get_raw_ptr
+impl_opaque_type_common!(kernel);
+
 /// Create a new Logistic kernel
 ///
 /// # Arguments
@@ -97,23 +100,6 @@ pub extern "C" fn spir_reg_bose_kernel_new(
             unsafe { *status = SPIR_INTERNAL_ERROR; }
             std::ptr::null_mut()
         }
-    }
-}
-
-/// Release a kernel object
-///
-/// # Arguments
-/// * `kernel` - Kernel to release (can be NULL)
-///
-/// # Safety
-/// After calling this function, the kernel pointer is invalid and must not be used.
-#[no_mangle]
-pub extern "C" fn spir_kernel_release(kernel: *mut spir_kernel) {
-    if !kernel.is_null() {
-        let _ = catch_unwind(|| unsafe {
-            // Convert back to Box and drop
-            let _ = Box::from_raw(kernel);
-        });
     }
 }
 

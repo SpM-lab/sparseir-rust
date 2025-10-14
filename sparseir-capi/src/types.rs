@@ -18,6 +18,7 @@ use sparseir_rust::freq::MatsubaraFreq;
 /// The actual type is determined by which constructor was used.
 ///
 /// Note: Named `spir_kernel` to match libsparseir C++ API exactly.
+#[derive(Clone)]
 #[repr(C)]
 pub struct spir_kernel {
     inner: KernelType,
@@ -28,6 +29,7 @@ pub struct spir_kernel {
 /// Contains singular values and singular functions from SVE computation.
 ///
 /// Note: Named `spir_sve_result` to match libsparseir C++ API exactly.
+#[derive(Clone)]
 #[repr(C)]
 pub struct spir_sve_result {
     inner: Arc<SVEResult>,
@@ -38,12 +40,14 @@ pub struct spir_sve_result {
 /// Represents a finite temperature basis (IR or DLR).
 ///
 /// Note: Named `spir_basis` to match libsparseir C++ API exactly.
+#[derive(Clone)]
 #[repr(C)]
 pub struct spir_basis {
     pub(crate) inner: BasisType,
 }
 
 /// Internal basis type (not exposed to C)
+#[derive(Clone)]
 pub(crate) enum BasisType {
     LogisticFermionic(Arc<FiniteTempBasis<LogisticKernel, Fermionic>>),
     LogisticBosonic(Arc<FiniteTempBasis<LogisticKernel, Bosonic>>),
@@ -52,6 +56,7 @@ pub(crate) enum BasisType {
 }
 
 /// Internal kernel type (not exposed to C)
+#[derive(Clone)]
 pub(crate) enum KernelType {
     Logistic(Arc<LogisticKernel>),
     RegularizedBose(Arc<RegularizedBoseKernel>),
@@ -259,6 +264,7 @@ pub(crate) enum FuncsType {
 /// - PiecewiseLegendreFTVector for uhat
 ///
 /// Note: Named `spir_funcs` to match libsparseir C++ API exactly.
+#[derive(Clone)]
 #[repr(C)]
 pub struct spir_funcs {
     pub(crate) inner: FuncsType,

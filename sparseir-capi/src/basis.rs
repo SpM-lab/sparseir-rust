@@ -9,6 +9,9 @@ use sparseir_rust::basis::FiniteTempBasis;
 use crate::types::{spir_kernel, spir_sve_result, spir_basis, spir_funcs};
 use crate::{StatusCode, SPIR_SUCCESS, SPIR_INVALID_ARGUMENT, SPIR_INTERNAL_ERROR};
 
+// Generate common opaque type functions: release, clone, is_assigned, get_raw_ptr
+impl_opaque_type_common!(basis);
+
 /// Create a finite temperature basis (libsparseir compatible)
 ///
 /// # Arguments
@@ -178,22 +181,6 @@ pub extern "C" fn spir_basis_new(
             unsafe { *status = SPIR_INTERNAL_ERROR; }
             std::ptr::null_mut()
         }
-    }
-}
-
-/// Release a basis object
-///
-/// # Arguments
-/// * `b` - Basis to release (can be NULL)
-///
-/// # Safety
-/// After calling this function, the basis pointer is invalid and must not be used.
-#[no_mangle]
-pub extern "C" fn spir_basis_release(b: *mut spir_basis) {
-    if !b.is_null() {
-        let _ = catch_unwind(|| unsafe {
-            let _ = Box::from_raw(b);
-        });
     }
 }
 

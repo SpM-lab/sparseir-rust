@@ -9,6 +9,9 @@ use sparseir_rust::sve::{compute_sve, TworkType};
 use crate::types::{spir_kernel, spir_sve_result};
 use crate::{StatusCode, SPIR_SUCCESS, SPIR_INVALID_ARGUMENT, SPIR_INTERNAL_ERROR};
 
+// Generate common opaque type functions: release, clone, is_assigned, get_raw_ptr
+impl_opaque_type_common!(sve_result);
+
 /// Compute Singular Value Expansion (SVE) of a kernel (libsparseir compatible)
 ///
 /// # Arguments
@@ -106,22 +109,6 @@ pub extern "C" fn spir_sve_result_new(
             unsafe { *status = SPIR_INTERNAL_ERROR; }
             std::ptr::null_mut()
         }
-    }
-}
-
-/// Release an SVE result object
-///
-/// # Arguments
-/// * `sve` - SVE result to release (can be NULL)
-///
-/// # Safety
-/// After calling this function, the sve pointer is invalid and must not be used.
-#[no_mangle]
-pub extern "C" fn spir_sve_result_release(sve: *mut spir_sve_result) {
-    if !sve.is_null() {
-        let _ = catch_unwind(|| unsafe {
-            let _ = Box::from_raw(sve);
-        });
     }
 }
 

@@ -21,6 +21,9 @@ libc = "0.2"
 # Complex numbers
 num-complex = "0.4"
 
+# Macro utilities for identifier concatenation
+paste = "1.0"
+
 [build-dependencies]
 cbindgen = "0.27"
 
