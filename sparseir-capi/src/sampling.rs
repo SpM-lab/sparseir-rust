@@ -18,17 +18,6 @@ use crate::types::{spir_basis, spir_sampling, SamplingType, BasisType};
 use crate::{StatusCode, SPIR_COMPUTATION_SUCCESS, SPIR_INVALID_ARGUMENT, SPIR_NOT_SUPPORTED};
 use sparseir_rust::{Bosonic, Fermionic, Tensor, DynRank};
 
-// Helper to convert multi-dim index to linear index (column-major)
-fn multidim_to_linear(indices: &[usize], dims: &[usize]) -> usize {
-    let mut linear = 0;
-    let mut stride = 1;
-    for i in 0..indices.len() {
-        linear += indices[i] * stride;
-        stride *= dims[i];
-    }
-    linear
-}
-
 // Generate common opaque type functions: release, clone, is_assigned, get_raw_ptr
 impl_opaque_type_common!(sampling);
 
@@ -469,22 +458,12 @@ pub unsafe extern "C" fn spir_sampling_eval_dd(
             _ => return SPIR_NOT_SUPPORTED,
         };
         
-        // Calculate output dimensions: replace target_dim size with n_points
-        let mut output_dims = dims.clone();
-        output_dims[target_dim as usize] = n_points;
-        
-        // Copy result to output array (column-major)
+        // Flatten result and copy to output (column-major)
         let total_output = result_tensor.len();
+        let result_flat = result_tensor.into_dyn().reshape(&[total_output]).to_tensor();
         
         for i in 0..total_output {
-            // Convert linear index to multi-dim indices
-            let mut indices = vec![0; result_tensor.rank()];
-            let mut remaining = i;
-            for j in 0..result_tensor.rank() {
-                indices[j] = remaining % output_dims[j];
-                remaining /= output_dims[j];
-            }
-            *out.add(i) = result_tensor[&indices[..]];
+            *out.add(i) = result_flat[&[i][..]];
         }
         
         SPIR_COMPUTATION_SUCCESS
@@ -544,21 +523,12 @@ pub unsafe extern "C" fn spir_sampling_eval_dz(
             _ => return SPIR_NOT_SUPPORTED,
         };
         
-        // Calculate output dimensions
-        let mut output_dims = dims.clone();
-        output_dims[target_dim as usize] = n_points;
-        
-        // Copy result to output
+        // Flatten result and copy to output (column-major)
         let total_output = result_tensor.len();
+        let result_flat = result_tensor.into_dyn().reshape(&[total_output]).to_tensor();
         
         for i in 0..total_output {
-            let mut indices = vec![0; result_tensor.rank()];
-            let mut remaining = i;
-            for j in 0..result_tensor.rank() {
-                indices[j] = remaining % output_dims[j];
-                remaining /= output_dims[j];
-            }
-            *out.add(i) = result_tensor[&indices[..]];
+            *out.add(i) = result_flat[&[i][..]];
         }
         
         SPIR_COMPUTATION_SUCCESS
@@ -689,20 +659,12 @@ pub unsafe extern "C" fn spir_sampling_fit_dd(
             _ => return SPIR_NOT_SUPPORTED,
         };
         
-        // Calculate output dimensions: replace target_dim size with basis_size
-        let mut output_dims = dims.clone();
-        output_dims[target_dim as usize] = basis_size;
-        
+        // Flatten result and copy to output (column-major)
         let total_output = result_tensor.len();
+        let result_flat = result_tensor.into_dyn().reshape(&[total_output]).to_tensor();
         
         for i in 0..total_output {
-            let mut indices = vec![0; result_tensor.rank()];
-            let mut remaining = i;
-            for j in 0..result_tensor.rank() {
-                indices[j] = remaining % output_dims[j];
-                remaining /= output_dims[j];
-            }
-            *out.add(i) = result_tensor[&indices[..]];
+            *out.add(i) = result_flat[&[i][..]];
         }
         
         SPIR_COMPUTATION_SUCCESS
