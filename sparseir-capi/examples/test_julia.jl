@@ -870,7 +870,7 @@ values = zeros(Float64, basis_size)
 dims_1d = Cint[basis_size]
 status = ccall((:spir_sampling_eval_dd, libpath), Cint,
     (Ptr{Cvoid}, Cint, Cint, Ptr{Cint}, Cint, Ptr{Cdouble}, Ptr{Cdouble}),
-    sampling, 1, 1, dims_1d, 0, coeffs, values)  # order=1 (column-major)
+    sampling, 1, 1, dims_1d, 0, coeffs, values)  # order=1 (column-major, Julia default)
 @assert status == SPIR_COMPUTATION_SUCCESS
 println("✅ Eval 1D: $(values[1:min(3,end)]...)")
 

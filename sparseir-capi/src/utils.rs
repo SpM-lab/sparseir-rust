@@ -22,7 +22,50 @@ impl MemoryOrder {
     }
 }
 
-/// Copy N-dimensional tensor to C array (column-major layout)
+/// Convert dimensions and target_dim for row-major mdarray
+///
+/// mdarray uses row-major (C order) by default. When the C-API caller
+/// specifies column-major (Fortran/Julia order), we need to reverse
+/// dimensions and adjust target_dim to match mdarray's row-major layout.
+///
+/// This follows libsparseir's pattern for order handling.
+///
+/// # Arguments
+/// * `dims` - Original dimensions from C-API
+/// * `target_dim` - Original target dimension from C-API
+/// * `order` - Memory order specified by caller
+///
+/// # Returns
+/// (mdarray_dims, mdarray_target_dim) - Dimensions and target_dim for row-major mdarray
+///
+/// # Example
+/// ```ignore
+/// // Julia: dims=[5, 3], target_dim=0, order=COLUMN_MAJOR
+/// convert_dims_for_row_major(&[5, 3], 0, MemoryOrder::ColumnMajor)
+/// → ([3, 5], 1)  // For row-major mdarray
+/// ```
+pub fn convert_dims_for_row_major(
+    dims: &[usize],
+    target_dim: usize,
+    order: MemoryOrder,
+) -> (Vec<usize>, usize) {
+    match order {
+        MemoryOrder::RowMajor => {
+            // Already row-major, use as-is
+            (dims.to_vec(), target_dim)
+        }
+        MemoryOrder::ColumnMajor => {
+            // Convert column-major to row-major:
+            // Reverse dims and flip target_dim
+            let mut rev_dims = dims.to_vec();
+            rev_dims.reverse();
+            let rev_target_dim = dims.len() - 1 - target_dim;
+            (rev_dims, rev_target_dim)
+        }
+    }
+}
+
+/// Copy N-dimensional tensor to C array
 ///
 /// Flattens the tensor and copies all elements to the output pointer.
 /// This is a zero-copy operation for the reshape (metadata-only),
