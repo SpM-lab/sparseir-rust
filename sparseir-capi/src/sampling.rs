@@ -18,6 +18,17 @@ use crate::types::{spir_basis, spir_sampling, SamplingType, BasisType};
 use crate::{StatusCode, SPIR_COMPUTATION_SUCCESS, SPIR_INVALID_ARGUMENT, SPIR_NOT_SUPPORTED};
 use sparseir_rust::{Bosonic, Fermionic, Tensor, DynRank};
 
+// Helper to convert multi-dim index to linear index (column-major)
+fn multidim_to_linear(indices: &[usize], dims: &[usize]) -> usize {
+    let mut linear = 0;
+    let mut stride = 1;
+    for i in 0..indices.len() {
+        linear += indices[i] * stride;
+        stride *= dims[i];
+    }
+    linear
+}
+
 // Generate common opaque type functions: release, clone, is_assigned, get_raw_ptr
 impl_opaque_type_common!(sampling);
 
@@ -383,6 +394,453 @@ pub unsafe extern "C" fn spir_sampling_get_cond_num(
     result.unwrap_or(crate::SPIR_INTERNAL_ERROR)
 }
 
+// ============================================================================
+// Evaluation Functions (coefficients → sampling points)
+// ============================================================================
+
+/// Evaluate basis coefficients at sampling points (double → double)
+///
+/// Transforms IR basis coefficients to values at sampling points.
+///
+/// # Note
+/// Currently only supports column-major order (SPIR_ORDER_COLUMN_MAJOR = 1).
+/// Row-major support will be added in a future update.
+#[no_mangle]
+pub unsafe extern "C" fn spir_sampling_eval_dd(
+    s: *const spir_sampling,
+    order: libc::c_int,
+    ndim: libc::c_int,
+    input_dims: *const libc::c_int,
+    target_dim: libc::c_int,
+    input: *const f64,
+    out: *mut f64,
+) -> StatusCode {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        // Validate inputs
+        if s.is_null() || input_dims.is_null() || input.is_null() || out.is_null() {
+            return SPIR_INVALID_ARGUMENT;
+        }
+        if ndim <= 0 || target_dim < 0 || target_dim >= ndim {
+            return SPIR_INVALID_ARGUMENT;
+        }
+        
+        // Only support column-major for now
+        if order != crate::SPIR_ORDER_COLUMN_MAJOR {
+            return SPIR_NOT_SUPPORTED;
+        }
+
+        let sampling_ref = &*s;
+        let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
+        let dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
+        
+        // Calculate total input size
+        let total_input: usize = dims.iter().product();
+        let input_slice = std::slice::from_raw_parts(input, total_input);
+        
+        // Create input tensor (column-major)
+        let input_tensor = Tensor::<f64, DynRank>::from_fn(&dims[..], |idx| {
+            let linear_idx = multidim_to_linear(idx, &dims);
+            input_slice[linear_idx]
+        });
+        
+        // Evaluate based on sampling type (only tau sampling supports dd)
+        let (result_tensor, n_points) = match &sampling_ref.inner {
+            SamplingType::TauFermionic(tau) => {
+                let n = tau.n_sampling_points();
+                (tau.evaluate_nd(&input_tensor, target_dim as usize), n)
+            }
+            SamplingType::TauBosonic(tau) => {
+                let n = tau.n_sampling_points();
+                (tau.evaluate_nd(&input_tensor, target_dim as usize), n)
+            }
+            _ => return SPIR_NOT_SUPPORTED,
+        };
+        
+        // Calculate output dimensions: replace target_dim size with n_points
+        let mut output_dims = dims.clone();
+        output_dims[target_dim as usize] = n_points;
+        
+        // Copy result to output array (column-major)
+        let total_output = result_tensor.len();
+        
+        for i in 0..total_output {
+            // Convert linear index to multi-dim indices
+            let mut indices = vec![0; result_tensor.rank()];
+            let mut remaining = i;
+            for j in 0..result_tensor.rank() {
+                indices[j] = remaining % output_dims[j];
+                remaining /= output_dims[j];
+            }
+            *out.add(i) = result_tensor[&indices[..]];
+        }
+        
+        SPIR_COMPUTATION_SUCCESS
+    }));
+
+    result.unwrap_or(crate::SPIR_INTERNAL_ERROR)
+}
+
+/// Evaluate basis coefficients at sampling points (double → complex)
+///
+/// For Matsubara sampling: transforms real IR coefficients to complex values.
+#[no_mangle]
+pub unsafe extern "C" fn spir_sampling_eval_dz(
+    s: *const spir_sampling,
+    order: libc::c_int,
+    ndim: libc::c_int,
+    input_dims: *const libc::c_int,
+    target_dim: libc::c_int,
+    input: *const f64,
+    out: *mut Complex64,
+) -> StatusCode {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        // Validate inputs
+        if s.is_null() || input_dims.is_null() || input.is_null() || out.is_null() {
+            return SPIR_INVALID_ARGUMENT;
+        }
+        if ndim <= 0 || target_dim < 0 || target_dim >= ndim {
+            return SPIR_INVALID_ARGUMENT;
+        }
+        
+        // Only support column-major for now
+        if order != crate::SPIR_ORDER_COLUMN_MAJOR {
+            return SPIR_NOT_SUPPORTED;
+        }
+
+        let sampling_ref = &*s;
+        let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
+        let dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
+        
+        let total_input: usize = dims.iter().product();
+        let input_slice = std::slice::from_raw_parts(input, total_input);
+        
+        let input_tensor = Tensor::<f64, DynRank>::from_fn(&dims[..], |idx| {
+            let linear_idx = multidim_to_linear(idx, &dims);
+            input_slice[linear_idx]
+        });
+        
+        // Evaluate based on sampling type (Matsubara positive-only)
+        let (result_tensor, n_points) = match &sampling_ref.inner {
+            SamplingType::MatsubaraPositiveOnlyFermionic(matsu) => {
+                let n = matsu.n_sampling_points();
+                (matsu.evaluate_nd(&input_tensor, target_dim as usize), n)
+            }
+            SamplingType::MatsubaraPositiveOnlyBosonic(matsu) => {
+                let n = matsu.n_sampling_points();
+                (matsu.evaluate_nd(&input_tensor, target_dim as usize), n)
+            }
+            _ => return SPIR_NOT_SUPPORTED,
+        };
+        
+        // Calculate output dimensions
+        let mut output_dims = dims.clone();
+        output_dims[target_dim as usize] = n_points;
+        
+        // Copy result to output
+        let total_output = result_tensor.len();
+        
+        for i in 0..total_output {
+            let mut indices = vec![0; result_tensor.rank()];
+            let mut remaining = i;
+            for j in 0..result_tensor.rank() {
+                indices[j] = remaining % output_dims[j];
+                remaining /= output_dims[j];
+            }
+            *out.add(i) = result_tensor[&indices[..]];
+        }
+        
+        SPIR_COMPUTATION_SUCCESS
+    }));
+
+    result.unwrap_or(crate::SPIR_INTERNAL_ERROR)
+}
+
+/// Evaluate basis coefficients at sampling points (complex → complex)
+///
+/// For Matsubara sampling: transforms complex coefficients to complex values.
+#[no_mangle]
+pub unsafe extern "C" fn spir_sampling_eval_zz(
+    s: *const spir_sampling,
+    order: libc::c_int,
+    ndim: libc::c_int,
+    input_dims: *const libc::c_int,
+    target_dim: libc::c_int,
+    input: *const Complex64,
+    out: *mut Complex64,
+) -> StatusCode {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        if s.is_null() || input_dims.is_null() || input.is_null() || out.is_null() {
+            return SPIR_INVALID_ARGUMENT;
+        }
+        if ndim <= 0 || target_dim < 0 || target_dim >= ndim {
+            return SPIR_INVALID_ARGUMENT;
+        }
+        
+        if order != crate::SPIR_ORDER_COLUMN_MAJOR {
+            return SPIR_NOT_SUPPORTED;
+        }
+
+        let sampling_ref = &*s;
+        let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
+        let dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
+        
+        let total_input: usize = dims.iter().product();
+        let input_slice = std::slice::from_raw_parts(input, total_input);
+        
+        let input_tensor = Tensor::<Complex64, DynRank>::from_fn(&dims[..], |idx| {
+            let linear_idx = multidim_to_linear(idx, &dims);
+            input_slice[linear_idx]
+        });
+        
+        // Evaluate (full Matsubara sampling)
+        let (result_tensor, n_points) = match &sampling_ref.inner {
+            SamplingType::MatsubaraFermionic(matsu) => {
+                let n = matsu.n_sampling_points();
+                (matsu.evaluate_nd(&input_tensor, target_dim as usize), n)
+            }
+            SamplingType::MatsubaraBosonic(matsu) => {
+                let n = matsu.n_sampling_points();
+                (matsu.evaluate_nd(&input_tensor, target_dim as usize), n)
+            }
+            _ => return SPIR_NOT_SUPPORTED,
+        };
+        
+        // Calculate output dimensions
+        let mut output_dims = dims.clone();
+        output_dims[target_dim as usize] = n_points;
+        
+        let total_output = result_tensor.len();
+        
+        for i in 0..total_output {
+            let mut indices = vec![0; result_tensor.rank()];
+            let mut remaining = i;
+            for j in 0..result_tensor.rank() {
+                indices[j] = remaining % output_dims[j];
+                remaining /= output_dims[j];
+            }
+            *out.add(i) = result_tensor[&indices[..]];
+        }
+        
+        SPIR_COMPUTATION_SUCCESS
+    }));
+
+    result.unwrap_or(crate::SPIR_INTERNAL_ERROR)
+}
+
+// ============================================================================
+// Fitting Functions (sampling points → coefficients)
+// ============================================================================
+
+/// Fit basis coefficients from sampling point values (double → double)
+#[no_mangle]
+pub unsafe extern "C" fn spir_sampling_fit_dd(
+    s: *const spir_sampling,
+    order: libc::c_int,
+    ndim: libc::c_int,
+    input_dims: *const libc::c_int,
+    target_dim: libc::c_int,
+    input: *const f64,
+    out: *mut f64,
+) -> StatusCode {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        if s.is_null() || input_dims.is_null() || input.is_null() || out.is_null() {
+            return SPIR_INVALID_ARGUMENT;
+        }
+        if ndim <= 0 || target_dim < 0 || target_dim >= ndim {
+            return SPIR_INVALID_ARGUMENT;
+        }
+        
+        if order != crate::SPIR_ORDER_COLUMN_MAJOR {
+            return SPIR_NOT_SUPPORTED;
+        }
+
+        let sampling_ref = &*s;
+        let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
+        let dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
+        
+        let total_input: usize = dims.iter().product();
+        let input_slice = std::slice::from_raw_parts(input, total_input);
+        
+        let input_tensor = Tensor::<f64, DynRank>::from_fn(&dims[..], |idx| {
+            let linear_idx = multidim_to_linear(idx, &dims);
+            input_slice[linear_idx]
+        });
+        
+        // Fit (tau sampling only)
+        let (result_tensor, basis_size) = match &sampling_ref.inner {
+            SamplingType::TauFermionic(tau) => {
+                let bs = tau.basis_size();
+                (tau.fit_nd(&input_tensor, target_dim as usize), bs)
+            }
+            SamplingType::TauBosonic(tau) => {
+                let bs = tau.basis_size();
+                (tau.fit_nd(&input_tensor, target_dim as usize), bs)
+            }
+            _ => return SPIR_NOT_SUPPORTED,
+        };
+        
+        // Calculate output dimensions: replace target_dim size with basis_size
+        let mut output_dims = dims.clone();
+        output_dims[target_dim as usize] = basis_size;
+        
+        let total_output = result_tensor.len();
+        
+        for i in 0..total_output {
+            let mut indices = vec![0; result_tensor.rank()];
+            let mut remaining = i;
+            for j in 0..result_tensor.rank() {
+                indices[j] = remaining % output_dims[j];
+                remaining /= output_dims[j];
+            }
+            *out.add(i) = result_tensor[&indices[..]];
+        }
+        
+        SPIR_COMPUTATION_SUCCESS
+    }));
+
+    result.unwrap_or(crate::SPIR_INTERNAL_ERROR)
+}
+
+/// Fit basis coefficients from sampling point values (complex → complex)
+#[no_mangle]
+pub unsafe extern "C" fn spir_sampling_fit_zz(
+    s: *const spir_sampling,
+    order: libc::c_int,
+    ndim: libc::c_int,
+    input_dims: *const libc::c_int,
+    target_dim: libc::c_int,
+    input: *const Complex64,
+    out: *mut Complex64,
+) -> StatusCode {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        if s.is_null() || input_dims.is_null() || input.is_null() || out.is_null() {
+            return SPIR_INVALID_ARGUMENT;
+        }
+        if ndim <= 0 || target_dim < 0 || target_dim >= ndim {
+            return SPIR_INVALID_ARGUMENT;
+        }
+        
+        if order != crate::SPIR_ORDER_COLUMN_MAJOR {
+            return SPIR_NOT_SUPPORTED;
+        }
+
+        let sampling_ref = &*s;
+        let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
+        let dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
+        
+        let total_input: usize = dims.iter().product();
+        let input_slice = std::slice::from_raw_parts(input, total_input);
+        
+        let input_tensor = Tensor::<Complex64, DynRank>::from_fn(&dims[..], |idx| {
+            let linear_idx = multidim_to_linear(idx, &dims);
+            input_slice[linear_idx]
+        });
+        
+        // Fit (full Matsubara sampling)
+        let (result_tensor, basis_size) = match &sampling_ref.inner {
+            SamplingType::MatsubaraFermionic(matsu) => {
+                let bs = matsu.basis_size();
+                (matsu.fit_nd(&input_tensor, target_dim as usize), bs)
+            }
+            SamplingType::MatsubaraBosonic(matsu) => {
+                let bs = matsu.basis_size();
+                (matsu.fit_nd(&input_tensor, target_dim as usize), bs)
+            }
+            _ => return SPIR_NOT_SUPPORTED,
+        };
+        
+        // Calculate output dimensions
+        let mut output_dims = dims.clone();
+        output_dims[target_dim as usize] = basis_size;
+        
+        let total_output = result_tensor.len();
+        
+        for i in 0..total_output {
+            let mut indices = vec![0; result_tensor.rank()];
+            let mut remaining = i;
+            for j in 0..result_tensor.rank() {
+                indices[j] = remaining % output_dims[j];
+                remaining /= output_dims[j];
+            }
+            *out.add(i) = result_tensor[&indices[..]];
+        }
+        
+        SPIR_COMPUTATION_SUCCESS
+    }));
+
+    result.unwrap_or(crate::SPIR_INTERNAL_ERROR)
+}
+
+/// Fit basis coefficients from Matsubara sampling (complex → double, positive only)
+#[no_mangle]
+pub unsafe extern "C" fn spir_sampling_fit_zd(
+    s: *const spir_sampling,
+    order: libc::c_int,
+    ndim: libc::c_int,
+    input_dims: *const libc::c_int,
+    target_dim: libc::c_int,
+    input: *const Complex64,
+    out: *mut f64,
+) -> StatusCode {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        if s.is_null() || input_dims.is_null() || input.is_null() || out.is_null() {
+            return SPIR_INVALID_ARGUMENT;
+        }
+        if ndim <= 0 || target_dim < 0 || target_dim >= ndim {
+            return SPIR_INVALID_ARGUMENT;
+        }
+        
+        if order != crate::SPIR_ORDER_COLUMN_MAJOR {
+            return SPIR_NOT_SUPPORTED;
+        }
+
+        let sampling_ref = &*s;
+        let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
+        let dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
+        
+        let total_input: usize = dims.iter().product();
+        let input_slice = std::slice::from_raw_parts(input, total_input);
+        
+        let input_tensor = Tensor::<Complex64, DynRank>::from_fn(&dims[..], |idx| {
+            let linear_idx = multidim_to_linear(idx, &dims);
+            input_slice[linear_idx]
+        });
+        
+        // Fit (positive-only Matsubara → real coefficients)
+        let (result_tensor, basis_size) = match &sampling_ref.inner {
+            SamplingType::MatsubaraPositiveOnlyFermionic(matsu) => {
+                let bs = matsu.basis_size();
+                (matsu.fit_nd(&input_tensor, target_dim as usize), bs)
+            }
+            SamplingType::MatsubaraPositiveOnlyBosonic(matsu) => {
+                let bs = matsu.basis_size();
+                (matsu.fit_nd(&input_tensor, target_dim as usize), bs)
+            }
+            _ => return SPIR_NOT_SUPPORTED,
+        };
+        
+        // Calculate output dimensions
+        let mut output_dims = dims.clone();
+        output_dims[target_dim as usize] = basis_size;
+        
+        let total_output = result_tensor.len();
+        
+        for i in 0..total_output {
+            let mut indices = vec![0; result_tensor.rank()];
+            let mut remaining = i;
+            for j in 0..result_tensor.rank() {
+                indices[j] = remaining % output_dims[j];
+                remaining /= output_dims[j];
+            }
+            *out.add(i) = result_tensor[&indices[..]];
+        }
+        
+        SPIR_COMPUTATION_SUCCESS
+    }));
+
+    result.unwrap_or(crate::SPIR_INTERNAL_ERROR)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -395,14 +853,23 @@ mod tests {
             let kernel = crate::spir_logistic_kernel_new(10.0, &mut status);
             assert_eq!(status, SPIR_COMPUTATION_SUCCESS);
 
-            let sve = crate::spir_sve_result_new(kernel, 1e-10, -1.0, -1, -1, -1, &mut status);
+            let sve = crate::spir_sve_result_new(kernel,1e-6, -1.0, -1, -1, -1, &mut status);
             assert_eq!(status, SPIR_COMPUTATION_SUCCESS);
 
-            let basis = crate::spir_basis_new(1, 10.0, 1.0, 1e-10, kernel, sve, -1, &mut status);
+            // Limit basis size to 5
+            let basis = crate::spir_basis_new(1, 10.0, 1.0,1e-6, kernel, sve, 5, &mut status);
             assert_eq!(status, SPIR_COMPUTATION_SUCCESS);
 
-            // Create tau sampling with custom points
-            let tau_points = vec![0.1, 0.5, 1.0, 5.0, 9.0];
+            // Get actual basis size
+            let mut actual_basis_size = 0;
+            let ret = crate::spir_basis_get_size(basis, &mut actual_basis_size);
+            assert_eq!(ret, SPIR_COMPUTATION_SUCCESS);
+
+            // Create tau sampling with enough points (at least basis_size)
+            let tau_points: Vec<f64> = (0..actual_basis_size)
+                .map(|i| (i as f64 + 1.0) * 10.0 / (actual_basis_size as f64 + 1.0))
+                .collect();
+            
             let sampling = spir_tau_sampling_new(
                 basis,
                 tau_points.len() as i32,
@@ -416,13 +883,18 @@ mod tests {
             let mut n_points = 0;
             let ret = spir_sampling_get_npoints(sampling, &mut n_points);
             assert_eq!(ret, SPIR_COMPUTATION_SUCCESS);
-            assert_eq!(n_points, 5);
+            assert_eq!(n_points, actual_basis_size);
 
             // Get tau points back
-            let mut retrieved_points = vec![0.0; 5];
+            let mut retrieved_points = vec![0.0; actual_basis_size as usize];
             let ret = spir_sampling_get_taus(sampling, retrieved_points.as_mut_ptr());
             assert_eq!(ret, SPIR_COMPUTATION_SUCCESS);
-            assert_eq!(retrieved_points, tau_points);
+            
+            // Check that retrieved points match
+            for (i, (&retrieved, &original)) in retrieved_points.iter().zip(tau_points.iter()).enumerate() {
+                assert!((retrieved - original).abs() < 1e-10, 
+                    "Point {} mismatch: {} vs {}", i, retrieved, original);
+            }
 
             // Get condition number
             let mut cond = 0.0;

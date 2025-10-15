@@ -652,6 +652,82 @@ struct spir_sampling *spir_matsu_sampling_new(const struct spir_basis *b,
 struct spir_kernel *spir_reg_bose_kernel_new(double lambda, StatusCode *status);
 
 /**
+ * Evaluate basis coefficients at sampling points (double → double)
+ *
+ * Transforms IR basis coefficients to values at sampling points.
+ *
+ * # Note
+ * Currently only supports column-major order (SPIR_ORDER_COLUMN_MAJOR = 1).
+ * Row-major support will be added in a future update.
+ */
+StatusCode spir_sampling_eval_dd(const struct spir_sampling *s,
+                                 int order,
+                                 int ndim,
+                                 const int *input_dims,
+                                 int target_dim,
+                                 const double *input,
+                                 double *out);
+
+/**
+ * Evaluate basis coefficients at sampling points (double → complex)
+ *
+ * For Matsubara sampling: transforms real IR coefficients to complex values.
+ */
+StatusCode spir_sampling_eval_dz(const struct spir_sampling *s,
+                                 int order,
+                                 int ndim,
+                                 const int *input_dims,
+                                 int target_dim,
+                                 const double *input,
+                                 Complex64 *out);
+
+/**
+ * Evaluate basis coefficients at sampling points (complex → complex)
+ *
+ * For Matsubara sampling: transforms complex coefficients to complex values.
+ */
+StatusCode spir_sampling_eval_zz(const struct spir_sampling *s,
+                                 int order,
+                                 int ndim,
+                                 const int *input_dims,
+                                 int target_dim,
+                                 const Complex64 *input,
+                                 Complex64 *out);
+
+/**
+ * Fit basis coefficients from sampling point values (double → double)
+ */
+StatusCode spir_sampling_fit_dd(const struct spir_sampling *s,
+                                int order,
+                                int ndim,
+                                const int *input_dims,
+                                int target_dim,
+                                const double *input,
+                                double *out);
+
+/**
+ * Fit basis coefficients from Matsubara sampling (complex → double, positive only)
+ */
+StatusCode spir_sampling_fit_zd(const struct spir_sampling *s,
+                                int order,
+                                int ndim,
+                                const int *input_dims,
+                                int target_dim,
+                                const Complex64 *input,
+                                double *out);
+
+/**
+ * Fit basis coefficients from sampling point values (complex → complex)
+ */
+StatusCode spir_sampling_fit_zz(const struct spir_sampling *s,
+                                int order,
+                                int ndim,
+                                const int *input_dims,
+                                int target_dim,
+                                const Complex64 *input,
+                                Complex64 *out);
+
+/**
  * Gets the condition number of the sampling matrix
  *
  * Note: Currently returns a placeholder value.

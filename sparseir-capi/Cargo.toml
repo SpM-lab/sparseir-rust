@@ -15,6 +15,9 @@ crate-type = ["cdylib", "staticlib"]
 # Main SparseIR library
 sparseir-rust = { path = "../sparseir-rust" }
 
+# Array library (for Shape trait)
+mdarray = { git = "https://github.com/fre-hu/mdarray.git", rev = "11ce08ae30bae2269c85eab1c4620028d160591a" }
+
 # Error code type
 libc = "0.2"
 
