@@ -644,8 +644,12 @@ pub(crate) enum SamplingType {
     TauFermionic(Arc<sparseir_rust::sampling::TauSampling<Fermionic>>),
     TauBosonic(Arc<sparseir_rust::sampling::TauSampling<Bosonic>>),
     
-    /// Matsubara sampling (complex-valued, iωn domain)
+    /// Matsubara sampling (complex-valued, iωn domain, full frequency range)
     MatsubaraFermionic(Arc<sparseir_rust::matsubara_sampling::MatsubaraSampling<Fermionic>>),
     MatsubaraBosonic(Arc<sparseir_rust::matsubara_sampling::MatsubaraSampling<Bosonic>>),
+    
+    /// Matsubara sampling (positive frequencies only, exploits symmetry)
+    MatsubaraPositiveOnlyFermionic(Arc<sparseir_rust::matsubara_sampling::MatsubaraSamplingPositiveOnly<Fermionic>>),
+    MatsubaraPositiveOnlyBosonic(Arc<sparseir_rust::matsubara_sampling::MatsubaraSamplingPositiveOnly<Bosonic>>),
 }
 

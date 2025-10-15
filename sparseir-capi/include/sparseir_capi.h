@@ -45,6 +45,11 @@ typedef struct FuncsType FuncsType;
 typedef struct KernelType KernelType;
 
 /**
+ * Internal sampling type (holds different sampling implementations)
+ */
+typedef struct SamplingType SamplingType;
+
+/**
  * Error codes for C API (compatible with libsparseir)
  */
 typedef int StatusCode;
@@ -96,6 +101,22 @@ typedef struct spir_kernel {
 typedef struct spir_sve_result {
     struct Arc_SVEResult inner;
 } spir_sve_result;
+
+/**
+ * Opaque sampling type for C API (compatible with libsparseir)
+ *
+ * Represents sparse sampling in imaginary time (τ), Matsubara frequency (iωn),
+ * or real frequency (ω) domains.
+ *
+ * Created by:
+ * - `spir_tau_sampling_new()` - τ sampling
+ * - `spir_matsu_sampling_new()` - iωn sampling
+ *
+ * Note: Named `spir_sampling` to match libsparseir C++ API exactly.
+ */
+typedef struct spir_sampling {
+    struct SamplingType inner;
+} spir_sampling;
 
 #define SPIR_COMPUTATION_SUCCESS 0
 
@@ -600,6 +621,25 @@ StatusCode spir_kernel_lambda(const struct spir_kernel *kernel, double *lambda_o
 struct spir_kernel *spir_logistic_kernel_new(double lambda, StatusCode *status);
 
 /**
+ * Creates a new Matsubara sampling object for sparse sampling in Matsubara frequencies
+ *
+ * # Arguments
+ * * `b` - Pointer to a finite temperature basis object
+ * * `positive_only` - If true, only positive frequencies are used
+ * * `num_points` - Number of sampling points
+ * * `points` - Array of Matsubara frequency indices (n)
+ * * `status` - Pointer to store the status code
+ *
+ * # Returns
+ * Pointer to the newly created sampling object, or NULL if creation fails
+ */
+struct spir_sampling *spir_matsu_sampling_new(const struct spir_basis *b,
+                                              bool positive_only,
+                                              int num_points,
+                                              const int64_t *points,
+                                              StatusCode *status);
+
+/**
  * Create a new RegularizedBose kernel
  *
  * # Arguments
@@ -610,6 +650,29 @@ struct spir_kernel *spir_logistic_kernel_new(double lambda, StatusCode *status);
  * * Pointer to the newly created kernel object, or NULL if creation fails
  */
 struct spir_kernel *spir_reg_bose_kernel_new(double lambda, StatusCode *status);
+
+/**
+ * Gets the condition number of the sampling matrix
+ *
+ * Note: Currently returns a placeholder value.
+ * TODO: Implement proper condition number calculation from SVD
+ */
+StatusCode spir_sampling_get_cond_num(const struct spir_sampling *s, double *cond_num);
+
+/**
+ * Gets the Matsubara frequency sampling points
+ */
+StatusCode spir_sampling_get_matsus(const struct spir_sampling *s, int64_t *points);
+
+/**
+ * Gets the number of sampling points in a sampling object
+ */
+StatusCode spir_sampling_get_npoints(const struct spir_sampling *s, int *num_points);
+
+/**
+ * Gets the imaginary time sampling points
+ */
+StatusCode spir_sampling_get_taus(const struct spir_sampling *s, double *points);
 
 /**
  * Get the number of singular values in an SVE result
@@ -688,6 +751,26 @@ struct spir_sve_result *spir_sve_result_truncate(const struct spir_sve_result *s
                                                  double epsilon,
                                                  int max_size,
                                                  StatusCode *status);
+
+/**
+ * Creates a new tau sampling object for sparse sampling in imaginary time
+ *
+ * # Arguments
+ * * `b` - Pointer to a finite temperature basis object
+ * * `num_points` - Number of sampling points
+ * * `points` - Array of sampling points in imaginary time (τ)
+ * * `status` - Pointer to store the status code
+ *
+ * # Returns
+ * Pointer to the newly created sampling object, or NULL if creation fails
+ *
+ * # Safety
+ * Caller must ensure `b` is valid and `points` has `num_points` elements
+ */
+struct spir_sampling *spir_tau_sampling_new(const struct spir_basis *b,
+                                            int num_points,
+                                            const double *points,
+                                            StatusCode *status);
 
 #ifdef __cplusplus
 }  // extern "C"

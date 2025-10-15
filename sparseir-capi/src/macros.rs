@@ -65,12 +65,12 @@ macro_rules! impl_opaque_type_common {
                     return std::ptr::null_mut();
                 }
 
-                let result = std::panic::catch_unwind(|| unsafe {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
                     let src_ref = &*src;
                     let cloned = (*src_ref).clone();
                     // Clone uses Arc reference counting (cheap operation)
                     Box::into_raw(Box::new(cloned))
-                });
+                }));
 
                 result.unwrap_or(std::ptr::null_mut())
             }
@@ -87,10 +87,10 @@ macro_rules! impl_opaque_type_common {
                     return 0;
                 }
 
-                let result = std::panic::catch_unwind(|| unsafe {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
                     let _ = &*obj;
                     1
-                });
+                }));
 
                 result.unwrap_or(0)
             }
