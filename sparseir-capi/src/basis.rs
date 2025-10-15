@@ -2,7 +2,7 @@
 //!
 //! Functions for creating and manipulating finite temperature basis objects.
 
-use std::panic::catch_unwind;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use sparseir_rust::basis::FiniteTempBasis;
 
@@ -69,7 +69,7 @@ pub extern "C" fn spir_basis_new(
         Some(max_size as usize)
     };
 
-    let result = catch_unwind(|| unsafe {
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         let kernel_ref = &*k;
         
         // Check that kernel's lambda matches beta * omega_max
@@ -170,7 +170,7 @@ pub extern "C" fn spir_basis_new(
         } else {
             Err("Unknown kernel type".to_string())
         }
-    });
+    }));
 
     match result {
         Ok(Ok(ptr)) => {
@@ -203,11 +203,11 @@ pub extern "C" fn spir_basis_get_size(
         return SPIR_INVALID_ARGUMENT;
     }
 
-    let result = catch_unwind(|| unsafe {
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         let basis = &*b;
         *size = basis.size() as libc::c_int;
         SPIR_SUCCESS
-    });
+    }));
 
     result.unwrap_or(SPIR_INTERNAL_ERROR)
 }
@@ -231,12 +231,12 @@ pub extern "C" fn spir_basis_get_svals(
         return SPIR_INVALID_ARGUMENT;
     }
 
-    let result = catch_unwind(|| unsafe {
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         let basis = &*b;
         let sval_vec = basis.svals();
         std::ptr::copy_nonoverlapping(sval_vec.as_ptr(), svals, sval_vec.len());
         SPIR_SUCCESS
-    });
+    }));
 
     result.unwrap_or(SPIR_INTERNAL_ERROR)
 }
@@ -260,11 +260,11 @@ pub extern "C" fn spir_basis_get_stats(
         return SPIR_INVALID_ARGUMENT;
     }
 
-    let result = catch_unwind(|| unsafe {
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         let basis = &*b;
         *statistics = basis.statistics();
         SPIR_SUCCESS
-    });
+    }));
 
     result.unwrap_or(SPIR_INTERNAL_ERROR)
 }
@@ -297,12 +297,12 @@ pub extern "C" fn spir_basis_get_n_default_taus(
         return SPIR_INVALID_ARGUMENT;
     }
 
-    let result = catch_unwind(|| unsafe {
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         let basis = &*b;
         let points = basis.default_tau_sampling_points();
         *num_points = points.len() as libc::c_int;
         SPIR_SUCCESS
-    });
+    }));
 
     result.unwrap_or(SPIR_INTERNAL_ERROR)
 }
@@ -326,12 +326,12 @@ pub extern "C" fn spir_basis_get_default_taus(
         return SPIR_INVALID_ARGUMENT;
     }
 
-    let result = catch_unwind(|| unsafe {
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         let basis = &*b;
         let tau_points = basis.default_tau_sampling_points();
         std::ptr::copy_nonoverlapping(tau_points.as_ptr(), points, tau_points.len());
         SPIR_SUCCESS
-    });
+    }));
 
     result.unwrap_or(SPIR_INTERNAL_ERROR)
 }
@@ -357,12 +357,12 @@ pub extern "C" fn spir_basis_get_n_default_matsus(
         return SPIR_INVALID_ARGUMENT;
     }
 
-    let result = catch_unwind(|| unsafe {
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         let basis = &*b;
         let points = basis.default_matsubara_sampling_points(positive_only);
         *num_points = points.len() as libc::c_int;
         SPIR_SUCCESS
-    });
+    }));
 
     result.unwrap_or(SPIR_INTERNAL_ERROR)
 }
@@ -388,12 +388,12 @@ pub extern "C" fn spir_basis_get_default_matsus(
         return SPIR_INVALID_ARGUMENT;
     }
 
-    let result = catch_unwind(|| unsafe {
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         let basis = &*b;
         let matsu_points = basis.default_matsubara_sampling_points(positive_only);
         std::ptr::copy_nonoverlapping(matsu_points.as_ptr(), points, matsu_points.len());
         SPIR_SUCCESS
-    });
+    }));
 
     result.unwrap_or(SPIR_INTERNAL_ERROR)
 }
@@ -684,7 +684,7 @@ pub unsafe extern "C" fn spir_basis_get_u(
         return std::ptr::null_mut();
     }
 
-    let result = catch_unwind(|| unsafe {
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         let basis_ref = &*b;
         let beta = basis_ref.beta();
         
@@ -701,10 +701,17 @@ pub unsafe extern "C" fn spir_basis_get_u(
             BasisType::RegularizedBoseBosonic(basis) => {
                 spir_funcs::from_u_bosonic(basis.u.clone(), beta)
             },
+            // DLR: no continuous functions (u, v)
+            BasisType::DLRLogisticFermionic(_) |
+            BasisType::DLRLogisticBosonic(_) |
+            BasisType::DLRRegularizedBoseFermionic(_) |
+            BasisType::DLRRegularizedBoseBosonic(_) => {
+                return Result::<*mut spir_funcs, String>::Err("DLR does not support continuous functions".to_string());
+            }
         };
 
         Result::<*mut spir_funcs, String>::Ok(Box::into_raw(Box::new(funcs)))
-    });
+    }));
 
     match result {
         Ok(Ok(ptr)) => {
@@ -752,7 +759,7 @@ pub unsafe extern "C" fn spir_basis_get_v(
         return std::ptr::null_mut();
     }
 
-    let result = catch_unwind(|| unsafe {
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         let basis_ref = &*b;
         let beta = basis_ref.beta();
         
@@ -769,10 +776,17 @@ pub unsafe extern "C" fn spir_basis_get_v(
             BasisType::RegularizedBoseBosonic(basis) => {
                 spir_funcs::from_v(basis.v.clone(), beta)
             },
+            // DLR: no continuous functions (v)
+            BasisType::DLRLogisticFermionic(_) |
+            BasisType::DLRLogisticBosonic(_) |
+            BasisType::DLRRegularizedBoseFermionic(_) |
+            BasisType::DLRRegularizedBoseBosonic(_) => {
+                return Result::<*mut spir_funcs, String>::Err("DLR does not support continuous functions".to_string());
+            }
         };
 
         Result::<*mut spir_funcs, String>::Ok(Box::into_raw(Box::new(funcs)))
-    });
+    }));
 
     match result {
         Ok(Ok(ptr)) => {
@@ -811,12 +825,12 @@ pub extern "C" fn spir_basis_get_n_default_ws(
         return SPIR_INVALID_ARGUMENT;
     }
 
-    let result = catch_unwind(|| unsafe {
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         let basis = &*b;
         let omega_points = basis.default_omega_sampling_points();
         *num_points = omega_points.len() as libc::c_int;
         SPIR_SUCCESS
-    });
+    }));
 
     result.unwrap_or(SPIR_INTERNAL_ERROR)
 }
@@ -841,12 +855,12 @@ pub extern "C" fn spir_basis_get_default_ws(
         return SPIR_INVALID_ARGUMENT;
     }
 
-    let result = catch_unwind(|| unsafe {
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         let basis = &*b;
         let omega_points = basis.default_omega_sampling_points();
         std::ptr::copy_nonoverlapping(omega_points.as_ptr(), points, omega_points.len());
         SPIR_SUCCESS
-    });
+    }));
 
     result.unwrap_or(SPIR_INTERNAL_ERROR)
 }
@@ -880,7 +894,7 @@ pub unsafe extern "C" fn spir_basis_get_uhat(
         return std::ptr::null_mut();
     }
 
-    let result = catch_unwind(|| unsafe {
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         let basis_ref = &*b;
         let beta = basis_ref.beta();
         
@@ -897,10 +911,17 @@ pub unsafe extern "C" fn spir_basis_get_uhat(
             BasisType::RegularizedBoseBosonic(basis) => {
                 spir_funcs::from_uhat_bosonic(basis.uhat.clone(), beta)
             },
+            // DLR: no continuous functions (uhat)
+            BasisType::DLRLogisticFermionic(_) |
+            BasisType::DLRLogisticBosonic(_) |
+            BasisType::DLRRegularizedBoseFermionic(_) |
+            BasisType::DLRRegularizedBoseBosonic(_) => {
+                return Result::<*mut spir_funcs, String>::Err("DLR does not support continuous functions".to_string());
+            }
         };
 
         Result::<*mut spir_funcs, String>::Ok(Box::into_raw(Box::new(funcs)))
-    });
+    }));
 
     match result {
         Ok(Ok(ptr)) => {
@@ -949,7 +970,7 @@ pub extern "C" fn spir_basis_get_default_taus_ext(
         return SPIR_INVALID_ARGUMENT;
     }
 
-    let result = catch_unwind(|| unsafe {
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         let basis = &*b;
         let tau_points = basis.default_tau_sampling_points();
         
@@ -959,7 +980,7 @@ pub extern "C" fn spir_basis_get_default_taus_ext(
         *n_points_returned = n_to_return as libc::c_int;
         
         SPIR_SUCCESS
-    });
+    }));
 
     result.unwrap_or(SPIR_INTERNAL_ERROR)
 }
@@ -994,7 +1015,7 @@ pub extern "C" fn spir_basis_get_n_default_matsus_ext(
         return SPIR_INVALID_ARGUMENT;
     }
 
-    let result = catch_unwind(|| unsafe {
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         let basis = &*b;
         let points = basis.default_matsubara_sampling_points(positive_only);
         
@@ -1003,7 +1024,7 @@ pub extern "C" fn spir_basis_get_n_default_matsus_ext(
         *num_points_returned = n_to_return as libc::c_int;
         
         SPIR_SUCCESS
-    });
+    }));
 
     result.unwrap_or(SPIR_INTERNAL_ERROR)
 }
@@ -1040,7 +1061,7 @@ pub extern "C" fn spir_basis_get_default_matsus_ext(
         return SPIR_INVALID_ARGUMENT;
     }
 
-    let result = catch_unwind(|| unsafe {
+    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         let basis = &*b;
         let matsu_points = basis.default_matsubara_sampling_points(positive_only);
         
@@ -1050,7 +1071,7 @@ pub extern "C" fn spir_basis_get_default_matsus_ext(
         *n_points_returned = n_to_return as libc::c_int;
         
         SPIR_SUCCESS
-    });
+    }));
 
     result.unwrap_or(SPIR_INTERNAL_ERROR)
 }

@@ -631,7 +631,7 @@ mod tests {
 
             // Create SVE result
             let mut sve_status = crate::SPIR_INTERNAL_ERROR;
-            let sve = spir_sve_result_new(kernel, 1e-6, std::ptr::null(), &mut sve_status);
+            let sve = spir_sve_result_new(kernel, 1e-6, 1e-6, -1, -1, 0, &mut sve_status);
             assert_eq!(sve_status, SPIR_SUCCESS);
             assert!(!sve.is_null());
 

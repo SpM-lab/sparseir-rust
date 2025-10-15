@@ -46,7 +46,7 @@ pub unsafe extern "C" fn spir_tau_sampling_new(
     points: *const f64,
     status: *mut StatusCode,
 ) -> *mut spir_sampling {
-    let result = catch_unwind(|| {
+    let result = catch_unwind(AssertUnwindSafe(|| {
         // Validate inputs
         if b.is_null() || points.is_null() {
             return (std::ptr::null_mut(), SPIR_INVALID_ARGUMENT);
@@ -91,6 +91,13 @@ pub unsafe extern "C" fn spir_tau_sampling_new(
                 );
                 SamplingType::TauBosonic(Arc::new(tau_sampling))
             }
+            // DLR: not supported for tau sampling (DLR is discrete, not continuous)
+            BasisType::DLRLogisticFermionic(_) |
+            BasisType::DLRLogisticBosonic(_) |
+            BasisType::DLRRegularizedBoseFermionic(_) |
+            BasisType::DLRRegularizedBoseBosonic(_) => {
+                return (std::ptr::null_mut(), SPIR_NOT_SUPPORTED);
+            }
         };
 
         let sampling = spir_sampling {
@@ -98,7 +105,7 @@ pub unsafe extern "C" fn spir_tau_sampling_new(
         };
 
         (Box::into_raw(Box::new(sampling)), SPIR_COMPUTATION_SUCCESS)
-    });
+    }));
 
     match result {
         Ok((ptr, code)) => {
@@ -135,7 +142,7 @@ pub unsafe extern "C" fn spir_matsu_sampling_new(
     points: *const i64,
     status: *mut StatusCode,
 ) -> *mut spir_sampling {
-    let result = catch_unwind(|| {
+    let result = catch_unwind(AssertUnwindSafe(|| {
         // Validate inputs
         if b.is_null() || points.is_null() {
             return (std::ptr::null_mut(), SPIR_INVALID_ARGUMENT);
@@ -217,6 +224,13 @@ pub unsafe extern "C" fn spir_matsu_sampling_new(
             BasisType::RegularizedBoseBosonic(ir_basis) => {
                 create_matsu_sampling!(ir_basis.as_ref(), Bosonic)
             }
+            // DLR: not supported for Matsubara sampling
+            BasisType::DLRLogisticFermionic(_) |
+            BasisType::DLRLogisticBosonic(_) |
+            BasisType::DLRRegularizedBoseFermionic(_) |
+            BasisType::DLRRegularizedBoseBosonic(_) => {
+                return (std::ptr::null_mut(), SPIR_NOT_SUPPORTED);
+            }
         };
 
         let sampling = spir_sampling {
@@ -224,7 +238,7 @@ pub unsafe extern "C" fn spir_matsu_sampling_new(
         };
 
         (Box::into_raw(Box::new(sampling)), SPIR_COMPUTATION_SUCCESS)
-    });
+    }));
 
     match result {
         Ok((ptr, code)) => {
@@ -268,7 +282,7 @@ pub unsafe extern "C" fn spir_tau_sampling_new_with_matrix(
     matrix: *const f64,
     status: *mut StatusCode,
 ) -> *mut spir_sampling {
-    let result = catch_unwind(|| {
+    let result = catch_unwind(AssertUnwindSafe(|| {
         // Validate inputs
         if points.is_null() || matrix.is_null() {
             return (std::ptr::null_mut(), SPIR_INVALID_ARGUMENT);
@@ -329,7 +343,7 @@ pub unsafe extern "C" fn spir_tau_sampling_new_with_matrix(
         };
 
         (Box::into_raw(Box::new(sampling)), SPIR_COMPUTATION_SUCCESS)
-    });
+    }));
 
     match result {
         Ok((ptr, code)) => {
@@ -375,7 +389,7 @@ pub unsafe extern "C" fn spir_matsu_sampling_new_with_matrix(
     matrix: *const Complex64,
     status: *mut StatusCode,
 ) -> *mut spir_sampling {
-    let result = catch_unwind(|| {
+    let result = catch_unwind(AssertUnwindSafe(|| {
         // Validate inputs
         if points.is_null() || matrix.is_null() {
             return (std::ptr::null_mut(), SPIR_INVALID_ARGUMENT);
@@ -468,7 +482,7 @@ pub unsafe extern "C" fn spir_matsu_sampling_new_with_matrix(
         };
 
         (Box::into_raw(Box::new(sampling)), SPIR_COMPUTATION_SUCCESS)
-    });
+    }));
 
     match result {
         Ok((ptr, code)) => {
