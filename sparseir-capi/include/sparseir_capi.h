@@ -640,6 +640,34 @@ struct spir_sampling *spir_matsu_sampling_new(const struct spir_basis *b,
                                               StatusCode *status);
 
 /**
+ * Creates a new Matsubara sampling object with custom sampling points and pre-computed matrix
+ *
+ * # Arguments
+ * * `order` - Memory layout order (SPIR_ORDER_ROW_MAJOR or SPIR_ORDER_COLUMN_MAJOR)
+ * * `statistics` - Statistics type (SPIR_STATISTICS_FERMIONIC or SPIR_STATISTICS_BOSONIC)
+ * * `basis_size` - Basis size
+ * * `positive_only` - If true, only positive frequencies are used
+ * * `num_points` - Number of sampling points
+ * * `points` - Array of Matsubara frequency indices (n)
+ * * `matrix` - Pre-computed complex matrix (num_points x basis_size)
+ * * `status` - Pointer to store the status code
+ *
+ * # Returns
+ * Pointer to the newly created sampling object, or NULL if creation fails
+ *
+ * # Safety
+ * Caller must ensure `points` and `matrix` have correct sizes
+ */
+struct spir_sampling *spir_matsu_sampling_new_with_matrix(int order,
+                                                          int statistics,
+                                                          int basis_size,
+                                                          bool positive_only,
+                                                          int num_points,
+                                                          const int64_t *points,
+                                                          const Complex64 *matrix,
+                                                          StatusCode *status);
+
+/**
  * Create a new RegularizedBose kernel
  *
  * # Arguments
@@ -847,6 +875,32 @@ struct spir_sampling *spir_tau_sampling_new(const struct spir_basis *b,
                                             int num_points,
                                             const double *points,
                                             StatusCode *status);
+
+/**
+ * Creates a new tau sampling object with custom sampling points and pre-computed matrix
+ *
+ * # Arguments
+ * * `order` - Memory layout order (SPIR_ORDER_ROW_MAJOR or SPIR_ORDER_COLUMN_MAJOR)
+ * * `statistics` - Statistics type (SPIR_STATISTICS_FERMIONIC or SPIR_STATISTICS_BOSONIC)
+ * * `basis_size` - Basis size
+ * * `num_points` - Number of sampling points
+ * * `points` - Array of sampling points in imaginary time (τ)
+ * * `matrix` - Pre-computed matrix for the sampling points (num_points x basis_size)
+ * * `status` - Pointer to store the status code
+ *
+ * # Returns
+ * Pointer to the newly created sampling object, or NULL if creation fails
+ *
+ * # Safety
+ * Caller must ensure `points` and `matrix` have correct sizes
+ */
+struct spir_sampling *spir_tau_sampling_new_with_matrix(int order,
+                                                        int statistics,
+                                                        int basis_size,
+                                                        int num_points,
+                                                        const double *points,
+                                                        const double *matrix,
+                                                        StatusCode *status);
 
 #ifdef __cplusplus
 }  // extern "C"

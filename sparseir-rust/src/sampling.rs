@@ -141,6 +141,38 @@ where
         }
     }
     
+    /// Create a new TauSampling with custom sampling points and pre-computed matrix
+    ///
+    /// This constructor is useful when the sampling matrix is already computed
+    /// (e.g., from external sources or for testing).
+    ///
+    /// # Arguments
+    /// * `sampling_points` - Sampling points in τ ∈ [-β, β]
+    /// * `matrix` - Pre-computed sampling matrix (n_points × basis_size)
+    ///
+    /// # Returns
+    /// A new TauSampling object
+    ///
+    /// # Panics
+    /// Panics if `sampling_points` is empty or if matrix dimensions don't match
+    pub fn from_matrix(
+        sampling_points: Vec<f64>,
+        matrix: DTensor<f64, 2>,
+    ) -> Self {
+        assert!(!sampling_points.is_empty(), "No sampling points given");
+        assert_eq!(matrix.shape().0, sampling_points.len(), 
+            "Matrix rows ({}) must match number of sampling points ({})", 
+            matrix.shape().0, sampling_points.len());
+        
+        let fitter = crate::fitter::RealMatrixFitter::new(matrix);
+        
+        Self {
+            sampling_points,
+            fitter,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+    
     /// Get the sampling points
     pub fn sampling_points(&self) -> &[f64] {
         &self.sampling_points

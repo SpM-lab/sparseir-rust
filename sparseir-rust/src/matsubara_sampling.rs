@@ -86,6 +86,41 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
         }
     }
     
+    /// Create Matsubara sampling with custom sampling points and pre-computed matrix
+    ///
+    /// This constructor is useful when the sampling matrix is already computed
+    /// (e.g., from external sources or for testing).
+    ///
+    /// # Arguments
+    /// * `sampling_points` - Matsubara frequency sampling points
+    /// * `matrix` - Pre-computed sampling matrix (n_points × basis_size)
+    ///
+    /// # Returns
+    /// A new MatsubaraSampling object
+    ///
+    /// # Panics
+    /// Panics if `sampling_points` is empty or if matrix dimensions don't match
+    pub fn from_matrix(
+        mut sampling_points: Vec<MatsubaraFreq<S>>,
+        matrix: DTensor<Complex<f64>, 2>,
+    ) -> Self {
+        assert!(!sampling_points.is_empty(), "No sampling points given");
+        assert_eq!(matrix.shape().0, sampling_points.len(), 
+            "Matrix rows ({}) must match number of sampling points ({})", 
+            matrix.shape().0, sampling_points.len());
+        
+        // Sort sampling points
+        sampling_points.sort();
+        
+        let fitter = ComplexMatrixFitter::new(matrix);
+        
+        Self {
+            sampling_points,
+            fitter,
+            _phantom: PhantomData,
+        }
+    }
+    
     /// Get sampling points
     pub fn sampling_points(&self) -> &[MatsubaraFreq<S>] {
         &self.sampling_points
@@ -282,6 +317,41 @@ impl<S: StatisticsType> MatsubaraSamplingPositiveOnly<S> {
         let matrix = basis.evaluate_matsubara(&sampling_points);
         
         // Create fitter (complex → real, exploits symmetry)
+        let fitter = ComplexToRealFitter::new(&matrix);
+        
+        Self {
+            sampling_points,
+            fitter,
+            _phantom: PhantomData,
+        }
+    }
+    
+    /// Create Matsubara sampling (positive-only) with custom sampling points and pre-computed matrix
+    ///
+    /// This constructor is useful when the sampling matrix is already computed.
+    /// Uses symmetry to fit real coefficients from complex values at positive frequencies.
+    ///
+    /// # Arguments
+    /// * `sampling_points` - Matsubara frequency sampling points (should be positive)
+    /// * `matrix` - Pre-computed sampling matrix (n_points × basis_size)
+    ///
+    /// # Returns
+    /// A new MatsubaraSamplingPositiveOnly object
+    ///
+    /// # Panics
+    /// Panics if `sampling_points` is empty or if matrix dimensions don't match
+    pub fn from_matrix(
+        mut sampling_points: Vec<MatsubaraFreq<S>>,
+        matrix: DTensor<Complex<f64>, 2>,
+    ) -> Self {
+        assert!(!sampling_points.is_empty(), "No sampling points given");
+        assert_eq!(matrix.shape().0, sampling_points.len(), 
+            "Matrix rows ({}) must match number of sampling points ({})", 
+            matrix.shape().0, sampling_points.len());
+        
+        // Sort sampling points
+        sampling_points.sort();
+        
         let fitter = ComplexToRealFitter::new(&matrix);
         
         Self {
