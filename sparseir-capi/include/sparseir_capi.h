@@ -424,6 +424,123 @@ struct spir_basis *spir_basis_new(int statistics,
                                   StatusCode *status);
 
 /**
+ * Convert DLR coefficients to IR (real-valued)
+ *
+ * # Arguments
+ * * `dlr` - Pointer to a DLR basis object
+ * * `order` - Memory layout order
+ * * `ndim` - Number of dimensions
+ * * `input_dims` - Array of input dimensions
+ * * `target_dim` - Dimension to transform
+ * * `input` - DLR coefficients
+ * * `out` - Output IR coefficients
+ *
+ * # Returns
+ * Status code
+ *
+ * # Safety
+ * Caller must ensure pointers are valid and arrays have correct sizes
+ */
+StatusCode spir_dlr2ir_dd(const struct spir_basis *dlr,
+                          int order,
+                          int ndim,
+                          const int *input_dims,
+                          int target_dim,
+                          const double *input,
+                          double *out);
+
+/**
+ * Convert DLR coefficients to IR (complex-valued)
+ *
+ * # Arguments
+ * * `dlr` - Pointer to a DLR basis object
+ * * `order` - Memory layout order
+ * * `ndim` - Number of dimensions
+ * * `input_dims` - Array of input dimensions
+ * * `target_dim` - Dimension to transform
+ * * `input` - Complex DLR coefficients
+ * * `out` - Output complex IR coefficients
+ *
+ * # Returns
+ * Status code
+ *
+ * # Safety
+ * Caller must ensure pointers are valid and arrays have correct sizes
+ */
+StatusCode spir_dlr2ir_zz(const struct spir_basis *dlr,
+                          int order,
+                          int ndim,
+                          const int *input_dims,
+                          int target_dim,
+                          const Complex64 *input,
+                          Complex64 *out);
+
+/**
+ * Gets the number of poles in a DLR
+ *
+ * # Arguments
+ * * `dlr` - Pointer to a DLR basis object
+ * * `num_poles` - Pointer to store the number of poles
+ *
+ * # Returns
+ * Status code
+ *
+ * # Safety
+ * Caller must ensure `dlr` is a valid DLR basis pointer
+ */
+StatusCode spir_dlr_get_npoles(const struct spir_basis *dlr, int *num_poles);
+
+/**
+ * Gets the pole locations in a DLR
+ *
+ * # Arguments
+ * * `dlr` - Pointer to a DLR basis object
+ * * `poles` - Pre-allocated array to store pole locations
+ *
+ * # Returns
+ * Status code
+ *
+ * # Safety
+ * Caller must ensure `dlr` is valid and `poles` has sufficient size
+ */
+StatusCode spir_dlr_get_poles(const struct spir_basis *dlr, double *poles);
+
+/**
+ * Creates a new DLR from an IR basis with default poles
+ *
+ * # Arguments
+ * * `b` - Pointer to a finite temperature basis object
+ * * `status` - Pointer to store the status code
+ *
+ * # Returns
+ * Pointer to the newly created DLR basis object, or NULL if creation fails
+ *
+ * # Safety
+ * Caller must ensure `b` is a valid IR basis pointer
+ */
+struct spir_basis *spir_dlr_new(const struct spir_basis *b, StatusCode *status);
+
+/**
+ * Creates a new DLR with custom poles
+ *
+ * # Arguments
+ * * `b` - Pointer to a finite temperature basis object
+ * * `npoles` - Number of poles to use
+ * * `poles` - Array of pole locations on the real-frequency axis
+ * * `status` - Pointer to store the status code
+ *
+ * # Returns
+ * Pointer to the newly created DLR basis object, or NULL if creation fails
+ *
+ * # Safety
+ * Caller must ensure `b` is valid and `poles` has `npoles` elements
+ */
+struct spir_basis *spir_dlr_new_with_poles(const struct spir_basis *b,
+                                           int npoles,
+                                           const double *poles,
+                                           StatusCode *status);
+
+/**
  * Batch evaluate functions at multiple points (continuous functions only)
  *
  * # Arguments
@@ -564,6 +681,58 @@ struct spir_funcs *spir_funcs_get_slice(const struct spir_funcs *funcs,
                                         int32_t nslice,
                                         const int32_t *indices,
                                         StatusCode *status);
+
+/**
+ * Convert IR coefficients to DLR (real-valued)
+ *
+ * # Arguments
+ * * `dlr` - Pointer to a DLR basis object
+ * * `order` - Memory layout order
+ * * `ndim` - Number of dimensions
+ * * `input_dims` - Array of input dimensions
+ * * `target_dim` - Dimension to transform
+ * * `input` - IR coefficients
+ * * `out` - Output DLR coefficients
+ *
+ * # Returns
+ * Status code
+ *
+ * # Safety
+ * Caller must ensure pointers are valid and arrays have correct sizes
+ */
+StatusCode spir_ir2dlr_dd(const struct spir_basis *dlr,
+                          int order,
+                          int ndim,
+                          const int *input_dims,
+                          int target_dim,
+                          const double *input,
+                          double *out);
+
+/**
+ * Convert IR coefficients to DLR (complex-valued)
+ *
+ * # Arguments
+ * * `dlr` - Pointer to a DLR basis object
+ * * `order` - Memory layout order
+ * * `ndim` - Number of dimensions
+ * * `input_dims` - Array of input dimensions
+ * * `target_dim` - Dimension to transform
+ * * `input` - Complex IR coefficients
+ * * `out` - Output complex DLR coefficients
+ *
+ * # Returns
+ * Status code
+ *
+ * # Safety
+ * Caller must ensure pointers are valid and arrays have correct sizes
+ */
+StatusCode spir_ir2dlr_zz(const struct spir_basis *dlr,
+                          int order,
+                          int ndim,
+                          const int *input_dims,
+                          int target_dim,
+                          const Complex64 *input,
+                          Complex64 *out);
 
 /**
  * Compute kernel value K(x, y)

@@ -53,6 +53,11 @@ pub(crate) enum BasisType {
     LogisticBosonic(Arc<FiniteTempBasis<LogisticKernel, Bosonic>>),
     RegularizedBoseFermionic(Arc<FiniteTempBasis<RegularizedBoseKernel, Fermionic>>),
     RegularizedBoseBosonic(Arc<FiniteTempBasis<RegularizedBoseKernel, Bosonic>>),
+    // DLR (Discrete Lehmann Representation) variants
+    DLRLogisticFermionic(Arc<sparseir_rust::dlr::DiscreteLehmannRepresentation<LogisticKernel, Fermionic>>),
+    DLRLogisticBosonic(Arc<sparseir_rust::dlr::DiscreteLehmannRepresentation<LogisticKernel, Bosonic>>),
+    DLRRegularizedBoseFermionic(Arc<sparseir_rust::dlr::DiscreteLehmannRepresentation<RegularizedBoseKernel, Fermionic>>),
+    DLRRegularizedBoseBosonic(Arc<sparseir_rust::dlr::DiscreteLehmannRepresentation<RegularizedBoseKernel, Bosonic>>),
 }
 
 /// Internal kernel type (not exposed to C)
@@ -167,6 +172,10 @@ impl spir_basis {
             BasisType::LogisticBosonic(b) => b.size(),
             BasisType::RegularizedBoseFermionic(b) => b.size(),
             BasisType::RegularizedBoseBosonic(b) => b.size(),
+            BasisType::DLRLogisticFermionic(dlr) => dlr.poles.len(),
+            BasisType::DLRLogisticBosonic(dlr) => dlr.poles.len(),
+            BasisType::DLRRegularizedBoseFermionic(dlr) => dlr.poles.len(),
+            BasisType::DLRRegularizedBoseBosonic(dlr) => dlr.poles.len(),
         }
     }
 
@@ -176,6 +185,11 @@ impl spir_basis {
             BasisType::LogisticBosonic(b) => b.s.clone(),
             BasisType::RegularizedBoseFermionic(b) => b.s.clone(),
             BasisType::RegularizedBoseBosonic(b) => b.s.clone(),
+            // DLR: no singular values, return empty
+            BasisType::DLRLogisticFermionic(_) => vec![],
+            BasisType::DLRLogisticBosonic(_) => vec![],
+            BasisType::DLRRegularizedBoseFermionic(_) => vec![],
+            BasisType::DLRRegularizedBoseBosonic(_) => vec![],
         }
     }
 
@@ -186,6 +200,10 @@ impl spir_basis {
             BasisType::LogisticBosonic(_) => 0,
             BasisType::RegularizedBoseFermionic(_) => 1,
             BasisType::RegularizedBoseBosonic(_) => 0,
+            BasisType::DLRLogisticFermionic(_) => 1,
+            BasisType::DLRLogisticBosonic(_) => 0,
+            BasisType::DLRRegularizedBoseFermionic(_) => 1,
+            BasisType::DLRRegularizedBoseBosonic(_) => 0,
         }
     }
 
@@ -195,6 +213,10 @@ impl spir_basis {
             BasisType::LogisticBosonic(b) => b.beta,
             BasisType::RegularizedBoseFermionic(b) => b.beta,
             BasisType::RegularizedBoseBosonic(b) => b.beta,
+            BasisType::DLRLogisticFermionic(dlr) => dlr.beta,
+            BasisType::DLRLogisticBosonic(dlr) => dlr.beta,
+            BasisType::DLRRegularizedBoseFermionic(dlr) => dlr.beta,
+            BasisType::DLRRegularizedBoseBosonic(dlr) => dlr.beta,
         }
     }
 
@@ -204,6 +226,10 @@ impl spir_basis {
             BasisType::LogisticBosonic(b) => b.wmax(),
             BasisType::RegularizedBoseFermionic(b) => b.wmax(),
             BasisType::RegularizedBoseBosonic(b) => b.wmax(),
+            BasisType::DLRLogisticFermionic(dlr) => dlr.wmax,
+            BasisType::DLRLogisticBosonic(dlr) => dlr.wmax,
+            BasisType::DLRRegularizedBoseFermionic(dlr) => dlr.wmax,
+            BasisType::DLRRegularizedBoseBosonic(dlr) => dlr.wmax,
         }
     }
 
@@ -213,6 +239,11 @@ impl spir_basis {
             BasisType::LogisticBosonic(b) => b.default_tau_sampling_points(),
             BasisType::RegularizedBoseFermionic(b) => b.default_tau_sampling_points(),
             BasisType::RegularizedBoseBosonic(b) => b.default_tau_sampling_points(),
+            // DLR: no default tau sampling points
+            BasisType::DLRLogisticFermionic(_) => vec![],
+            BasisType::DLRLogisticBosonic(_) => vec![],
+            BasisType::DLRRegularizedBoseFermionic(_) => vec![],
+            BasisType::DLRRegularizedBoseBosonic(_) => vec![],
         }
     }
 
@@ -222,6 +253,11 @@ impl spir_basis {
             BasisType::LogisticBosonic(b) => b.default_matsubara_sampling_points_i64(positive_only),
             BasisType::RegularizedBoseFermionic(b) => b.default_matsubara_sampling_points_i64(positive_only),
             BasisType::RegularizedBoseBosonic(b) => b.default_matsubara_sampling_points_i64(positive_only),
+            // DLR: no default Matsubara sampling points
+            BasisType::DLRLogisticFermionic(_) => vec![],
+            BasisType::DLRLogisticBosonic(_) => vec![],
+            BasisType::DLRRegularizedBoseFermionic(_) => vec![],
+            BasisType::DLRRegularizedBoseBosonic(_) => vec![],
         }
     }
 
@@ -231,6 +267,11 @@ impl spir_basis {
             BasisType::LogisticBosonic(b) => b.default_omega_sampling_points(),
             BasisType::RegularizedBoseFermionic(b) => b.default_omega_sampling_points(),
             BasisType::RegularizedBoseBosonic(b) => b.default_omega_sampling_points(),
+            // DLR: return poles as omega sampling points
+            BasisType::DLRLogisticFermionic(dlr) => dlr.poles.clone(),
+            BasisType::DLRLogisticBosonic(dlr) => dlr.poles.clone(),
+            BasisType::DLRRegularizedBoseFermionic(dlr) => dlr.poles.clone(),
+            BasisType::DLRRegularizedBoseBosonic(dlr) => dlr.poles.clone(),
         }
     }
 }
