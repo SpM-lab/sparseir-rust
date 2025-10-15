@@ -919,9 +919,11 @@ pub unsafe extern "C" fn spir_basis_get_uhat(
             },
             // DLR: Matsubara-domain functions using discrete poles
             BasisType::DLRLogisticFermionic(dlr) => {
+                eprintln!("DEBUG: Creating DLR Matsubara Fermionic funcs, npoles={}", dlr.poles.len());
                 spir_funcs::from_dlr_matsubara_fermionic(dlr.poles.clone(), beta)
             },
             BasisType::DLRLogisticBosonic(dlr) => {
+                eprintln!("DEBUG: Creating DLR Matsubara Bosonic funcs, npoles={}", dlr.poles.len());
                 spir_funcs::from_dlr_matsubara_bosonic(dlr.poles.clone(), beta)
             },
             BasisType::DLRRegularizedBoseFermionic(dlr) => {

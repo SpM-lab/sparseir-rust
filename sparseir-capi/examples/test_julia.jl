@@ -960,5 +960,92 @@ ccall((:spir_sve_result_release, libpath), Cvoid, (Ptr{Cvoid},), sve)
 kernel_release(kernel)
 
 println("\n" * "=" ^ 50)
-println("✅ All tests passed (including Sampling API)!")
+println("Test 14: DLR API")
+println("=" ^ 50)
+
+# Re-create kernel and basis for DLR test
+kernel_status = Ref{Cint}(0)
+kernel = ccall((:spir_logistic_kernel_new, libpath), Ptr{Cvoid},
+    (Cdouble, Ptr{Cint}), 10.0, kernel_status)
+@assert kernel_status[] == SPIR_COMPUTATION_SUCCESS
+@assert kernel != C_NULL
+
+sve_status = Ref{Cint}(0)
+sve = ccall((:spir_sve_result_new, libpath), Ptr{Cvoid},
+    (Ptr{Cvoid}, Cdouble, Cdouble, Cint, Cint, Cint, Ptr{Cint}),
+    kernel, 1e-6, 1e-6, -1, -1, 0, sve_status)
+@assert sve_status[] == SPIR_COMPUTATION_SUCCESS
+
+basis_status = Ref{Cint}(0)
+ir_basis = ccall((:spir_basis_new, libpath), Ptr{Cvoid},
+    (Cint, Cdouble, Cdouble, Cdouble, Ptr{Cvoid}, Ptr{Cvoid}, Cint, Ptr{Cint}),
+    1, 10.0, 1.0, 1e-6, kernel, sve, -1, basis_status)  # 1 = Fermionic
+@assert basis_status[] == SPIR_COMPUTATION_SUCCESS
+@assert ir_basis != C_NULL
+
+# Create DLR from IR basis
+dlr_status = Ref{Cint}(0)
+dlr = ccall((:spir_dlr_new, libpath), Ptr{Cvoid},
+    (Ptr{Cvoid}, Ptr{Cint}), ir_basis, dlr_status)
+@assert dlr_status[] == SPIR_COMPUTATION_SUCCESS
+@assert dlr != C_NULL
+println("✅ DLR created from IR basis")
+
+# Get number of poles
+npoles_ref = Ref{Cint}(0)
+status = ccall((:spir_dlr_get_npoles, libpath), Cint,
+    (Ptr{Cvoid}, Ptr{Cint}), dlr, npoles_ref)
+@assert status == SPIR_COMPUTATION_SUCCESS
+npoles = npoles_ref[]
+println("📊 DLR has $npoles poles")
+
+# Get poles
+poles = zeros(Float64, npoles)
+status = ccall((:spir_dlr_get_poles, libpath), Cint,
+    (Ptr{Cvoid}, Ptr{Cdouble}), dlr, poles)
+@assert status == SPIR_COMPUTATION_SUCCESS
+println("📍 First 3 poles: $(poles[1:min(3,end)]...)")
+
+# Get u funcs from DLR
+u_status = Ref{Cint}(0)
+u_funcs = ccall((:spir_basis_get_u, libpath), Ptr{Cvoid},
+    (Ptr{Cvoid}, Ptr{Cint}), dlr, u_status)
+@assert u_status[] == SPIR_COMPUTATION_SUCCESS
+@assert u_funcs != C_NULL
+println("✅ Got u funcs from DLR")
+
+# Evaluate u at tau=0.5
+tau = 0.5
+u_values = zeros(Float64, npoles)
+status = ccall((:spir_funcs_eval, libpath), Cint,
+    (Ptr{Cvoid}, Cdouble, Ptr{Cdouble}), u_funcs, tau, u_values)
+@assert status == SPIR_COMPUTATION_SUCCESS
+println("✅ Evaluated u at τ=$tau: $(u_values[1:min(3,end)]...)")
+
+# Get uhat funcs from DLR
+uhat_status = Ref{Cint}(0)
+uhat_funcs = ccall((:spir_basis_get_uhat, libpath), Ptr{Cvoid},
+    (Ptr{Cvoid}, Ptr{Cint}), dlr, uhat_status)
+@assert uhat_status[] == SPIR_COMPUTATION_SUCCESS
+@assert uhat_funcs != C_NULL
+println("✅ Got uhat funcs from DLR")
+
+# Evaluate uhat at Matsubara frequency n=1
+n_matsu = 1
+uhat_values = zeros(ComplexF64, npoles)
+status = ccall((:spir_funcs_eval_matsu, libpath), Cint,
+    (Ptr{Cvoid}, Int64, Ptr{ComplexF64}), uhat_funcs, n_matsu, uhat_values)
+@assert status == SPIR_COMPUTATION_SUCCESS
+println("✅ Evaluated uhat at n=$n_matsu: |uhat|=$(abs.(uhat_values[1:min(3,end)])...)")
+
+# Cleanup
+ccall((:spir_funcs_release, libpath), Cvoid, (Ptr{Cvoid},), uhat_funcs)
+ccall((:spir_funcs_release, libpath), Cvoid, (Ptr{Cvoid},), u_funcs)
+ccall((:spir_basis_release, libpath), Cvoid, (Ptr{Cvoid},), dlr)
+ccall((:spir_basis_release, libpath), Cvoid, (Ptr{Cvoid},), ir_basis)
+ccall((:spir_sve_result_release, libpath), Cvoid, (Ptr{Cvoid},), sve)
+ccall((:spir_kernel_release, libpath), Cvoid, (Ptr{Cvoid},), kernel)
+
+println("\n" * "=" ^ 50)
+println("✅ All tests passed (including Sampling API and DLR)!")
 

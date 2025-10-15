@@ -635,9 +635,9 @@ mod tests {
             assert_eq!(sve_status, SPIR_SUCCESS);
             assert!(!sve.is_null());
 
-            // Create IR basis
+            // Create IR basis (Fermionic)
             let mut basis_status = crate::SPIR_INTERNAL_ERROR;
-            let basis = spir_basis_new(0, 10.0, 1.0, 1e-6, kernel, sve, -1, &mut basis_status);
+            let basis = spir_basis_new(1, 10.0, 1.0, 1e-6, kernel, sve, -1, &mut basis_status);
             assert_eq!(basis_status, SPIR_SUCCESS);
             assert!(!basis.is_null());
 
@@ -660,7 +660,37 @@ mod tests {
             assert_eq!(status, SPIR_COMPUTATION_SUCCESS);
             println!("First 3 poles: {:?}", &poles[0..3.min(npoles as usize)]);
 
+            // Test get_u funcs from DLR
+            let mut u_status = crate::SPIR_INTERNAL_ERROR;
+            let u_funcs = crate::basis::spir_basis_get_u(dlr, &mut u_status);
+            assert_eq!(u_status, SPIR_SUCCESS);
+            assert!(!u_funcs.is_null());
+            println!("✓ Got u funcs from DLR");
+            
+            // Evaluate u at tau=0.5
+            let tau = 0.5;
+            let mut u_values = vec![0.0; npoles as usize];
+            let status = crate::funcs::spir_funcs_eval(u_funcs, tau, u_values.as_mut_ptr());
+            assert_eq!(status, SPIR_SUCCESS);
+            println!("✓ Evaluated u at τ={}: {:?}", tau, &u_values[0..3.min(npoles as usize)]);
+            
+            // Test get_uhat funcs from DLR
+            let mut uhat_status = crate::SPIR_INTERNAL_ERROR;
+            let uhat_funcs = crate::basis::spir_basis_get_uhat(dlr, &mut uhat_status);
+            assert_eq!(uhat_status, SPIR_SUCCESS);
+            assert!(!uhat_funcs.is_null());
+            println!("✓ Got uhat funcs from DLR");
+            
+            // Evaluate uhat at Matsubara frequency n=1
+            let n_matsu = 1i64;
+            let mut uhat_values = vec![num_complex::Complex64::new(0.0, 0.0); npoles as usize];
+            let status = crate::funcs::spir_funcs_eval_matsu(uhat_funcs, n_matsu, uhat_values.as_mut_ptr());
+            assert_eq!(status, SPIR_SUCCESS);
+            println!("✓ Evaluated uhat at n={}: |uhat|={:?}", n_matsu, &uhat_values[0..3.min(npoles as usize)].iter().map(|v| v.norm()).collect::<Vec<_>>());
+
             // Cleanup
+            crate::funcs::spir_funcs_release(uhat_funcs);
+            crate::funcs::spir_funcs_release(u_funcs);
             crate::basis::spir_basis_release(dlr);
             crate::basis::spir_basis_release(basis);
             crate::sve::spir_sve_result_release(sve);
