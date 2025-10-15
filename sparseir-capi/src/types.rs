@@ -617,3 +617,35 @@ fn regularize_tau(tau: f64, beta: f64, fermionic_sign: f64) -> (f64, f64) {
     }
 }
 
+// ============================================================================
+// Sampling Type (unified for tau/matsubara/omega sampling)
+// ============================================================================
+
+/// Opaque sampling type for C API (compatible with libsparseir)
+///
+/// Represents sparse sampling in imaginary time (τ), Matsubara frequency (iωn),
+/// or real frequency (ω) domains.
+///
+/// Created by:
+/// - `spir_tau_sampling_new()` - τ sampling
+/// - `spir_matsu_sampling_new()` - iωn sampling  
+///
+/// Note: Named `spir_sampling` to match libsparseir C++ API exactly.
+#[derive(Clone)]
+#[repr(C)]
+pub struct spir_sampling {
+    pub(crate) inner: SamplingType,
+}
+
+/// Internal sampling type (holds different sampling implementations)
+#[derive(Clone)]
+pub(crate) enum SamplingType {
+    /// Tau sampling (real-valued, τ domain)
+    TauFermionic(Arc<sparseir_rust::sampling::TauSampling<Fermionic>>),
+    TauBosonic(Arc<sparseir_rust::sampling::TauSampling<Bosonic>>),
+    
+    /// Matsubara sampling (complex-valued, iωn domain)
+    MatsubaraFermionic(Arc<sparseir_rust::matsubara_sampling::MatsubaraSampling<Fermionic>>),
+    MatsubaraBosonic(Arc<sparseir_rust::matsubara_sampling::MatsubaraSampling<Bosonic>>),
+}
+

@@ -6,6 +6,7 @@
 #[macro_use]
 mod macros;
 
+mod utils;
 mod types;
 mod kernel;
 mod sve;
@@ -33,3 +34,11 @@ pub const SPIR_INTERNAL_ERROR: StatusCode = -7;
 
 // Aliases for convenience
 pub const SPIR_SUCCESS: StatusCode = SPIR_COMPUTATION_SUCCESS;
+
+// Order type constants (matching libsparseir)
+pub const SPIR_ORDER_ROW_MAJOR: libc::c_int = 0;
+pub const SPIR_ORDER_COLUMN_MAJOR: libc::c_int = 1;
+
+// Statistics type constants (matching libsparseir)
+pub const SPIR_STATISTICS_BOSONIC: libc::c_int = 0;
+pub const SPIR_STATISTICS_FERMIONIC: libc::c_int = 1;

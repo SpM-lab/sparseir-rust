@@ -19,6 +19,14 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define SPIR_ORDER_ROW_MAJOR 0
+
+#define SPIR_ORDER_COLUMN_MAJOR 1
+
+#define SPIR_STATISTICS_BOSONIC 0
+
+#define SPIR_STATISTICS_FERMIONIC 1
+
 typedef struct Arc_SVEResult Arc_SVEResult;
 
 /**
