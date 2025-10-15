@@ -15,6 +15,7 @@ use std::sync::Arc;
 use num_complex::Complex64;
 
 use crate::types::{spir_basis, spir_sampling, SamplingType, BasisType};
+use crate::utils::copy_tensor_to_c_array;
 use crate::{StatusCode, SPIR_COMPUTATION_SUCCESS, SPIR_INVALID_ARGUMENT, SPIR_NOT_SUPPORTED};
 use sparseir_rust::{Bosonic, Fermionic, Tensor, DynRank};
 
@@ -458,13 +459,8 @@ pub unsafe extern "C" fn spir_sampling_eval_dd(
             _ => return SPIR_NOT_SUPPORTED,
         };
         
-        // Flatten result and copy to output (column-major)
-        let total_output = result_tensor.len();
-        let result_flat = result_tensor.into_dyn().reshape(&[total_output]).to_tensor();
-        
-        for i in 0..total_output {
-            *out.add(i) = result_flat[&[i][..]];
-        }
+        // Copy result to output (column-major)
+        copy_tensor_to_c_array(result_tensor, out);
         
         SPIR_COMPUTATION_SUCCESS
     }));
@@ -523,13 +519,8 @@ pub unsafe extern "C" fn spir_sampling_eval_dz(
             _ => return SPIR_NOT_SUPPORTED,
         };
         
-        // Flatten result and copy to output (column-major)
-        let total_output = result_tensor.len();
-        let result_flat = result_tensor.into_dyn().reshape(&[total_output]).to_tensor();
-        
-        for i in 0..total_output {
-            *out.add(i) = result_flat[&[i][..]];
-        }
+        // Copy result to output (column-major)
+        copy_tensor_to_c_array(result_tensor, out);
         
         SPIR_COMPUTATION_SUCCESS
     }));
@@ -586,21 +577,8 @@ pub unsafe extern "C" fn spir_sampling_eval_zz(
             _ => return SPIR_NOT_SUPPORTED,
         };
         
-        // Calculate output dimensions
-        let mut output_dims = dims.clone();
-        output_dims[target_dim as usize] = n_points;
-        
-        let total_output = result_tensor.len();
-        
-        for i in 0..total_output {
-            let mut indices = vec![0; result_tensor.rank()];
-            let mut remaining = i;
-            for j in 0..result_tensor.rank() {
-                indices[j] = remaining % output_dims[j];
-                remaining /= output_dims[j];
-            }
-            *out.add(i) = result_tensor[&indices[..]];
-        }
+        // Copy result to output (column-major)
+        copy_tensor_to_c_array(result_tensor, out);
         
         SPIR_COMPUTATION_SUCCESS
     }));
@@ -659,13 +637,8 @@ pub unsafe extern "C" fn spir_sampling_fit_dd(
             _ => return SPIR_NOT_SUPPORTED,
         };
         
-        // Flatten result and copy to output (column-major)
-        let total_output = result_tensor.len();
-        let result_flat = result_tensor.into_dyn().reshape(&[total_output]).to_tensor();
-        
-        for i in 0..total_output {
-            *out.add(i) = result_flat[&[i][..]];
-        }
+        // Copy result to output (column-major)
+        copy_tensor_to_c_array(result_tensor, out);
         
         SPIR_COMPUTATION_SUCCESS
     }));

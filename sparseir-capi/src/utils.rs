@@ -45,6 +45,30 @@ pub fn collapse_to_3d(dims: &[usize], target_dim: usize) -> (usize, usize, usize
     (before, target, after)
 }
 
+/// Copy N-dimensional tensor to C array (column-major layout)
+///
+/// Flattens the tensor and copies all elements to the output pointer.
+/// This is a zero-copy operation for the reshape (metadata-only),
+/// followed by a simple linear copy.
+///
+/// # Arguments
+/// * `tensor` - Source tensor (any rank)
+/// * `out` - Destination C array pointer
+///
+/// # Safety
+/// Caller must ensure `out` has space for `tensor.len()` elements
+pub unsafe fn copy_tensor_to_c_array<T: Copy>(
+    tensor: sparseir_rust::Tensor<T, sparseir_rust::DynRank>,
+    out: *mut T,
+) {
+    let total = tensor.len();
+    let flat = tensor.into_dyn().reshape(&[total]).to_tensor();
+    
+    for i in 0..total {
+        *out.add(i) = flat[i];
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
