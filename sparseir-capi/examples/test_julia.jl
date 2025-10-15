@@ -194,12 +194,12 @@ if sve == C_NULL || status[] != SPIR_COMPUTATION_SUCCESS
 end
 
 # Get SVE size
-size = Ref{Int32}(0)
+sve_size = Ref{Int32}(0)
 status_size = ccall(
     (:spir_sve_result_get_size, libpath),
     Int32,
     (Ptr{Cvoid}, Ref{Int32}),
-    sve, size
+    sve, sve_size
 )
 
 if status_size != SPIR_COMPUTATION_SUCCESS
@@ -207,10 +207,10 @@ if status_size != SPIR_COMPUTATION_SUCCESS
 end
 
 println("✅ Computed SVE")
-println("   Size: $(size[])")
+println("   Size: $(sve_size[])")
 
 # Get singular values
-svals = Vector{Float64}(undef, size[])
+svals = Vector{Float64}(undef, sve_size[])
 status_svals = ccall(
     (:spir_sve_result_get_svals, libpath),
     Int32,
@@ -233,7 +233,7 @@ sve_truncated = ccall(
     (:spir_sve_result_truncate, libpath),
     Ptr{Cvoid},
     (Ptr{Cvoid}, Float64, Int32, Ref{Int32}),
-    sve, 1e-4, div(size[], 2), status_truncate
+    sve, 1e-4, div(sve_size[], 2), status_truncate
 )
 
 if sve_truncated == C_NULL || status_truncate[] != SPIR_COMPUTATION_SUCCESS
@@ -885,14 +885,14 @@ println("✅ Fit 1D: roundtrip error = $(maximum(abs.(fitted_coeffs .- coeffs)))
 # Test 2D array (batch processing)
 batch_size = 3
 coeffs_2d = ones(Float64, basis_size, batch_size)
-values_2d = zeros(Float64, basis_size, batch_size)
+values_2d_result = zeros(Float64, basis_size, batch_size)
 dims_2d = Cint[basis_size, batch_size]
 
 status = ccall((:spir_sampling_eval_dd, libpath), Cint,
     (Ptr{Cvoid}, Cint, Cint, Ptr{Cint}, Cint, Ptr{Cdouble}, Ptr{Cdouble}),
-    sampling, 1, 2, dims_2d, 0, coeffs_2d, values_2d)
+    sampling, 1, 2, dims_2d, 0, coeffs_2d, values_2d_result)
 @assert status == SPIR_COMPUTATION_SUCCESS
-println("✅ Eval 2D: shape $(size(values_2d))")
+println("✅ Eval 2D: shape $(size(values_2d_result))")
 
 # Cleanup sampling
 ccall((:spir_sampling_release, libpath), Cvoid, (Ptr{Cvoid},), sampling)
@@ -905,14 +905,14 @@ println("=" ^ 50)
 # Get default Matsubara sampling points
 n_matsu_ref = Ref{Cint}(0)
 status = ccall((:spir_basis_get_n_default_matsus, libpath), Cint,
-    (Ptr{Cvoid}, Ptr{Cint}), basis, n_matsu_ref)
+    (Ptr{Cvoid}, Bool, Ptr{Cint}), basis, false, n_matsu_ref)
 @assert status == SPIR_COMPUTATION_SUCCESS
 n_matsu = n_matsu_ref[]
 println("📊 Number of default Matsubara points: $n_matsu")
 
 matsu_points = zeros(Int64, n_matsu)
 status = ccall((:spir_basis_get_default_matsus, libpath), Cint,
-    (Ptr{Cvoid}, Ptr{Int64}), basis, matsu_points)
+    (Ptr{Cvoid}, Bool, Ptr{Int64}), basis, false, matsu_points)
 @assert status == SPIR_COMPUTATION_SUCCESS
 println("📍 Matsubara points: $(matsu_points[1:min(5,end)]...)")
 
