@@ -129,6 +129,30 @@ StatusCode spir_basis_get_default_matsus(const struct spir_basis *b,
                                          int64_t *points);
 
 /**
+ * Get default Matsubara sampling points with custom limit (extended version)
+ *
+ * # Arguments
+ * * `b` - Basis object
+ * * `positive_only` - If true, return only positive frequencies
+ * * `n_points` - Maximum number of points requested
+ * * `points` - Pre-allocated array to store Matsubara indices (size >= n_points)
+ * * `n_points_returned` - Pointer to store actual number of points returned
+ *
+ * # Returns
+ * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_INVALID_ARGUMENT` (-6) if any pointer is null or n_points < 0
+ * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
+ *
+ * # Note
+ * Returns min(n_points, actual_default_points) sampling points
+ */
+StatusCode spir_basis_get_default_matsus_ext(const struct spir_basis *b,
+                                             bool positive_only,
+                                             int n_points,
+                                             int64_t *points,
+                                             int *n_points_returned);
+
+/**
  * Get default tau sampling points
  *
  * # Arguments
@@ -141,6 +165,28 @@ StatusCode spir_basis_get_default_matsus(const struct spir_basis *b,
  * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
  */
 StatusCode spir_basis_get_default_taus(const struct spir_basis *b, double *points);
+
+/**
+ * Get default tau sampling points with custom limit (extended version)
+ *
+ * # Arguments
+ * * `b` - Basis object
+ * * `n_points` - Maximum number of points requested
+ * * `points` - Pre-allocated array to store tau points (size >= n_points)
+ * * `n_points_returned` - Pointer to store actual number of points returned
+ *
+ * # Returns
+ * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_INVALID_ARGUMENT` (-6) if any pointer is null or n_points < 0
+ * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
+ *
+ * # Note
+ * Returns min(n_points, actual_default_points) sampling points
+ */
+StatusCode spir_basis_get_default_taus_ext(const struct spir_basis *b,
+                                           int n_points,
+                                           double *points,
+                                           int *n_points_returned);
 
 /**
  * Gets the default omega (real frequency) sampling points
@@ -173,6 +219,28 @@ StatusCode spir_basis_get_default_ws(const struct spir_basis *b, double *points)
 StatusCode spir_basis_get_n_default_matsus(const struct spir_basis *b,
                                            bool positive_only,
                                            int *num_points);
+
+/**
+ * Get number of default Matsubara sampling points with custom limit (extended version)
+ *
+ * # Arguments
+ * * `b` - Basis object
+ * * `positive_only` - If true, return only positive frequencies
+ * * `L` - Requested number of sampling points
+ * * `num_points_returned` - Pointer to store actual number of points
+ *
+ * # Returns
+ * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_INVALID_ARGUMENT` (-6) if any pointer is null or L < 0
+ * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
+ *
+ * # Note
+ * Returns min(L, actual_default_points) sampling points
+ */
+StatusCode spir_basis_get_n_default_matsus_ext(const struct spir_basis *b,
+                                               bool positive_only,
+                                               int L,
+                                               int *num_points_returned);
 
 /**
  * Get the number of default tau sampling points

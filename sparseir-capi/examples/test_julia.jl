@@ -722,6 +722,90 @@ ccall((:spir_funcs_release, libpath), Cvoid, (Ptr{Cvoid},), u_funcs)
 ccall((:spir_basis_release, libpath), Cvoid, (Ptr{Cvoid},), basis)
 kernel_release(kernel)
 
+# Test 11: Extended Sampling Functions (_ext variants)
+println("\n📝 Test 11: Extended Sampling Functions (_ext)")
+kernel = kernel_logistic_new(10.0)
+
+# Create basis
+status_basis = Ref{Int32}(0)
+basis = ccall(
+    (:spir_basis_new, libpath),
+    Ptr{Cvoid},
+    (Int32, Float64, Float64, Float64, Ptr{Cvoid}, Ptr{Cvoid}, Int32, Ref{Int32}),
+    1,      # Fermionic
+    10.0,   # beta
+    1.0,    # omega_max
+    1e-6,   # epsilon
+    kernel,
+    C_NULL,
+    -1,
+    status_basis
+)
+
+# Test get_default_taus_ext - request 5 points
+requested_tau = 5
+tau_points_ext = Vector{Float64}(undef, requested_tau)
+tau_returned = Ref{Int32}(0)
+status_tau_ext = ccall(
+    (:spir_basis_get_default_taus_ext, libpath),
+    Int32,
+    (Ptr{Cvoid}, Int32, Ptr{Float64}, Ref{Int32}),
+    basis, Int32(requested_tau), tau_points_ext, tau_returned
+)
+
+@assert status_tau_ext == SPIR_COMPUTATION_SUCCESS
+@assert tau_returned[] == requested_tau
+println("✅ get_default_taus_ext returned $(tau_returned[]) points (requested $requested_tau)")
+println("   First 3: $(tau_points_ext[1:3])")
+
+# Test get_n_default_matsus_ext - request 3 points
+requested_matsu = 3
+matsu_count_ext = Ref{Int32}(0)
+status_matsu_count_ext = ccall(
+    (:spir_basis_get_n_default_matsus_ext, libpath),
+    Int32,
+    (Ptr{Cvoid}, Bool, Int32, Ref{Int32}),
+    basis, true, Int32(requested_matsu), matsu_count_ext
+)
+
+@assert status_matsu_count_ext == SPIR_COMPUTATION_SUCCESS
+@assert matsu_count_ext[] == requested_matsu
+println("✅ get_n_default_matsus_ext returned count: $(matsu_count_ext[])")
+
+# Test get_default_matsus_ext
+matsu_points_ext = Vector{Int64}(undef, matsu_count_ext[])
+matsu_returned = Ref{Int32}(0)
+status_matsu_ext = ccall(
+    (:spir_basis_get_default_matsus_ext, libpath),
+    Int32,
+    (Ptr{Cvoid}, Bool, Int32, Ptr{Int64}, Ref{Int32}),
+    basis, true, Int32(requested_matsu), matsu_points_ext, matsu_returned
+)
+
+@assert status_matsu_ext == SPIR_COMPUTATION_SUCCESS
+@assert matsu_returned[] == matsu_count_ext[]
+println("✅ get_default_matsus_ext returned $(matsu_returned[]) matsubara points")
+println("   Points: $(matsu_points_ext)")
+
+# Test requesting more points than available
+big_request = 100
+big_tau_points = Vector{Float64}(undef, big_request)
+big_tau_returned = Ref{Int32}(0)
+status_big = ccall(
+    (:spir_basis_get_default_taus_ext, libpath),
+    Int32,
+    (Ptr{Cvoid}, Int32, Ptr{Float64}, Ref{Int32}),
+    basis, Int32(big_request), big_tau_points, big_tau_returned
+)
+
+@assert status_big == SPIR_COMPUTATION_SUCCESS
+println("✅ Requesting 100 points returned $(big_tau_returned[]) actual points")
+println("   (Returns min(requested, available))")
+
+# Cleanup
+ccall((:spir_basis_release, libpath), Cvoid, (Ptr{Cvoid},), basis)
+kernel_release(kernel)
+
 println("\n" * "=" ^ 50)
 println("✅ All tests passed!")
 
