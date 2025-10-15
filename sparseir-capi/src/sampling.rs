@@ -437,11 +437,24 @@ pub unsafe extern "C" fn spir_sampling_eval_dd(
         let total_input: usize = dims.iter().product();
         let input_slice = std::slice::from_raw_parts(input, total_input);
         
-        // Create input tensor (column-major)
-        let input_tensor = Tensor::<f64, DynRank>::from_fn(&dims[..], |idx| {
-            let linear_idx = multidim_to_linear(idx, &dims);
-            input_slice[linear_idx]
-        });
+        // Create input tensor from slice (column-major layout)
+        // mdarray uses column-major by default, matching our input
+        let input_vec: Vec<f64> = input_slice.to_vec();
+        let flat_tensor = Tensor::<f64, (usize,)>::from(input_vec);
+        let input_tensor = flat_tensor.into_dyn().reshape(&dims[..]).to_tensor();
+        
+        // Validate that input dimension matches basis size
+        let expected_basis_size = match &sampling_ref.inner {
+            SamplingType::TauFermionic(tau) => tau.basis_size(),
+            SamplingType::TauBosonic(tau) => tau.basis_size(),
+            _ => return SPIR_NOT_SUPPORTED,
+        };
+        
+        if dims[target_dim as usize] != expected_basis_size {
+            eprintln!("eval_dd: dimension mismatch! dims[{}] = {}, expected basis_size = {}",
+                target_dim, dims[target_dim as usize], expected_basis_size);
+            return crate::SPIR_INPUT_DIMENSION_MISMATCH;
+        }
         
         // Evaluate based on sampling type (only tau sampling supports dd)
         let (result_tensor, n_points) = match &sampling_ref.inner {
@@ -514,10 +527,9 @@ pub unsafe extern "C" fn spir_sampling_eval_dz(
         let total_input: usize = dims.iter().product();
         let input_slice = std::slice::from_raw_parts(input, total_input);
         
-        let input_tensor = Tensor::<f64, DynRank>::from_fn(&dims[..], |idx| {
-            let linear_idx = multidim_to_linear(idx, &dims);
-            input_slice[linear_idx]
-        });
+        let input_vec: Vec<f64> = input_slice.to_vec();
+        let flat_tensor = Tensor::<f64, (usize,)>::from(input_vec);
+        let input_tensor = flat_tensor.into_dyn().reshape(&dims[..]).to_tensor();
         
         // Evaluate based on sampling type (Matsubara positive-only)
         let (result_tensor, n_points) = match &sampling_ref.inner {
@@ -587,10 +599,9 @@ pub unsafe extern "C" fn spir_sampling_eval_zz(
         let total_input: usize = dims.iter().product();
         let input_slice = std::slice::from_raw_parts(input, total_input);
         
-        let input_tensor = Tensor::<Complex64, DynRank>::from_fn(&dims[..], |idx| {
-            let linear_idx = multidim_to_linear(idx, &dims);
-            input_slice[linear_idx]
-        });
+        let input_vec: Vec<Complex64> = input_slice.to_vec();
+        let flat_tensor = Tensor::<Complex64, (usize,)>::from(input_vec);
+        let input_tensor = flat_tensor.into_dyn().reshape(&dims[..]).to_tensor();
         
         // Evaluate (full Matsubara sampling)
         let (result_tensor, n_points) = match &sampling_ref.inner {
@@ -661,10 +672,9 @@ pub unsafe extern "C" fn spir_sampling_fit_dd(
         let total_input: usize = dims.iter().product();
         let input_slice = std::slice::from_raw_parts(input, total_input);
         
-        let input_tensor = Tensor::<f64, DynRank>::from_fn(&dims[..], |idx| {
-            let linear_idx = multidim_to_linear(idx, &dims);
-            input_slice[linear_idx]
-        });
+        let input_vec: Vec<f64> = input_slice.to_vec();
+        let flat_tensor = Tensor::<f64, (usize,)>::from(input_vec);
+        let input_tensor = flat_tensor.into_dyn().reshape(&dims[..]).to_tensor();
         
         // Fit (tau sampling only)
         let (result_tensor, basis_size) = match &sampling_ref.inner {
@@ -731,10 +741,9 @@ pub unsafe extern "C" fn spir_sampling_fit_zz(
         let total_input: usize = dims.iter().product();
         let input_slice = std::slice::from_raw_parts(input, total_input);
         
-        let input_tensor = Tensor::<Complex64, DynRank>::from_fn(&dims[..], |idx| {
-            let linear_idx = multidim_to_linear(idx, &dims);
-            input_slice[linear_idx]
-        });
+        let input_vec: Vec<Complex64> = input_slice.to_vec();
+        let flat_tensor = Tensor::<Complex64, (usize,)>::from(input_vec);
+        let input_tensor = flat_tensor.into_dyn().reshape(&dims[..]).to_tensor();
         
         // Fit (full Matsubara sampling)
         let (result_tensor, basis_size) = match &sampling_ref.inner {
@@ -801,10 +810,9 @@ pub unsafe extern "C" fn spir_sampling_fit_zd(
         let total_input: usize = dims.iter().product();
         let input_slice = std::slice::from_raw_parts(input, total_input);
         
-        let input_tensor = Tensor::<Complex64, DynRank>::from_fn(&dims[..], |idx| {
-            let linear_idx = multidim_to_linear(idx, &dims);
-            input_slice[linear_idx]
-        });
+        let input_vec: Vec<Complex64> = input_slice.to_vec();
+        let flat_tensor = Tensor::<Complex64, (usize,)>::from(input_vec);
+        let input_tensor = flat_tensor.into_dyn().reshape(&dims[..]).to_tensor();
         
         // Fit (positive-only Matsubara → real coefficients)
         let (result_tensor, basis_size) = match &sampling_ref.inner {

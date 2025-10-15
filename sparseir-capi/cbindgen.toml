@@ -46,6 +46,7 @@ include = [
     "spir_sve_result",
     "spir_basis",
     "spir_funcs",
+    "spir_sampling",
     "StatusCode",
 ]
 

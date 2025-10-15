@@ -807,5 +807,158 @@ ccall((:spir_basis_release, libpath), Cvoid, (Ptr{Cvoid},), basis)
 kernel_release(kernel)
 
 println("\n" * "=" ^ 50)
-println("✅ All tests passed!")
+println("Test 12: Sampling API - Tau Sampling")
+println("=" ^ 50)
+
+# Create a small basis for testing
+kernel = kernel_logistic_new(10.0)
+sve_status = Ref{Cint}(0)
+sve = ccall((:spir_sve_result_new, libpath), Ptr{Cvoid},
+    (Ptr{Cvoid}, Cdouble, Cdouble, Cint, Cint, Cint, Ptr{Cint}),
+    kernel, 1e-6, -1.0, -1, -1, -1, sve_status)
+@assert sve_status[] == SPIR_COMPUTATION_SUCCESS
+
+basis_status = Ref{Cint}(0)
+basis = ccall((:spir_basis_new, libpath), Ptr{Cvoid},
+    (Cint, Cdouble, Cdouble, Cdouble, Ptr{Cvoid}, Ptr{Cvoid}, Cint, Ptr{Cint}),
+    1, 10.0, 1.0, 1e-6, kernel, sve, 5, basis_status)  # max_size=5
+@assert basis_status[] == SPIR_COMPUTATION_SUCCESS
+
+# Get basis size
+basis_size_ref = Ref{Cint}(0)
+status = ccall((:spir_basis_get_size, libpath), Cint, 
+    (Ptr{Cvoid}, Ptr{Cint}), basis, basis_size_ref)
+@assert status == SPIR_COMPUTATION_SUCCESS
+basis_size = basis_size_ref[]
+println("📊 Basis size: $basis_size")
+
+# Create tau sampling points
+tau_points = [10.0 * (i + 1) / (basis_size + 1) for i in 0:basis_size-1]
+println("📍 Tau sampling points: $tau_points")
+
+# Create tau sampling
+status_ref = Ref{Cint}(0)
+sampling = ccall((:spir_tau_sampling_new, libpath), Ptr{Cvoid},
+    (Ptr{Cvoid}, Cint, Ptr{Cdouble}, Ptr{Cint}),
+    basis, length(tau_points), tau_points, status_ref)
+@assert status_ref[] == SPIR_COMPUTATION_SUCCESS
+@assert sampling != C_NULL
+println("✅ Tau sampling created")
+
+# Get number of sampling points
+n_points_ref = Ref{Cint}(0)
+status = ccall((:spir_sampling_get_npoints, libpath), Cint,
+    (Ptr{Cvoid}, Ptr{Cint}), sampling, n_points_ref)
+@assert status == SPIR_COMPUTATION_SUCCESS
+@assert n_points_ref[] == basis_size
+println("✅ Number of points: $(n_points_ref[])")
+
+# Get tau points back
+retrieved_taus = zeros(Float64, basis_size)
+status = ccall((:spir_sampling_get_taus, libpath), Cint,
+    (Ptr{Cvoid}, Ptr{Cdouble}), sampling, retrieved_taus)
+@assert status == SPIR_COMPUTATION_SUCCESS
+@assert maximum(abs.(retrieved_taus .- tau_points)) < 1e-10
+println("✅ Retrieved tau points match")
+
+# Test evaluate: coefficients → values at sampling points
+# Create simple test coefficients
+coeffs = ones(Float64, basis_size)
+values = zeros(Float64, basis_size)
+
+# 1D array: ndim=1, dims=[basis_size], target_dim=0
+dims_1d = Cint[basis_size]
+status = ccall((:spir_sampling_eval_dd, libpath), Cint,
+    (Ptr{Cvoid}, Cint, Cint, Ptr{Cint}, Cint, Ptr{Cdouble}, Ptr{Cdouble}),
+    sampling, 1, 1, dims_1d, 0, coeffs, values)  # order=1 (column-major)
+@assert status == SPIR_COMPUTATION_SUCCESS
+println("✅ Eval 1D: $(values[1:min(3,end)]...)")
+
+# Test fit: values → coefficients
+fitted_coeffs = zeros(Float64, basis_size)
+status = ccall((:spir_sampling_fit_dd, libpath), Cint,
+    (Ptr{Cvoid}, Cint, Cint, Ptr{Cint}, Cint, Ptr{Cdouble}, Ptr{Cdouble}),
+    sampling, 1, 1, dims_1d, 0, values, fitted_coeffs)
+@assert status == SPIR_COMPUTATION_SUCCESS
+println("✅ Fit 1D: roundtrip error = $(maximum(abs.(fitted_coeffs .- coeffs)))")
+
+# Test 2D array (batch processing)
+batch_size = 3
+coeffs_2d = ones(Float64, basis_size, batch_size)
+values_2d = zeros(Float64, basis_size, batch_size)
+dims_2d = Cint[basis_size, batch_size]
+
+status = ccall((:spir_sampling_eval_dd, libpath), Cint,
+    (Ptr{Cvoid}, Cint, Cint, Ptr{Cint}, Cint, Ptr{Cdouble}, Ptr{Cdouble}),
+    sampling, 1, 2, dims_2d, 0, coeffs_2d, values_2d)
+@assert status == SPIR_COMPUTATION_SUCCESS
+println("✅ Eval 2D: shape $(size(values_2d))")
+
+# Cleanup sampling
+ccall((:spir_sampling_release, libpath), Cvoid, (Ptr{Cvoid},), sampling)
+println("✅ Sampling released")
+
+println("\n" * "=" ^ 50)
+println("Test 13: Sampling API - Matsubara Sampling")
+println("=" ^ 50)
+
+# Get default Matsubara sampling points
+n_matsu_ref = Ref{Cint}(0)
+status = ccall((:spir_basis_get_n_default_matsus, libpath), Cint,
+    (Ptr{Cvoid}, Ptr{Cint}), basis, n_matsu_ref)
+@assert status == SPIR_COMPUTATION_SUCCESS
+n_matsu = n_matsu_ref[]
+println("📊 Number of default Matsubara points: $n_matsu")
+
+matsu_points = zeros(Int64, n_matsu)
+status = ccall((:spir_basis_get_default_matsus, libpath), Cint,
+    (Ptr{Cvoid}, Ptr{Int64}), basis, matsu_points)
+@assert status == SPIR_COMPUTATION_SUCCESS
+println("📍 Matsubara points: $(matsu_points[1:min(5,end)]...)")
+
+# Create Matsubara sampling (positive_only=false)
+status_ref = Ref{Cint}(0)
+matsu_sampling = ccall((:spir_matsu_sampling_new, libpath), Ptr{Cvoid},
+    (Ptr{Cvoid}, Bool, Cint, Ptr{Int64}, Ptr{Cint}),
+    basis, false, length(matsu_points), matsu_points, status_ref)
+@assert status_ref[] == SPIR_COMPUTATION_SUCCESS
+@assert matsu_sampling != C_NULL
+println("✅ Matsubara sampling created (full range)")
+
+# Get matsus back
+retrieved_matsus = zeros(Int64, n_matsu)
+status = ccall((:spir_sampling_get_matsus, libpath), Cint,
+    (Ptr{Cvoid}, Ptr{Int64}), matsu_sampling, retrieved_matsus)
+@assert status == SPIR_COMPUTATION_SUCCESS
+@assert all(retrieved_matsus .== matsu_points)
+println("✅ Retrieved Matsubara points match")
+
+# Test eval_zz: complex coefficients → complex values
+coeffs_complex = ones(ComplexF64, basis_size)
+values_complex = zeros(ComplexF64, n_matsu)
+dims_matsu = Cint[basis_size]
+
+status = ccall((:spir_sampling_eval_zz, libpath), Cint,
+    (Ptr{Cvoid}, Cint, Cint, Ptr{Cint}, Cint, Ptr{ComplexF64}, Ptr{ComplexF64}),
+    matsu_sampling, 1, 1, dims_matsu, 0, coeffs_complex, values_complex)
+@assert status == SPIR_COMPUTATION_SUCCESS
+println("✅ Eval complex 1D: $(abs.(values_complex[1:min(3,end)])...)")
+
+# Test fit_zz: complex values → complex coefficients
+fitted_complex = zeros(ComplexF64, basis_size)
+dims_matsu_fit = Cint[n_matsu]
+status = ccall((:spir_sampling_fit_zz, libpath), Cint,
+    (Ptr{Cvoid}, Cint, Cint, Ptr{Cint}, Cint, Ptr{ComplexF64}, Ptr{ComplexF64}),
+    matsu_sampling, 1, 1, dims_matsu_fit, 0, values_complex, fitted_complex)
+@assert status == SPIR_COMPUTATION_SUCCESS
+println("✅ Fit complex 1D: roundtrip error = $(maximum(abs.(fitted_complex .- coeffs_complex)))")
+
+# Cleanup
+ccall((:spir_sampling_release, libpath), Cvoid, (Ptr{Cvoid},), matsu_sampling)
+ccall((:spir_basis_release, libpath), Cvoid, (Ptr{Cvoid},), basis)
+ccall((:spir_sve_result_release, libpath), Cvoid, (Ptr{Cvoid},), sve)
+kernel_release(kernel)
+
+println("\n" * "=" ^ 50)
+println("✅ All tests passed (including Sampling API)!")
 
