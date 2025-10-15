@@ -701,13 +701,19 @@ pub unsafe extern "C" fn spir_basis_get_u(
             BasisType::RegularizedBoseBosonic(basis) => {
                 spir_funcs::from_u_bosonic(basis.u.clone(), beta)
             },
-            // DLR: no continuous functions (u, v)
-            BasisType::DLRLogisticFermionic(_) |
-            BasisType::DLRLogisticBosonic(_) |
-            BasisType::DLRRegularizedBoseFermionic(_) |
-            BasisType::DLRRegularizedBoseBosonic(_) => {
-                return Result::<*mut spir_funcs, String>::Err("DLR does not support continuous functions".to_string());
-            }
+            // DLR: tau-domain functions using discrete poles
+            BasisType::DLRLogisticFermionic(dlr) => {
+                spir_funcs::from_dlr_tau_fermionic(dlr.poles.clone(), beta)
+            },
+            BasisType::DLRLogisticBosonic(dlr) => {
+                spir_funcs::from_dlr_tau_bosonic(dlr.poles.clone(), beta)
+            },
+            BasisType::DLRRegularizedBoseFermionic(dlr) => {
+                spir_funcs::from_dlr_tau_fermionic(dlr.poles.clone(), beta)
+            },
+            BasisType::DLRRegularizedBoseBosonic(dlr) => {
+                spir_funcs::from_dlr_tau_bosonic(dlr.poles.clone(), beta)
+            },
         };
 
         Result::<*mut spir_funcs, String>::Ok(Box::into_raw(Box::new(funcs)))
@@ -911,13 +917,19 @@ pub unsafe extern "C" fn spir_basis_get_uhat(
             BasisType::RegularizedBoseBosonic(basis) => {
                 spir_funcs::from_uhat_bosonic(basis.uhat.clone(), beta)
             },
-            // DLR: no continuous functions (uhat)
-            BasisType::DLRLogisticFermionic(_) |
-            BasisType::DLRLogisticBosonic(_) |
-            BasisType::DLRRegularizedBoseFermionic(_) |
-            BasisType::DLRRegularizedBoseBosonic(_) => {
-                return Result::<*mut spir_funcs, String>::Err("DLR does not support continuous functions".to_string());
-            }
+            // DLR: Matsubara-domain functions using discrete poles
+            BasisType::DLRLogisticFermionic(dlr) => {
+                spir_funcs::from_dlr_matsubara_fermionic(dlr.poles.clone(), beta)
+            },
+            BasisType::DLRLogisticBosonic(dlr) => {
+                spir_funcs::from_dlr_matsubara_bosonic(dlr.poles.clone(), beta)
+            },
+            BasisType::DLRRegularizedBoseFermionic(dlr) => {
+                spir_funcs::from_dlr_matsubara_fermionic(dlr.poles.clone(), beta)
+            },
+            BasisType::DLRRegularizedBoseBosonic(dlr) => {
+                spir_funcs::from_dlr_matsubara_bosonic(dlr.poles.clone(), beta)
+            },
         };
 
         Result::<*mut spir_funcs, String>::Ok(Box::into_raw(Box::new(funcs)))

@@ -296,6 +296,20 @@ pub(crate) enum FuncsType {
         ft_bosonic: Option<Arc<PiecewiseLegendreFTVector<Bosonic>>>,
         statistics: i32,
     },
+    
+    /// DLR functions in tau domain (discrete poles)
+    /// u_l(τ) evaluated using gtau_single_pole for each pole
+    DLRTau {
+        poles: Vec<f64>,
+        statistics: i32,  // 0 = Bosonic, 1 = Fermionic
+    },
+    
+    /// DLR functions in Matsubara domain (discrete poles)
+    /// uhat_l(iω_n) evaluated using giwn_single_pole for each pole
+    DLRMatsubara {
+        poles: Vec<f64>,
+        statistics: i32,  // 0 = Bosonic, 1 = Fermionic
+    },
 }
 
 /// Opaque funcs type for C API (compatible with libsparseir)
@@ -361,6 +375,38 @@ impl spir_funcs {
         }
     }
 
+    /// Create DLR tau funcs (tau-domain, Fermionic)
+    pub(crate) fn from_dlr_tau_fermionic(poles: Vec<f64>, beta: f64) -> Self {
+        Self {
+            inner: FuncsType::DLRTau { poles, statistics: 1 },
+            beta,
+        }
+    }
+
+    /// Create DLR tau funcs (tau-domain, Bosonic)
+    pub(crate) fn from_dlr_tau_bosonic(poles: Vec<f64>, beta: f64) -> Self {
+        Self {
+            inner: FuncsType::DLRTau { poles, statistics: 0 },
+            beta,
+        }
+    }
+
+    /// Create DLR Matsubara funcs (Matsubara-domain, Fermionic)
+    pub(crate) fn from_dlr_matsubara_fermionic(poles: Vec<f64>, beta: f64) -> Self {
+        Self {
+            inner: FuncsType::DLRMatsubara { poles, statistics: 1 },
+            beta,
+        }
+    }
+
+    /// Create DLR Matsubara funcs (Matsubara-domain, Bosonic)
+    pub(crate) fn from_dlr_matsubara_bosonic(poles: Vec<f64>, beta: f64) -> Self {
+        Self {
+            inner: FuncsType::DLRMatsubara { poles, statistics: 0 },
+            beta,
+        }
+    }
+
     /// Get the number of basis functions
     pub(crate) fn size(&self) -> usize {
         match &self.inner {
@@ -374,6 +420,8 @@ impl spir_funcs {
                     0
                 }
             },
+            FuncsType::DLRTau { poles, .. } => poles.len(),
+            FuncsType::DLRMatsubara { poles, .. } => poles.len(),
         }
     }
 
@@ -424,6 +472,22 @@ impl spir_funcs {
                 }
                 Some(result)
             },
+            FuncsType::DLRTau { poles, statistics } => {
+                // Evaluate DLR tau functions: u_l(τ) = gtau_single_pole(τ, pole_l, β)
+                let mut result = Vec::with_capacity(poles.len());
+                if *statistics == 1 {
+                    // Fermionic
+                    for &pole in poles {
+                        result.push(sparseir_rust::dlr::gtau_single_pole::<Fermionic>(x, pole, self.beta));
+                    }
+                } else {
+                    // Bosonic
+                    for &pole in poles {
+                        result.push(sparseir_rust::dlr::gtau_single_pole::<Bosonic>(x, pole, self.beta));
+                    }
+                }
+                Some(result)
+            },
             _ => None,
         }
     }
@@ -458,6 +522,24 @@ impl spir_funcs {
                     Some(result)
                 }
             },
+            FuncsType::DLRMatsubara { poles, statistics } => {
+                // Evaluate DLR Matsubara functions: uhat_l(iω_n) = giwn_single_pole(iω_n, pole_l, β)
+                let mut result = Vec::with_capacity(poles.len());
+                if *statistics == 1 {
+                    // Fermionic
+                    let freq = MatsubaraFreq::<Fermionic>::new(n).ok()?;
+                    for &pole in poles {
+                        result.push(sparseir_rust::dlr::giwn_single_pole(&freq, pole, self.beta));
+                    }
+                } else {
+                    // Bosonic
+                    let freq = MatsubaraFreq::<Bosonic>::new(n).ok()?;
+                    for &pole in poles {
+                        result.push(sparseir_rust::dlr::giwn_single_pole(&freq, pole, self.beta));
+                    }
+                }
+                Some(result)
+            },
             _ => None,
         }
     }
@@ -482,6 +564,29 @@ impl spir_funcs {
                             (x, 1.0)
                         };
                         result[i][j] = sign * p.evaluate(x_reg);
+                    }
+                }
+                Some(result)
+            },
+            FuncsType::DLRTau { poles, statistics } => {
+                // Batch evaluate DLR tau functions
+                let n_funcs = poles.len();
+                let n_points = xs.len();
+                let mut result = vec![vec![0.0; n_points]; n_funcs];
+                
+                if *statistics == 1 {
+                    // Fermionic
+                    for (i, &pole) in poles.iter().enumerate() {
+                        for (j, &x) in xs.iter().enumerate() {
+                            result[i][j] = sparseir_rust::dlr::gtau_single_pole::<Fermionic>(x, pole, self.beta);
+                        }
+                    }
+                } else {
+                    // Bosonic
+                    for (i, &pole) in poles.iter().enumerate() {
+                        for (j, &x) in xs.iter().enumerate() {
+                            result[i][j] = sparseir_rust::dlr::gtau_single_pole::<Bosonic>(x, pole, self.beta);
+                        }
                     }
                 }
                 Some(result)
@@ -527,6 +632,33 @@ impl spir_funcs {
                     }
                     Some(result)
                 }
+            },
+            FuncsType::DLRMatsubara { poles, statistics } => {
+                // Batch evaluate DLR Matsubara functions
+                let n_funcs = poles.len();
+                let n_points = ns.len();
+                let mut result = vec![vec![Complex64::new(0.0, 0.0); n_points]; n_funcs];
+                
+                if *statistics == 1 {
+                    // Fermionic
+                    for (i, &pole) in poles.iter().enumerate() {
+                        for (j, &n) in ns.iter().enumerate() {
+                            if let Ok(freq) = MatsubaraFreq::<Fermionic>::new(n) {
+                                result[i][j] = sparseir_rust::dlr::giwn_single_pole(&freq, pole, self.beta);
+                            }
+                        }
+                    }
+                } else {
+                    // Bosonic
+                    for (i, &pole) in poles.iter().enumerate() {
+                        for (j, &n) in ns.iter().enumerate() {
+                            if let Ok(freq) = MatsubaraFreq::<Bosonic>::new(n) {
+                                result[i][j] = sparseir_rust::dlr::giwn_single_pole(&freq, pole, self.beta);
+                            }
+                        }
+                    }
+                }
+                Some(result)
             },
             _ => None,
         }
@@ -619,6 +751,40 @@ impl spir_funcs {
                         beta: self.beta,
                     })
                 }
+            },
+            FuncsType::DLRTau { poles, statistics } => {
+                // Check that all indices are valid
+                if indices.iter().any(|&i| i >= poles.len()) {
+                    return None;
+                }
+                
+                // Extract selected poles
+                let new_poles: Vec<f64> = indices.iter().map(|&i| poles[i]).collect();
+                
+                Some(Self {
+                    inner: FuncsType::DLRTau {
+                        poles: new_poles,
+                        statistics: *statistics,
+                    },
+                    beta: self.beta,
+                })
+            },
+            FuncsType::DLRMatsubara { poles, statistics } => {
+                // Check that all indices are valid
+                if indices.iter().any(|&i| i >= poles.len()) {
+                    return None;
+                }
+                
+                // Extract selected poles
+                let new_poles: Vec<f64> = indices.iter().map(|&i| poles[i]).collect();
+                
+                Some(Self {
+                    inner: FuncsType::DLRMatsubara {
+                        poles: new_poles,
+                        statistics: *statistics,
+                    },
+                    beta: self.beta,
+                })
             },
         }
     }
