@@ -844,6 +844,143 @@ struct spir_sampling *spir_matsu_sampling_new_with_matrix(int order,
 struct spir_kernel *spir_reg_bose_kernel_new(double lambda, StatusCode *status);
 
 /**
+ * Register custom BLAS functions (LP64: 32-bit integers)
+ *
+ * This function allows you to inject external BLAS implementations (OpenBLAS, MKL, Accelerate, etc.)
+ * for matrix multiplication operations. The registered functions will be used for all subsequent
+ * GEMM operations in the library.
+ *
+ * # Arguments
+ * * `cblas_dgemm` - Function pointer to CBLAS dgemm (double precision)
+ * * `cblas_zgemm` - Function pointer to CBLAS zgemm (complex double precision)
+ *
+ * # Returns
+ * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_INVALID_ARGUMENT` (-6) if function pointers are null
+ *
+ * # Safety
+ * The provided function pointers must:
+ * - Be valid CBLAS function pointers following the standard CBLAS interface
+ * - Use 32-bit integers for all dimension parameters (LP64 interface)
+ * - Be thread-safe (will be called from multiple threads)
+ * - Remain valid for the entire lifetime of the program
+ *
+ * # Example (from C)
+ * ```c
+ * #include <cblas.h>
+ *
+ * // Register OpenBLAS
+ * int status = spir_register_blas_functions(
+ *     (void*)cblas_dgemm,
+ *     (void*)cblas_zgemm
+ * );
+ *
+ * if (status != SPIR_SUCCESS) {
+ *     fprintf(stderr, "Failed to register BLAS functions\n");
+ * }
+ * ```
+ *
+ * # CBLAS Interface
+ * The function pointers must match these signatures:
+ * ```c
+ * void cblas_dgemm(
+ *     CblasOrder order,       // 102 for ColMajor
+ *     CblasTranspose transa,  // 111 for NoTrans
+ *     CblasTranspose transb,  // 111 for NoTrans
+ *     int m, int n, int k,
+ *     double alpha,
+ *     const double *a, int lda,
+ *     const double *b, int ldb,
+ *     double beta,
+ *     double *c, int ldc
+ * );
+ *
+ * void cblas_zgemm(
+ *     CblasOrder order,
+ *     CblasTranspose transa,
+ *     CblasTranspose transb,
+ *     int m, int n, int k,
+ *     const void *alpha,      // complex<double>*
+ *     const void *a, int lda,
+ *     const void *b, int ldb,
+ *     const void *beta,       // complex<double>*
+ *     void *c, int ldc
+ * );
+ * ```
+ */
+StatusCode spir_register_blas_functions(const void *cblas_dgemm,
+                                        const void *cblas_zgemm);
+
+/**
+ * Register ILP64 BLAS functions (64-bit integers)
+ *
+ * This function allows you to inject ILP64 BLAS implementations (MKL ILP64, OpenBLAS with ILP64, etc.)
+ * for matrix multiplication operations. ILP64 uses 64-bit integers for all dimension parameters,
+ * enabling support for very large matrices (> 2^31 elements).
+ *
+ * # Arguments
+ * * `cblas_dgemm64` - Function pointer to ILP64 CBLAS dgemm (double precision)
+ * * `cblas_zgemm64` - Function pointer to ILP64 CBLAS zgemm (complex double precision)
+ *
+ * # Returns
+ * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_INVALID_ARGUMENT` (-6) if function pointers are null
+ *
+ * # Safety
+ * The provided function pointers must:
+ * - Be valid CBLAS function pointers following the standard CBLAS interface with ILP64
+ * - Use 64-bit integers for all dimension parameters (ILP64 interface)
+ * - Be thread-safe (will be called from multiple threads)
+ * - Remain valid for the entire lifetime of the program
+ *
+ * # Example (from C with MKL ILP64)
+ * ```c
+ * #define MKL_ILP64
+ * #include <mkl.h>
+ *
+ * // Register MKL ILP64
+ * int status = spir_register_ilp64_functions(
+ *     (void*)cblas_dgemm,  // MKL's ILP64 version
+ *     (void*)cblas_zgemm   // MKL's ILP64 version
+ * );
+ *
+ * if (status != SPIR_SUCCESS) {
+ *     fprintf(stderr, "Failed to register ILP64 BLAS functions\n");
+ * }
+ * ```
+ *
+ * # CBLAS ILP64 Interface
+ * The function pointers must match these signatures (note: long long = 64-bit int):
+ * ```c
+ * void cblas_dgemm(
+ *     CblasOrder order,
+ *     CblasTranspose transa,
+ *     CblasTranspose transb,
+ *     long long m, long long n, long long k,
+ *     double alpha,
+ *     const double *a, long long lda,
+ *     const double *b, long long ldb,
+ *     double beta,
+ *     double *c, long long ldc
+ * );
+ *
+ * void cblas_zgemm(
+ *     CblasOrder order,
+ *     CblasTranspose transa,
+ *     CblasTranspose transb,
+ *     long long m, long long n, long long k,
+ *     const void *alpha,
+ *     const void *a, long long lda,
+ *     const void *b, long long ldb,
+ *     const void *beta,
+ *     void *c, long long ldc
+ * );
+ * ```
+ */
+StatusCode spir_register_ilp64_functions(const void *cblas_dgemm64,
+                                         const void *cblas_zgemm64);
+
+/**
  * Evaluate basis coefficients at sampling points (double → double)
  *
  * Transforms IR basis coefficients to values at sampling points.

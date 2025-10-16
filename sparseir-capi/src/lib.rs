@@ -14,6 +14,7 @@ mod basis;
 mod funcs;
 mod sampling;
 mod dlr;
+mod gemm;
 
 pub use types::*;
 pub use kernel::*;
@@ -22,6 +23,7 @@ pub use basis::*;
 pub use funcs::*;
 pub use sampling::*;
 pub use dlr::*;
+pub use gemm::*;
 
 /// Error codes for C API (compatible with libsparseir)
 pub type StatusCode = libc::c_int;

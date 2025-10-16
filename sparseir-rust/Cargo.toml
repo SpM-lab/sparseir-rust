@@ -39,6 +39,12 @@ xprec-svd = { path = "../xprec-svd" }
 # Parallel processing
 rayon = "1.7"
 
+# Lazy static initialization for GEMM dispatcher
+once_cell = "1.19"
+
+# C FFI types (for BLAS function pointers)
+libc = "0.2"
+
 [dev-dependencies]
 approx = "0.5"
 proptest = "1.0"
