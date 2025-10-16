@@ -8,9 +8,49 @@ use sparseir_rust::kernel::{LogisticKernel, RegularizedBoseKernel, CentrosymmKer
 use sparseir_rust::sve::SVEResult;
 use sparseir_rust::basis::FiniteTempBasis;
 use sparseir_rust::{Bosonic, Fermionic};
+use sparseir_rust::traits::Statistics;
 use sparseir_rust::poly::PiecewiseLegendrePolyVector;
 use sparseir_rust::polyfourier::PiecewiseLegendreFTVector;
 use sparseir_rust::freq::MatsubaraFreq;
+
+/// Convert Statistics enum to C-API integer
+#[inline]
+pub(crate) fn statistics_to_c(stats: Statistics) -> i32 {
+    match stats {
+        Statistics::Fermionic => 1,
+        Statistics::Bosonic => 0,
+    }
+}
+
+/// Convert C-API integer to Statistics enum
+#[inline]
+pub(crate) fn statistics_from_c(value: i32) -> Statistics {
+    match value {
+        1 => Statistics::Fermionic,
+        _ => Statistics::Bosonic, // Default to Bosonic for invalid values
+    }
+}
+
+/// Function domain type for continuous functions
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FunctionDomain {
+    /// Tau domain with periodicity (statistics-dependent)
+    Tau(Statistics),
+    /// Omega (frequency) domain without periodicity
+    Omega,
+}
+
+impl FunctionDomain {
+    /// Check if this is a tau function with the given statistics
+    pub(crate) fn is_tau_with_statistics(&self, stats: Statistics) -> bool {
+        matches!(self, FunctionDomain::Tau(s) if *s == stats)
+    }
+    
+    /// Check if this is an omega function
+    pub(crate) fn is_omega(&self) -> bool {
+        matches!(self, FunctionDomain::Omega)
+    }
+}
 
 /// Opaque kernel type for C API (compatible with libsparseir)
 ///
@@ -280,21 +320,19 @@ impl spir_basis {
 #[derive(Clone)]
 pub(crate) enum FuncsType {
     /// Continuous functions (u or v): PiecewiseLegendrePolyVector
-    /// statistics: -1 for v (omega, no periodicity)
-    ///              0 for u (tau, Bosonic)
-    ///              1 for u (tau, Fermionic)
+    /// domain: Tau(Statistics) for u functions with periodicity
+    ///         Omega for v functions without periodicity
     PolyVector {
         poly: Arc<PiecewiseLegendrePolyVector>,
-        statistics: i32,
+        domain: FunctionDomain,
     },
     
     /// Fourier-transformed functions (uhat): PiecewiseLegendreFTVector
-    /// statistics: 0 for Bosonic, 1 for Fermionic
     /// Only one of ft_fermionic/ft_bosonic is Some, the other is None
     FTVector {
         ft_fermionic: Option<Arc<PiecewiseLegendreFTVector<Fermionic>>>,
         ft_bosonic: Option<Arc<PiecewiseLegendreFTVector<Bosonic>>>,
-        statistics: i32,
+        statistics: Statistics,
     },
     
     /// DLR functions in tau domain (discrete poles)
@@ -306,7 +344,7 @@ pub(crate) enum FuncsType {
         wmax: f64,
         inv_weights: Vec<f64>,
         kernel_type: i32,  // 0 = LogisticKernel, 1 = RegularizedBoseKernel
-        statistics: i32,  // 0 = Bosonic, 1 = Fermionic
+        statistics: Statistics,
     },
     
     /// DLR functions in Matsubara domain (discrete poles)
@@ -315,7 +353,7 @@ pub(crate) enum FuncsType {
         poles: Vec<f64>,
         beta: f64,
         inv_weights: Vec<f64>,
-        statistics: i32,  // 0 = Bosonic, 1 = Fermionic
+        statistics: Statistics,
     },
 }
 
@@ -337,7 +375,10 @@ impl spir_funcs {
     /// Create u funcs (tau-domain, Fermionic)
     pub(crate) fn from_u_fermionic(poly: Arc<PiecewiseLegendrePolyVector>, beta: f64) -> Self {
         Self {
-            inner: FuncsType::PolyVector { poly, statistics: 1 },
+            inner: FuncsType::PolyVector { 
+                poly, 
+                domain: FunctionDomain::Tau(Statistics::Fermionic) 
+            },
             beta,
         }
     }
@@ -345,7 +386,10 @@ impl spir_funcs {
     /// Create u funcs (tau-domain, Bosonic)
     pub(crate) fn from_u_bosonic(poly: Arc<PiecewiseLegendrePolyVector>, beta: f64) -> Self {
         Self {
-            inner: FuncsType::PolyVector { poly, statistics: 0 },
+            inner: FuncsType::PolyVector { 
+                poly, 
+                domain: FunctionDomain::Tau(Statistics::Bosonic) 
+            },
             beta,
         }
     }
@@ -353,7 +397,10 @@ impl spir_funcs {
     /// Create v funcs (omega-domain, no statistics)
     pub(crate) fn from_v(poly: Arc<PiecewiseLegendrePolyVector>, beta: f64) -> Self {
         Self {
-            inner: FuncsType::PolyVector { poly, statistics: -1 },
+            inner: FuncsType::PolyVector { 
+                poly, 
+                domain: FunctionDomain::Omega 
+            },
             beta,
         }
     }
@@ -364,7 +411,7 @@ impl spir_funcs {
             inner: FuncsType::FTVector {
                 ft_fermionic: Some(ft),
                 ft_bosonic: None,
-                statistics: 1,
+                statistics: Statistics::Fermionic,
             },
             beta,
         }
@@ -376,7 +423,7 @@ impl spir_funcs {
             inner: FuncsType::FTVector {
                 ft_fermionic: None,
                 ft_bosonic: Some(ft),
-                statistics: 0,
+                statistics: Statistics::Bosonic,
             },
             beta,
         }
@@ -385,7 +432,14 @@ impl spir_funcs {
     /// Create DLR tau funcs (tau-domain, Fermionic)
     pub(crate) fn from_dlr_tau_fermionic(poles: Vec<f64>, beta: f64, wmax: f64, inv_weights: Vec<f64>, kernel_type: i32) -> Self {
         Self {
-            inner: FuncsType::DLRTau { poles, beta, wmax, inv_weights, kernel_type, statistics: 1 },
+            inner: FuncsType::DLRTau { 
+                poles, 
+                beta, 
+                wmax, 
+                inv_weights, 
+                kernel_type, 
+                statistics: Statistics::Fermionic 
+            },
             beta,
         }
     }
@@ -393,7 +447,14 @@ impl spir_funcs {
     /// Create DLR tau funcs (tau-domain, Bosonic)
     pub(crate) fn from_dlr_tau_bosonic(poles: Vec<f64>, beta: f64, wmax: f64, inv_weights: Vec<f64>, kernel_type: i32) -> Self {
         Self {
-            inner: FuncsType::DLRTau { poles, beta, wmax, inv_weights, kernel_type, statistics: 0 },
+            inner: FuncsType::DLRTau { 
+                poles, 
+                beta, 
+                wmax, 
+                inv_weights, 
+                kernel_type, 
+                statistics: Statistics::Bosonic 
+            },
             beta,
         }
     }
@@ -401,7 +462,12 @@ impl spir_funcs {
     /// Create DLR Matsubara funcs (Matsubara-domain, Fermionic)
     pub(crate) fn from_dlr_matsubara_fermionic(poles: Vec<f64>, beta: f64, inv_weights: Vec<f64>) -> Self {
         Self {
-            inner: FuncsType::DLRMatsubara { poles, beta, inv_weights, statistics: 1 },
+            inner: FuncsType::DLRMatsubara { 
+                poles, 
+                beta, 
+                inv_weights, 
+                statistics: Statistics::Fermionic 
+            },
             beta,
         }
     }
@@ -409,7 +475,12 @@ impl spir_funcs {
     /// Create DLR Matsubara funcs (Matsubara-domain, Bosonic)
     pub(crate) fn from_dlr_matsubara_bosonic(poles: Vec<f64>, beta: f64, inv_weights: Vec<f64>) -> Self {
         Self {
-            inner: FuncsType::DLRMatsubara { poles, beta, inv_weights, statistics: 0 },
+            inner: FuncsType::DLRMatsubara { 
+                poles, 
+                beta, 
+                inv_weights, 
+                statistics: Statistics::Bosonic 
+            },
             beta,
         }
     }
@@ -461,16 +532,19 @@ impl spir_funcs {
     /// Vector of function values, or None if not continuous
     pub(crate) fn eval_continuous(&self, x: f64) -> Option<Vec<f64>> {
         match &self.inner {
-            FuncsType::PolyVector { poly, statistics } => {
+            FuncsType::PolyVector { poly, domain } => {
                 // For u (tau functions): handle periodicity
-                // For v (omega functions): no periodicity (statistics = -1)
-                let (x_reg, sign) = if *statistics >= 0 {
-                    // u functions: regularize tau to [0, beta]
-                    let fermionic_sign = if *statistics == 1 { -1.0 } else { 1.0 };
-                    regularize_tau(x, self.beta, fermionic_sign)
-                } else {
-                    // v functions: no regularization needed
-                    (x, 1.0)
+                // For v (omega functions): no periodicity
+                let (x_reg, sign) = match domain {
+                    FunctionDomain::Tau(stats) => {
+                        // u functions: regularize tau to [0, beta]
+                        let fermionic_sign = if *stats == Statistics::Fermionic { -1.0 } else { 1.0 };
+                        regularize_tau(x, self.beta, fermionic_sign)
+                    },
+                    FunctionDomain::Omega => {
+                        // v functions: no regularization needed
+                        (x, 1.0)
+                    },
                 };
                 
                 let mut result = Vec::with_capacity(poly.polyvec.len());
@@ -485,7 +559,10 @@ impl spir_funcs {
                 // Evaluate DLR tau functions: u_l(τ) = -K(x, y_l) / weight[l]
                 // where x = 2τ/β - 1, y_l = pole_l/ωmax
                 // Need to handle periodicity like IR basis
-                let fermionic_sign = if *statistics == 1 { -1.0 } else { 1.0 };
+                let fermionic_sign = match statistics {
+                        Statistics::Fermionic => -1.0,
+                        Statistics::Bosonic => 1.0,
+                    };
                 let (tau_reg, sign) = regularize_tau(x, *beta, fermionic_sign);
                 
                 use sparseir_rust::kernel::{LogisticKernel, RegularizedBoseKernel};
@@ -528,7 +605,7 @@ impl spir_funcs {
     pub(crate) fn eval_matsubara(&self, n: i64) -> Option<Vec<num_complex::Complex64>> {
         match &self.inner {
             FuncsType::FTVector { ft_fermionic, ft_bosonic, statistics } => {
-                if *statistics == 1 {
+                if *statistics == Statistics::Fermionic {
                     // Fermionic
                     let ft = ft_fermionic.as_ref()?;
                     let freq = MatsubaraFreq::<Fermionic>::new(n).ok()?;
@@ -553,7 +630,7 @@ impl spir_funcs {
                 use num_complex::Complex;
                 
                 let mut result = Vec::with_capacity(poles.len());
-                if *statistics == 1 {
+                if *statistics == Statistics::Fermionic {
                     // Fermionic
                     let freq = MatsubaraFreq::<Fermionic>::new(n).ok()?;
                     let iv = freq.value_imaginary(*beta);
@@ -579,21 +656,26 @@ impl spir_funcs {
     /// Batch evaluate at multiple tau/omega points
     pub(crate) fn batch_eval_continuous(&self, xs: &[f64]) -> Option<Vec<Vec<f64>>> {
         match &self.inner {
-            FuncsType::PolyVector { poly, statistics } => {
+            FuncsType::PolyVector { poly, domain } => {
                 let n_funcs = poly.polyvec.len();
                 let n_points = xs.len();
                 let mut result = vec![vec![0.0; n_points]; n_funcs];
                 
-                let fermionic_sign = if *statistics == 1 { -1.0 } else { 1.0 };
-                
                 for (i, p) in poly.polyvec.iter().enumerate() {
                     for (j, &x) in xs.iter().enumerate() {
-                        let (x_reg, sign) = if *statistics >= 0 {
-                            // u functions: regularize tau
-                            regularize_tau(x, self.beta, fermionic_sign)
-                        } else {
-                            // v functions: no regularization
-                            (x, 1.0)
+                        let (x_reg, sign) = match domain {
+                            FunctionDomain::Tau(stats) => {
+                                // u functions: regularize tau
+                                let fermionic_sign = match stats {
+                                    Statistics::Fermionic => -1.0,
+                                    Statistics::Bosonic => 1.0,
+                                };
+                                regularize_tau(x, self.beta, fermionic_sign)
+                            },
+                            FunctionDomain::Omega => {
+                                // v functions: no regularization
+                                (x, 1.0)
+                            },
                         };
                         result[i][j] = sign * p.evaluate(x_reg);
                     }
@@ -605,7 +687,10 @@ impl spir_funcs {
                 // Need to handle periodicity like IR basis
                 use sparseir_rust::kernel::{LogisticKernel, RegularizedBoseKernel};
                 
-                let fermionic_sign = if *statistics == 1 { -1.0 } else { 1.0 };
+                let fermionic_sign = match statistics {
+                        Statistics::Fermionic => -1.0,
+                        Statistics::Bosonic => 1.0,
+                    };
                 let lambda = beta * wmax;
                 let n_funcs = poles.len();
                 let n_points = xs.len();
@@ -654,7 +739,7 @@ impl spir_funcs {
     pub(crate) fn batch_eval_matsubara(&self, ns: &[i64]) -> Option<Vec<Vec<num_complex::Complex64>>> {
         match &self.inner {
             FuncsType::FTVector { ft_fermionic, ft_bosonic, statistics } => {
-                if *statistics == 1 {
+                if *statistics == Statistics::Fermionic {
                     // Fermionic
                     let ft = ft_fermionic.as_ref()?;
                     let n_funcs = ft.polyvec.len();
@@ -693,7 +778,7 @@ impl spir_funcs {
                 let mut result = vec![vec![Complex::new(0.0, 0.0); n_points]; n_funcs];
                 
                 for (j, &n) in ns.iter().enumerate() {
-                    if *statistics == 1 {
+                    if *statistics == Statistics::Fermionic {
                         // Fermionic
                         let freq = MatsubaraFreq::<Fermionic>::new(n).ok()?;
                         let iv = freq.value_imaginary(*beta);
@@ -731,7 +816,7 @@ impl spir_funcs {
     /// New funcs object with the selected subset, or None if operation not supported
     pub(crate) fn get_slice(&self, indices: &[usize]) -> Option<Self> {
         match &self.inner {
-            FuncsType::PolyVector { poly, statistics } => {
+            FuncsType::PolyVector { poly, domain } => {
                 let mut new_polys = Vec::with_capacity(indices.len());
                 for &idx in indices {
                     if idx >= poly.polyvec.len() {
@@ -743,7 +828,7 @@ impl spir_funcs {
                 Some(Self {
                     inner: FuncsType::PolyVector {
                         poly: Arc::new(new_poly_vec),
-                        statistics: *statistics,
+                        domain: *domain,
                     },
                     beta: self.beta,
                 })
