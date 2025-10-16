@@ -378,36 +378,29 @@ pub(crate) struct DLRTauFuncs {
     pub beta: f64,
     pub wmax: f64,
     pub inv_weights: Vec<f64>,
-    pub kernel_type: i32,  // 0 = LogisticKernel, 1 = RegularizedBoseKernel
     pub statistics: Statistics,
 }
 
 impl DLRTauFuncs {
     /// Evaluate all DLR tau functions at a single point
     pub fn evaluate_at(&self, tau: f64) -> Vec<f64> {
-        use sparseir_rust::kernel::{LogisticKernel, RegularizedBoseKernel};
+        use sparseir_rust::kernel::LogisticKernel;
         
         // Regularize tau to [0, beta]
         let fermionic_sign = if self.statistics == Statistics::Fermionic { -1.0 } else { 1.0 };
         let (tau_reg, sign) = regularize_tau(tau, self.beta, fermionic_sign);
         
         // Compute kernel parameters
+        // DLR always uses LogisticKernel
         let lambda = self.beta * self.wmax;
+        let kernel = LogisticKernel::new(lambda);
         let x_kern = 2.0 * tau_reg / self.beta - 1.0;  // x_kern ∈ [-1, 1]
         
         // Evaluate DLR functions: u_l(tau) = sign * inv_weight[l] * (-K(x, y_l))
         self.poles.iter().zip(self.inv_weights.iter())
             .map(|(&pole, &inv_weight)| {
                 let y = pole / self.wmax;
-                let k_val = if self.kernel_type == 0 {
-                    // LogisticKernel
-                    let kernel = LogisticKernel::new(lambda);
-                    kernel.compute(x_kern, y)
-                } else {
-                    // RegularizedBoseKernel
-                    let kernel = RegularizedBoseKernel::new(lambda);
-                    kernel.compute(x_kern, y)
-                };
+                let k_val = kernel.compute(x_kern, y);
                 sign * (-k_val) * inv_weight
             })
             .collect()
@@ -416,23 +409,17 @@ impl DLRTauFuncs {
     /// Batch evaluate all DLR tau functions at multiple points
     /// Returns Vec<Vec<f64>> where result[i][j] is function i evaluated at point j
     pub fn batch_evaluate_at(&self, taus: &[f64]) -> Vec<Vec<f64>> {
-        use sparseir_rust::kernel::{LogisticKernel, RegularizedBoseKernel};
+        use sparseir_rust::kernel::LogisticKernel;
         
         let n_funcs = self.poles.len();
         let n_points = taus.len();
         let mut result = vec![vec![0.0; n_points]; n_funcs];
         
         let fermionic_sign = if self.statistics == Statistics::Fermionic { -1.0 } else { 1.0 };
-        let lambda = self.beta * self.wmax;
         
-        // Create kernel once
-        let kernel: Box<dyn Fn(f64, f64) -> f64> = if self.kernel_type == 0 {
-            let k = LogisticKernel::new(lambda);
-            Box::new(move |x, y| k.compute(x, y))
-        } else {
-            let k = RegularizedBoseKernel::new(lambda);
-            Box::new(move |x, y| k.compute(x, y))
-        };
+        // DLR always uses LogisticKernel
+        let lambda = self.beta * self.wmax;
+        let kernel = LogisticKernel::new(lambda);
         
         // Evaluate at each point
         for (j, &tau) in taus.iter().enumerate() {
@@ -441,7 +428,7 @@ impl DLRTauFuncs {
             
             for (i, (&pole, &inv_weight)) in self.poles.iter().zip(self.inv_weights.iter()).enumerate() {
                 let y = pole / self.wmax;
-                let k_val = kernel(x_kern, y);
+                let k_val = kernel.compute(x_kern, y);
                 result[i][j] = sign * (-k_val) * inv_weight;
             }
         }
@@ -552,14 +539,14 @@ impl spir_funcs {
     }
 
     /// Create DLR tau funcs (tau-domain, Fermionic)
-    pub(crate) fn from_dlr_tau_fermionic(poles: Vec<f64>, beta: f64, wmax: f64, inv_weights: Vec<f64>, kernel_type: i32) -> Self {
+    /// Note: DLR always uses LogisticKernel regardless of the IR basis kernel type
+    pub(crate) fn from_dlr_tau_fermionic(poles: Vec<f64>, beta: f64, wmax: f64, inv_weights: Vec<f64>) -> Self {
         Self {
             inner: FuncsType::DLRTau(DLRTauFuncs {
                 poles,
                 beta,
                 wmax,
                 inv_weights,
-                kernel_type,
                 statistics: Statistics::Fermionic,
             }),
             beta,
@@ -567,14 +554,14 @@ impl spir_funcs {
     }
 
     /// Create DLR tau funcs (tau-domain, Bosonic)
-    pub(crate) fn from_dlr_tau_bosonic(poles: Vec<f64>, beta: f64, wmax: f64, inv_weights: Vec<f64>, kernel_type: i32) -> Self {
+    /// Note: DLR always uses LogisticKernel regardless of the IR basis kernel type
+    pub(crate) fn from_dlr_tau_bosonic(poles: Vec<f64>, beta: f64, wmax: f64, inv_weights: Vec<f64>) -> Self {
         Self {
             inner: FuncsType::DLRTau(DLRTauFuncs {
                 poles,
                 beta,
                 wmax,
                 inv_weights,
-                kernel_type,
                 statistics: Statistics::Bosonic,
             }),
             beta,
@@ -860,7 +847,6 @@ impl spir_funcs {
                         beta: dlr.beta,
                         wmax: dlr.wmax,
                         inv_weights: new_inv_weights,
-                        kernel_type: dlr.kernel_type,
                         statistics: dlr.statistics,
                     }),
                     beta: dlr.beta,
