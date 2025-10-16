@@ -92,28 +92,28 @@ pub unsafe extern "C" fn spir_tau_sampling_new(
                 SamplingType::TauBosonic(Arc::new(tau_sampling))
             }
             // DLR: tau sampling supported via Basis trait
-            BasisType::DLRLogisticFermionic(dlr) => {
+            BasisType::DLRFermionic(dlr) => {
                 let tau_sampling = sparseir_rust::sampling::TauSampling::with_sampling_points(
                     dlr.as_ref(),
                     tau_points,
                 );
                 SamplingType::TauFermionic(Arc::new(tau_sampling))
             }
-            BasisType::DLRLogisticBosonic(dlr) => {
+            BasisType::DLRBosonic(dlr) => {
                 let tau_sampling = sparseir_rust::sampling::TauSampling::with_sampling_points(
                     dlr.as_ref(),
                     tau_points,
                 );
                 SamplingType::TauBosonic(Arc::new(tau_sampling))
             }
-            BasisType::DLRRegularizedBoseFermionic(dlr) => {
+            BasisType::DLRFermionic(dlr) => {
                 let tau_sampling = sparseir_rust::sampling::TauSampling::with_sampling_points(
                     dlr.as_ref(),
                     tau_points,
                 );
                 SamplingType::TauFermionic(Arc::new(tau_sampling))
             }
-            BasisType::DLRRegularizedBoseBosonic(dlr) => {
+            BasisType::DLRBosonic(dlr) => {
                 let tau_sampling = sparseir_rust::sampling::TauSampling::with_sampling_points(
                     dlr.as_ref(),
                     tau_points,
@@ -247,16 +247,16 @@ pub unsafe extern "C" fn spir_matsu_sampling_new(
                 create_matsu_sampling!(ir_basis.as_ref(), Bosonic)
             }
             // DLR: Matsubara sampling supported via Basis trait
-            BasisType::DLRLogisticFermionic(dlr) => {
+            BasisType::DLRFermionic(dlr) => {
                 create_matsu_sampling!(dlr.as_ref(), Fermionic)
             }
-            BasisType::DLRLogisticBosonic(dlr) => {
+            BasisType::DLRBosonic(dlr) => {
                 create_matsu_sampling!(dlr.as_ref(), Bosonic)
             }
-            BasisType::DLRRegularizedBoseFermionic(dlr) => {
+            BasisType::DLRFermionic(dlr) => {
                 create_matsu_sampling!(dlr.as_ref(), Fermionic)
             }
-            BasisType::DLRRegularizedBoseBosonic(dlr) => {
+            BasisType::DLRBosonic(dlr) => {
                 create_matsu_sampling!(dlr.as_ref(), Bosonic)
             }
         };

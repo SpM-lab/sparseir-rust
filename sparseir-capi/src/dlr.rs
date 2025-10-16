@@ -51,19 +51,19 @@ pub unsafe extern "C" fn spir_dlr_new(
         let dlr_type = match &basis_ref.inner {
             BasisType::LogisticFermionic(ir_basis) => {
                 let dlr = DiscreteLehmannRepresentation::new(ir_basis.as_ref());
-                BasisType::DLRLogisticFermionic(Arc::new(dlr))
+                BasisType::DLRFermionic(Arc::new(dlr))
             }
             BasisType::LogisticBosonic(ir_basis) => {
                 let dlr = DiscreteLehmannRepresentation::new(ir_basis.as_ref());
-                BasisType::DLRLogisticBosonic(Arc::new(dlr))
+                BasisType::DLRBosonic(Arc::new(dlr))
             }
             BasisType::RegularizedBoseFermionic(ir_basis) => {
                 let dlr = DiscreteLehmannRepresentation::new(ir_basis.as_ref());
-                BasisType::DLRRegularizedBoseFermionic(Arc::new(dlr))
+                BasisType::DLRFermionic(Arc::new(dlr))
             }
             BasisType::RegularizedBoseBosonic(ir_basis) => {
                 let dlr = DiscreteLehmannRepresentation::new(ir_basis.as_ref());
-                BasisType::DLRRegularizedBoseBosonic(Arc::new(dlr))
+                BasisType::DLRBosonic(Arc::new(dlr))
             }
             _ => {
                 // Already a DLR, return error
@@ -131,19 +131,19 @@ pub unsafe extern "C" fn spir_dlr_new_with_poles(
         let dlr_type = match &basis_ref.inner {
             BasisType::LogisticFermionic(ir_basis) => {
                 let dlr = DiscreteLehmannRepresentation::with_poles(ir_basis.as_ref(), pole_vec);
-                BasisType::DLRLogisticFermionic(Arc::new(dlr))
+                BasisType::DLRFermionic(Arc::new(dlr))
             }
             BasisType::LogisticBosonic(ir_basis) => {
                 let dlr = DiscreteLehmannRepresentation::with_poles(ir_basis.as_ref(), pole_vec);
-                BasisType::DLRLogisticBosonic(Arc::new(dlr))
+                BasisType::DLRBosonic(Arc::new(dlr))
             }
             BasisType::RegularizedBoseFermionic(ir_basis) => {
                 let dlr = DiscreteLehmannRepresentation::with_poles(ir_basis.as_ref(), pole_vec);
-                BasisType::DLRRegularizedBoseFermionic(Arc::new(dlr))
+                BasisType::DLRFermionic(Arc::new(dlr))
             }
             BasisType::RegularizedBoseBosonic(ir_basis) => {
                 let dlr = DiscreteLehmannRepresentation::with_poles(ir_basis.as_ref(), pole_vec);
-                BasisType::DLRRegularizedBoseBosonic(Arc::new(dlr))
+                BasisType::DLRBosonic(Arc::new(dlr))
             }
             _ => {
                 // Already a DLR or invalid type
@@ -203,10 +203,10 @@ pub unsafe extern "C" fn spir_dlr_get_npoles(
 
         // Get number of poles based on DLR type
         let npoles = match &dlr_ref.inner {
-            BasisType::DLRLogisticFermionic(dlr) => dlr.poles.len(),
-            BasisType::DLRLogisticBosonic(dlr) => dlr.poles.len(),
-            BasisType::DLRRegularizedBoseFermionic(dlr) => dlr.poles.len(),
-            BasisType::DLRRegularizedBoseBosonic(dlr) => dlr.poles.len(),
+            BasisType::DLRFermionic(dlr) => dlr.poles.len(),
+            BasisType::DLRBosonic(dlr) => dlr.poles.len(),
+            BasisType::DLRFermionic(dlr) => dlr.poles.len(),
+            BasisType::DLRBosonic(dlr) => dlr.poles.len(),
             _ => return SPIR_INVALID_ARGUMENT, // Not a DLR
         };
 
@@ -242,10 +242,10 @@ pub unsafe extern "C" fn spir_dlr_get_poles(
 
         // Get poles based on DLR type
         let pole_vec = match &dlr_ref.inner {
-            BasisType::DLRLogisticFermionic(dlr) => &dlr.poles,
-            BasisType::DLRLogisticBosonic(dlr) => &dlr.poles,
-            BasisType::DLRRegularizedBoseFermionic(dlr) => &dlr.poles,
-            BasisType::DLRRegularizedBoseBosonic(dlr) => &dlr.poles,
+            BasisType::DLRFermionic(dlr) => &dlr.poles,
+            BasisType::DLRBosonic(dlr) => &dlr.poles,
+            BasisType::DLRFermionic(dlr) => &dlr.poles,
+            BasisType::DLRBosonic(dlr) => &dlr.poles,
             _ => return SPIR_INVALID_ARGUMENT, // Not a DLR
         };
 
@@ -326,16 +326,16 @@ pub unsafe extern "C" fn spir_ir2dlr_dd(
 
         // Convert IR to DLR based on DLR type
         let result_tensor = match &dlr_ref.inner {
-            BasisType::DLRLogisticFermionic(dlr) => {
+            BasisType::DLRFermionic(dlr) => {
                 dlr.from_IR_nd(&input_tensor, mdarray_target_dim)
             }
-            BasisType::DLRLogisticBosonic(dlr) => {
+            BasisType::DLRBosonic(dlr) => {
                 dlr.from_IR_nd(&input_tensor, mdarray_target_dim)
             }
-            BasisType::DLRRegularizedBoseFermionic(dlr) => {
+            BasisType::DLRFermionic(dlr) => {
                 dlr.from_IR_nd(&input_tensor, mdarray_target_dim)
             }
-            BasisType::DLRRegularizedBoseBosonic(dlr) => {
+            BasisType::DLRBosonic(dlr) => {
                 dlr.from_IR_nd(&input_tensor, mdarray_target_dim)
             }
             _ => return SPIR_NOT_SUPPORTED, // Not a DLR
@@ -412,16 +412,16 @@ pub unsafe extern "C" fn spir_ir2dlr_zz(
 
         // Convert IR to DLR based on DLR type
         let result_tensor = match &dlr_ref.inner {
-            BasisType::DLRLogisticFermionic(dlr) => {
+            BasisType::DLRFermionic(dlr) => {
                 dlr.from_IR_nd(&input_tensor, mdarray_target_dim)
             }
-            BasisType::DLRLogisticBosonic(dlr) => {
+            BasisType::DLRBosonic(dlr) => {
                 dlr.from_IR_nd(&input_tensor, mdarray_target_dim)
             }
-            BasisType::DLRRegularizedBoseFermionic(dlr) => {
+            BasisType::DLRFermionic(dlr) => {
                 dlr.from_IR_nd(&input_tensor, mdarray_target_dim)
             }
-            BasisType::DLRRegularizedBoseBosonic(dlr) => {
+            BasisType::DLRBosonic(dlr) => {
                 dlr.from_IR_nd(&input_tensor, mdarray_target_dim)
             }
             _ => return SPIR_NOT_SUPPORTED, // Not a DLR
@@ -498,16 +498,16 @@ pub unsafe extern "C" fn spir_dlr2ir_dd(
 
         // Convert DLR to IR based on DLR type
         let result_tensor = match &dlr_ref.inner {
-            BasisType::DLRLogisticFermionic(dlr) => {
+            BasisType::DLRFermionic(dlr) => {
                 dlr.to_IR_nd(&input_tensor, mdarray_target_dim)
             }
-            BasisType::DLRLogisticBosonic(dlr) => {
+            BasisType::DLRBosonic(dlr) => {
                 dlr.to_IR_nd(&input_tensor, mdarray_target_dim)
             }
-            BasisType::DLRRegularizedBoseFermionic(dlr) => {
+            BasisType::DLRFermionic(dlr) => {
                 dlr.to_IR_nd(&input_tensor, mdarray_target_dim)
             }
-            BasisType::DLRRegularizedBoseBosonic(dlr) => {
+            BasisType::DLRBosonic(dlr) => {
                 dlr.to_IR_nd(&input_tensor, mdarray_target_dim)
             }
             _ => return SPIR_NOT_SUPPORTED, // Not a DLR
@@ -584,16 +584,16 @@ pub unsafe extern "C" fn spir_dlr2ir_zz(
 
         // Convert DLR to IR based on DLR type
         let result_tensor = match &dlr_ref.inner {
-            BasisType::DLRLogisticFermionic(dlr) => {
+            BasisType::DLRFermionic(dlr) => {
                 dlr.to_IR_nd(&input_tensor, mdarray_target_dim)
             }
-            BasisType::DLRLogisticBosonic(dlr) => {
+            BasisType::DLRBosonic(dlr) => {
                 dlr.to_IR_nd(&input_tensor, mdarray_target_dim)
             }
-            BasisType::DLRRegularizedBoseFermionic(dlr) => {
+            BasisType::DLRFermionic(dlr) => {
                 dlr.to_IR_nd(&input_tensor, mdarray_target_dim)
             }
-            BasisType::DLRRegularizedBoseBosonic(dlr) => {
+            BasisType::DLRBosonic(dlr) => {
                 dlr.to_IR_nd(&input_tensor, mdarray_target_dim)
             }
             _ => return SPIR_NOT_SUPPORTED, // Not a DLR

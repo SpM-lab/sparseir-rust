@@ -702,16 +702,16 @@ pub unsafe extern "C" fn spir_basis_get_u(
                 spir_funcs::from_u_bosonic(basis.u.clone(), beta)
             },
             // DLR: tau-domain functions using discrete poles
-            BasisType::DLRLogisticFermionic(dlr) => {
+            BasisType::DLRFermionic(dlr) => {
                 spir_funcs::from_dlr_tau_fermionic(dlr.poles.clone(), beta, dlr.wmax, dlr.inv_weights.clone(), 0)
             },
-            BasisType::DLRLogisticBosonic(dlr) => {
+            BasisType::DLRBosonic(dlr) => {
                 spir_funcs::from_dlr_tau_bosonic(dlr.poles.clone(), beta, dlr.wmax, dlr.inv_weights.clone(), 0)
             },
-            BasisType::DLRRegularizedBoseFermionic(dlr) => {
+            BasisType::DLRFermionic(dlr) => {
                 spir_funcs::from_dlr_tau_fermionic(dlr.poles.clone(), beta, dlr.wmax, dlr.inv_weights.clone(), 1)
             },
-            BasisType::DLRRegularizedBoseBosonic(dlr) => {
+            BasisType::DLRBosonic(dlr) => {
                 spir_funcs::from_dlr_tau_bosonic(dlr.poles.clone(), beta, dlr.wmax, dlr.inv_weights.clone(), 1)
             },
         };
@@ -783,10 +783,10 @@ pub unsafe extern "C" fn spir_basis_get_v(
                 spir_funcs::from_v(basis.v.clone(), beta)
             },
             // DLR: no continuous functions (v)
-            BasisType::DLRLogisticFermionic(_) |
-            BasisType::DLRLogisticBosonic(_) |
-            BasisType::DLRRegularizedBoseFermionic(_) |
-            BasisType::DLRRegularizedBoseBosonic(_) => {
+            BasisType::DLRFermionic(_) |
+            BasisType::DLRBosonic(_) |
+            BasisType::DLRFermionic(_) |
+            BasisType::DLRBosonic(_) => {
                 return Result::<*mut spir_funcs, String>::Err("DLR does not support continuous functions".to_string());
             }
         };
@@ -918,16 +918,16 @@ pub unsafe extern "C" fn spir_basis_get_uhat(
                 spir_funcs::from_uhat_bosonic(basis.uhat.clone(), beta)
             },
             // DLR: Matsubara-domain functions using discrete poles
-            BasisType::DLRLogisticFermionic(dlr) => {
+            BasisType::DLRFermionic(dlr) => {
                 spir_funcs::from_dlr_matsubara_fermionic(dlr.poles.clone(), beta, dlr.inv_weights.clone())
             },
-            BasisType::DLRLogisticBosonic(dlr) => {
+            BasisType::DLRBosonic(dlr) => {
                 spir_funcs::from_dlr_matsubara_bosonic(dlr.poles.clone(), beta, dlr.inv_weights.clone())
             },
-            BasisType::DLRRegularizedBoseFermionic(dlr) => {
+            BasisType::DLRFermionic(dlr) => {
                 spir_funcs::from_dlr_matsubara_fermionic(dlr.poles.clone(), beta, dlr.inv_weights.clone())
             },
-            BasisType::DLRRegularizedBoseBosonic(dlr) => {
+            BasisType::DLRBosonic(dlr) => {
                 spir_funcs::from_dlr_matsubara_bosonic(dlr.poles.clone(), beta, dlr.inv_weights.clone())
             },
         };
