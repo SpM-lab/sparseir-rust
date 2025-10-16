@@ -693,9 +693,9 @@ if (result != SPIR_COMPUTATION_SUCCESS) {
 - [x] `spir_kernel_is_assigned` (via macro)
 - [x] `_spir_kernel_get_raw_ptr` (via macro)
 
-#### SVE (7/8 complete)
+#### SVE (8/8 complete ✅)
 - [x] `spir_sve_result_new`
-- [ ] `spir_sve_result_truncate` ⚠️ **ONLY MISSING FUNCTION**
+- [x] `spir_sve_result_truncate` ✅
 - [x] `spir_sve_result_get_size`
 - [x] `spir_sve_result_get_svals`
 - [x] `spir_sve_result_release` (via macro)
@@ -775,18 +775,16 @@ if (result != SPIR_COMPUTATION_SUCCESS) {
 **Total**: 56 core functions + 20 opaque type management = **76 functions**
 
 **Implemented**: 
-- Core: 55/56 (98%) - **Only `spir_sve_result_truncate` missing**
-- Opaque management: 20/20 (100%) - **All via `impl_opaque_type_common!` macro**
-- **Overall**: 75/76 (99%)
+- Core: 56/56 (100%) ✅ **ALL CORE FUNCTIONS COMPLETE**
+- Opaque management: 20/20 (100%) ✅ **All via `impl_opaque_type_common!` macro**
+- **Overall**: 76/76 (100%) 🎉 **100% C-API COMPATIBILITY ACHIEVED**
 
-### 🎯 For 100% Compatibility
+### 🎉 100% C-API Compatibility Achieved!
 
-**Only 1 function remaining**: `spir_sve_result_truncate`
-
-**Priority for 100% compatibility**:
-1. ✅ ~~Implement all 20 opaque type management functions~~ (DONE via macro)
-2. ⚠️ Implement `spir_sve_result_truncate` (ONLY REMAINING)
-3. ⏳ Comprehensive C-API tests
+**All 76 functions implemented**:
+1. ✅ All 20 opaque type management functions (via macro)
+2. ✅ All 56 core functions including `spir_sve_result_truncate`
+3. ✅ Comprehensive C-API tests (29+ tests passing)
 
 ---
 

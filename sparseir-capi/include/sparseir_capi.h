@@ -1138,19 +1138,41 @@ struct spir_sve_result *spir_sve_result_new(const struct spir_kernel *k,
                                             StatusCode *status);
 
 /**
- * Truncate an SVE result
+ * Truncate an SVE result based on epsilon and max_size
+ *
+ * This function creates a new SVE result containing only the singular values
+ * that are larger than `epsilon * s[0]`, where `s[0]` is the largest singular value.
+ * The result can also be limited to a maximum size.
  *
  * # Arguments
- * * `sve` - SVE result object
- * * `epsilon` - New accuracy target
+ * * `sve` - Source SVE result object
+ * * `epsilon` - Relative threshold for truncation (singular values < epsilon * s[0] are removed)
  * * `max_size` - Maximum number of singular values to keep (-1 for no limit)
  * * `status` - Pointer to store status code
  *
  * # Returns
  * * Pointer to new truncated SVE result, or NULL on failure
+ * * Status code:
+ *   - `SPIR_SUCCESS` (0) on success
+ *   - `SPIR_INVALID_ARGUMENT` (-6) if sve or status is null, or epsilon is invalid
+ *   - `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
  *
  * # Safety
  * The caller must ensure `status` is a valid pointer.
+ * The returned pointer must be freed with `spir_sve_result_release()`.
+ *
+ * # Example (C)
+ * ```c
+ * spir_sve_result* sve = spir_sve_result_new(kernel, 1e-10, -1.0, 0, 0, -1, &status);
+ *
+ * // Truncate to keep only singular values > 1e-8 * s[0], max 50 values
+ * spir_sve_result* sve_truncated = spir_sve_result_truncate(sve, 1e-8, 50, &status);
+ *
+ * // Use truncated result...
+ *
+ * spir_sve_result_release(sve_truncated);
+ * spir_sve_result_release(sve);
+ * ```
  */
 struct spir_sve_result *spir_sve_result_truncate(const struct spir_sve_result *sve,
                                                  double epsilon,

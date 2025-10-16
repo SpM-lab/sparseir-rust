@@ -73,7 +73,7 @@ pub struct spir_kernel {
 #[derive(Clone)]
 #[repr(C)]
 pub struct spir_sve_result {
-    inner: Arc<SVEResult>,
+    pub(crate) inner: Arc<SVEResult>,
 }
 
 /// Opaque basis type for C API (compatible with libsparseir)

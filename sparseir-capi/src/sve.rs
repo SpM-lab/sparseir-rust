@@ -140,6 +140,104 @@ pub extern "C" fn spir_sve_result_get_size(
     result.unwrap_or(SPIR_INTERNAL_ERROR)
 }
 
+/// Truncate an SVE result based on epsilon and max_size
+///
+/// This function creates a new SVE result containing only the singular values
+/// that are larger than `epsilon * s[0]`, where `s[0]` is the largest singular value.
+/// The result can also be limited to a maximum size.
+///
+/// # Arguments
+/// * `sve` - Source SVE result object
+/// * `epsilon` - Relative threshold for truncation (singular values < epsilon * s[0] are removed)
+/// * `max_size` - Maximum number of singular values to keep (-1 for no limit)
+/// * `status` - Pointer to store status code
+///
+/// # Returns
+/// * Pointer to new truncated SVE result, or NULL on failure
+/// * Status code:
+///   - `SPIR_SUCCESS` (0) on success
+///   - `SPIR_INVALID_ARGUMENT` (-6) if sve or status is null, or epsilon is invalid
+///   - `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
+///
+/// # Safety
+/// The caller must ensure `status` is a valid pointer.
+/// The returned pointer must be freed with `spir_sve_result_release()`.
+///
+/// # Example (C)
+/// ```c
+/// spir_sve_result* sve = spir_sve_result_new(kernel, 1e-10, -1.0, 0, 0, -1, &status);
+/// 
+/// // Truncate to keep only singular values > 1e-8 * s[0], max 50 values
+/// spir_sve_result* sve_truncated = spir_sve_result_truncate(sve, 1e-8, 50, &status);
+/// 
+/// // Use truncated result...
+/// 
+/// spir_sve_result_release(sve_truncated);
+/// spir_sve_result_release(sve);
+/// ```
+#[no_mangle]
+pub extern "C" fn spir_sve_result_truncate(
+    sve: *const spir_sve_result,
+    epsilon: f64,
+    max_size: libc::c_int,
+    status: *mut StatusCode,
+) -> *mut spir_sve_result {
+    // Input validation
+    if status.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    if sve.is_null() {
+        unsafe { *status = SPIR_INVALID_ARGUMENT; }
+        return std::ptr::null_mut();
+    }
+
+    if epsilon < 0.0 || !epsilon.is_finite() {
+        unsafe { *status = SPIR_INVALID_ARGUMENT; }
+        return std::ptr::null_mut();
+    }
+
+    let result = catch_unwind(|| unsafe {
+        let sve_ref = &*sve;
+        
+        // Convert max_size (-1 means no limit)
+        let max_size_opt = if max_size < 0 {
+            None
+        } else {
+            Some(max_size as usize)
+        };
+
+        // Extract truncated parts using SVEResult::part
+        let (u_part, s_part, v_part) = sve_ref.inner.part(Some(epsilon), max_size_opt);
+
+        // Create new SVE result with truncated data
+        let sve_truncated = sparseir_rust::sve::SVEResult::new(
+            u_part,
+            s_part,
+            v_part,
+            epsilon,  // Use provided epsilon for new result
+        );
+
+        // Wrap in C-API type
+        let sve_wrapper = spir_sve_result {
+            inner: std::sync::Arc::new(sve_truncated),
+        };
+
+        Box::into_raw(Box::new(sve_wrapper))
+    });
+
+    match result {
+        Ok(ptr) => {
+            unsafe { *status = SPIR_SUCCESS; }
+            ptr
+        }
+        Err(_) => {
+            unsafe { *status = SPIR_INTERNAL_ERROR; }
+            std::ptr::null_mut()
+        }
+    }
+}
+
 /// Get singular values from an SVE result
 ///
 /// # Arguments
@@ -167,59 +265,6 @@ pub extern "C" fn spir_sve_result_get_svals(
     });
 
     result.unwrap_or(SPIR_INTERNAL_ERROR)
-}
-
-/// Truncate an SVE result
-///
-/// # Arguments
-/// * `sve` - SVE result object
-/// * `epsilon` - New accuracy target
-/// * `max_size` - Maximum number of singular values to keep (-1 for no limit)
-/// * `status` - Pointer to store status code
-///
-/// # Returns
-/// * Pointer to new truncated SVE result, or NULL on failure
-///
-/// # Safety
-/// The caller must ensure `status` is a valid pointer.
-#[no_mangle]
-pub extern "C" fn spir_sve_result_truncate(
-    sve: *const spir_sve_result,
-    epsilon: f64,
-    max_size: libc::c_int,
-    status: *mut StatusCode,
-) -> *mut spir_sve_result {
-    if status.is_null() {
-        return std::ptr::null_mut();
-    }
-
-    if sve.is_null() || epsilon <= 0.0 {
-        unsafe { *status = SPIR_INVALID_ARGUMENT; }
-        return std::ptr::null_mut();
-    }
-
-    let max_size_opt = if max_size < 0 {
-        None
-    } else {
-        Some(max_size as usize)
-    };
-
-    let result = catch_unwind(|| unsafe {
-        let s = &*sve;
-        let truncated = s.truncate(epsilon, max_size_opt);
-        Box::into_raw(Box::new(truncated))
-    });
-
-    match result {
-        Ok(ptr) => {
-            unsafe { *status = SPIR_SUCCESS; }
-            ptr
-        }
-        Err(_) => {
-            unsafe { *status = SPIR_INTERNAL_ERROR; }
-            std::ptr::null_mut()
-        }
-    }
 }
 
 #[cfg(test)]
