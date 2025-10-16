@@ -45,7 +45,7 @@ typedef struct FuncsType FuncsType;
 typedef struct KernelType KernelType;
 
 /**
- * Internal sampling type (holds different sampling implementations)
+ * Internal enum to distinguish between different sampling types
  */
 typedef struct SamplingType SamplingType;
 
@@ -103,16 +103,11 @@ typedef struct spir_sve_result {
 } spir_sve_result;
 
 /**
- * Opaque sampling type for C API (compatible with libsparseir)
+ * Sampling type for C API (unified type for all domains)
  *
- * Represents sparse sampling in imaginary time (τ), Matsubara frequency (iωn),
- * or real frequency (ω) domains.
- *
- * Created by:
- * - `spir_tau_sampling_new()` - τ sampling
- * - `spir_matsu_sampling_new()` - iωn sampling
- *
- * Note: Named `spir_sampling` to match libsparseir C++ API exactly.
+ * This wraps different sampling implementations:
+ * - TauSampling (for tau-domain)
+ * - MatsubaraSampling (for Matsubara frequencies, full range or positive-only)
  */
 typedef struct spir_sampling {
     struct SamplingType inner;

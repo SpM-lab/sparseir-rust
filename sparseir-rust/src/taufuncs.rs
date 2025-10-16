@@ -53,32 +53,36 @@ fn is_odd_period(tau: f64, beta: f64) -> bool {
 /// assert!((tau_norm - 0.7).abs() < 1e-14);
 /// assert_eq!(sign, -1.0);
 /// ```
-pub(crate) fn normalize_tau<S: StatisticsType>(tau: f64, beta: f64) -> (f64, f64) {
-    // Normalize τ to [0, β)
-    let sign: f64;
-    let tau_normalized: f64;
-    if tau < 0.0 {
-        tau_normalized = tau + beta;
-        sign = -1.0;
-    } else if tau > beta {
-        tau_normalized = tau - beta;
-        sign = -1.0;
-    } else {
-        tau_normalized = tau;
-        sign = 1.0;
-    };
+pub fn normalize_tau<S: StatisticsType>(tau: f64, beta: f64) -> (f64, f64) {
+    // Normalize τ to [0, β) for arbitrary τ ranges
+    // Supports: τ ∈ (-∞, +∞) with periodicity
     
-    // Compute sign based on statistics and whether we're in an "odd" period
-    match S::STATISTICS {
+    // Find period number: n = floor(τ / β)
+    let tau_beta = tau / beta;
+    let n = tau_beta.floor();
+    
+    // Normalize to [0, β)
+    let tau_normalized = tau - n * beta;
+    
+    // Compute sign based on statistics and period parity
+    let sign = match S::STATISTICS {
         Statistics::Fermionic => {
-            // Anti-periodic: sign flips in odd periods
-            return (tau_normalized, sign);
+            // Anti-periodic: G(τ + β) = -G(τ)
+            // Sign flips for each period
+            if n.abs() as i64 % 2 == 0 {
+                1.0
+            } else {
+                -1.0
+            }
         }
         Statistics::Bosonic => {
-            // Periodic: sign never flips
-            return (tau_normalized, 1.0);
+            // Periodic: G(τ + β) = G(τ)
+            // Sign never flips
+            1.0
         }
     };
+    
+    (tau_normalized, sign)
 }
 
 #[cfg(test)]

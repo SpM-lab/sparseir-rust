@@ -217,6 +217,69 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
         movedim(&result_dim0, 0, dim)
     }
     
+    /// Evaluate real basis coefficients at Matsubara sampling points (N-dimensional)
+    ///
+    /// This method takes real coefficients and produces complex values, useful when
+    /// working with symmetry-exploiting representations or real-valued IR coefficients.
+    ///
+    /// # Arguments
+    /// * `coeffs` - N-dimensional tensor of real basis coefficients
+    /// * `dim` - Dimension along which to evaluate (must have size = basis_size)
+    ///
+    /// # Returns
+    /// N-dimensional tensor of complex values at Matsubara frequencies
+    pub fn evaluate_nd_real(
+        &self,
+        coeffs: &Tensor<f64, DynRank>,
+        dim: usize,
+    ) -> Tensor<Complex<f64>, DynRank> {
+        let rank = coeffs.rank();
+        assert!(dim < rank, "dim={} must be < rank={}", dim, rank);
+        
+        let basis_size = self.basis_size();
+        let target_dim_size = coeffs.shape().dim(dim);
+        
+        assert_eq!(
+            target_dim_size,
+            basis_size,
+            "coeffs.shape().dim({}) = {} must equal basis_size = {}",
+            dim,
+            target_dim_size,
+            basis_size
+        );
+        
+        // 1. Move target dimension to position 0
+        let coeffs_dim0 = movedim(coeffs, dim, 0);
+        
+        // 2. Reshape to 2D: (basis_size, extra_size)
+        let extra_size: usize = coeffs_dim0.len() / basis_size;
+        
+        let coeffs_2d_dyn = coeffs_dim0.reshape(&[basis_size, extra_size][..]).to_tensor();
+        
+        // 3. Convert to DTensor and evaluate using ComplexMatrixFitter
+        let coeffs_2d = DTensor::<f64, 2>::from_fn([basis_size, extra_size], |idx| {
+            coeffs_2d_dyn[&[idx[0], idx[1]][..]]
+        });
+        
+        // 4. Evaluate: values = A * coeffs (A is complex, coeffs is real)
+        let values_2d = self.fitter.evaluate_2d_real(&coeffs_2d);
+        
+        // 5. Reshape result back to N-D with first dimension = n_sampling_points
+        let n_points = self.n_sampling_points();
+        let mut result_shape = Vec::with_capacity(rank);
+        result_shape.push(n_points);
+        coeffs_dim0.shape().with_dims(|dims| {
+            for i in 1..dims.len() {
+                result_shape.push(dims[i]);
+            }
+        });
+        
+        let result_dim0 = values_2d.into_dyn().reshape(&result_shape[..]).to_tensor();
+        
+        // 6. Move dimension 0 back to original position dim
+        movedim(&result_dim0, 0, dim)
+    }
+    
     /// Fit N-dimensional array of complex values to complex basis coefficients
     ///
     /// # Arguments
@@ -259,6 +322,67 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
         
         // Use fitter's efficient 2D fit (GEMM-based)
         let coeffs_2d = self.fitter.fit_2d(&values_2d);
+        
+        // 4. Reshape back to N-D with basis_size at position 0
+        let basis_size = self.basis_size();
+        let mut coeffs_shape = vec![basis_size];
+        values_dim0.shape().with_dims(|dims| {
+            for i in 1..dims.len() {
+                coeffs_shape.push(dims[i]);
+            }
+        });
+        
+        let coeffs_dim0 = coeffs_2d.into_dyn().reshape(&coeffs_shape[..]).to_tensor();
+        
+        // 5. Move dimension 0 back to original position dim
+        movedim(&coeffs_dim0, 0, dim)
+    }
+    
+    /// Fit N-dimensional array of complex values to real basis coefficients
+    ///
+    /// This method fits complex Matsubara values to real IR coefficients.
+    /// Takes the real part of the least-squares solution.
+    ///
+    /// # Arguments
+    /// * `values` - N-dimensional tensor of complex values at Matsubara frequencies
+    /// * `dim` - Dimension along which to fit (must have size = n_sampling_points)
+    ///
+    /// # Returns
+    /// N-dimensional tensor of real basis coefficients
+    pub fn fit_nd_real(
+        &self,
+        values: &Tensor<Complex<f64>, DynRank>,
+        dim: usize,
+    ) -> Tensor<f64, DynRank> {
+        let rank = values.rank();
+        assert!(dim < rank, "dim={} must be < rank={}", dim, rank);
+        
+        let n_points = self.n_sampling_points();
+        let target_dim_size = values.shape().dim(dim);
+        
+        assert_eq!(
+            target_dim_size,
+            n_points,
+            "values.shape().dim({}) = {} must equal n_sampling_points = {}",
+            dim,
+            target_dim_size,
+            n_points
+        );
+        
+        // 1. Move target dimension to position 0
+        let values_dim0 = movedim(values, dim, 0);
+        
+        // 2. Reshape to 2D: (n_points, extra_size)
+        let extra_size: usize = values_dim0.len() / n_points;
+        let values_2d_dyn = values_dim0.reshape(&[n_points, extra_size][..]).to_tensor();
+        
+        // 3. Convert to DTensor and fit
+        let values_2d = DTensor::<Complex<f64>, 2>::from_fn([n_points, extra_size], |idx| {
+            values_2d_dyn[&[idx[0], idx[1]][..]]
+        });
+        
+        // Use fitter's fit_2d_real method
+        let coeffs_2d = self.fitter.fit_2d_real(&values_2d);
         
         // 4. Reshape back to N-D with basis_size at position 0
         let basis_size = self.basis_size();

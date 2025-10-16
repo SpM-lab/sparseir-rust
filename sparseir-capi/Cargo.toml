@@ -8,8 +8,8 @@ license = "MIT"
 
 [lib]
 name = "sparseir_capi"
-# Build both dynamic and static libraries
-crate-type = ["cdylib", "staticlib"]
+# Build both dynamic and static libraries, plus rlib for Rust tests
+crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
 # Main SparseIR library

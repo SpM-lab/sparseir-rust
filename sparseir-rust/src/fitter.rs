@@ -639,6 +639,38 @@ impl ComplexMatrixFitter {
         matmul_par(&self.matrix, coeffs_2d)
     }
     
+    /// Evaluate 2D real tensor to complex values (along dim=0) using matrix multiplication
+    ///
+    /// Computes: values_2d = A * coeffs_2d where A is complex and coeffs_2d is real
+    ///
+    /// # Arguments
+    /// * `coeffs_2d` - Real coefficients, shape: [basis_size, extra_size]
+    ///
+    /// # Returns
+    /// Complex values, shape: [n_points, extra_size]
+    pub fn evaluate_2d_real(&self, coeffs_2d: &DTensor<f64, 2>) -> DTensor<Complex<f64>, 2> {
+        use crate::gemm::matmul_par;
+        
+        let (basis_size, extra_size) = *coeffs_2d.shape();
+        assert_eq!(basis_size, self.basis_size(),
+            "coeffs_2d.shape().0={} must equal basis_size={}", basis_size, self.basis_size());
+        
+        let n_points = self.n_points();
+        
+        // Split matrix into real and imaginary parts
+        let matrix_re = DTensor::<f64, 2>::from_fn(*self.matrix.shape(), |idx| self.matrix[idx].re);
+        let matrix_im = DTensor::<f64, 2>::from_fn(*self.matrix.shape(), |idx| self.matrix[idx].im);
+        
+        // Compute real and imaginary parts separately
+        let values_re = matmul_par(&matrix_re, coeffs_2d);
+        let values_im = matmul_par(&matrix_im, coeffs_2d);
+        
+        // Combine to complex
+        DTensor::<Complex<f64>, 2>::from_fn([n_points, extra_size], |idx| {
+            Complex::new(values_re[idx], values_im[idx])
+        })
+    }
+    
     /// Fit 2D complex tensor (along dim=0) using matrix multiplication
     ///
     /// # Arguments
@@ -680,6 +712,27 @@ impl ComplexMatrixFitter {
         // 3. V * (S^{-1} * U^H * values_2d)
         let v = svd.vt.transpose().to_tensor();  // [basis_size, min_dim]
         matmul_par(&v, &s_inv_uh_values)  // [basis_size, extra_size]
+    }
+    
+    /// Fit 2D complex values to real coefficients (along dim=0)
+    ///
+    /// This method fits complex values at Matsubara frequencies to real IR coefficients.
+    /// It takes the real part of the least-squares solution.
+    ///
+    /// # Arguments
+    /// * `values_2d` - Complex values, shape: [n_points, extra_size]
+    ///
+    /// # Returns
+    /// Real coefficients, shape: [basis_size, extra_size]
+    pub fn fit_2d_real(&self, values_2d: &DTensor<Complex<f64>, 2>) -> DTensor<f64, 2> {
+        // Fit as complex, then take real part
+        let coeffs_complex = self.fit_2d(values_2d);
+        
+        // Extract real part
+        let (basis_size, extra_size) = *coeffs_complex.shape();
+        DTensor::<f64, 2>::from_fn([basis_size, extra_size], |idx| {
+            coeffs_complex[idx].re
+        })
     }
 }
 

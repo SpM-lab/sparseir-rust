@@ -84,6 +84,15 @@ pub trait Basis<S: StatisticsType> {
     /// Vector of significance values for each basis function
     fn significance(&self) -> Vec<f64>;
     
+    /// Get singular values (non-normalized)
+    ///
+    /// Returns the singular values s[i] from the SVE decomposition.
+    /// These are the absolute values, not normalized by s[0].
+    ///
+    /// # Returns
+    /// Vector of singular values
+    fn svals(&self) -> Vec<f64>;
+    
     /// Get default tau sampling points
     ///
     /// Returns sampling points in imaginary time τ ∈ [0, β].

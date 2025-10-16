@@ -867,15 +867,18 @@ pub fn default_sampling_points(
         panic!("Expecting unscaled functions here.");
     }
 
+    
     let x0 = if l < u.polyvec.len() {
         // C++: return u.polyvec[L].roots();
         u[l].roots()
     } else {
+
         // C++: PiecewiseLegendrePoly poly = u.polyvec.back();
         //      Eigen::VectorXd maxima = poly.deriv().roots();
         let poly = u.last();
         let poly_deriv = poly.deriv(1);
         let maxima = poly_deriv.roots();
+        
 
         // C++: double left = (maxima[0] + poly.xmin) / 2.0;
         let left = (maxima[0] + poly.xmin) / 2.0;

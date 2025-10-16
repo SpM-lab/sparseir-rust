@@ -91,12 +91,34 @@ pub unsafe extern "C" fn spir_tau_sampling_new(
                 );
                 SamplingType::TauBosonic(Arc::new(tau_sampling))
             }
-            // DLR: not supported for tau sampling (DLR is discrete, not continuous)
-            BasisType::DLRLogisticFermionic(_) |
-            BasisType::DLRLogisticBosonic(_) |
-            BasisType::DLRRegularizedBoseFermionic(_) |
-            BasisType::DLRRegularizedBoseBosonic(_) => {
-                return (std::ptr::null_mut(), SPIR_NOT_SUPPORTED);
+            // DLR: tau sampling supported via Basis trait
+            BasisType::DLRLogisticFermionic(dlr) => {
+                let tau_sampling = sparseir_rust::sampling::TauSampling::with_sampling_points(
+                    dlr.as_ref(),
+                    tau_points,
+                );
+                SamplingType::TauFermionic(Arc::new(tau_sampling))
+            }
+            BasisType::DLRLogisticBosonic(dlr) => {
+                let tau_sampling = sparseir_rust::sampling::TauSampling::with_sampling_points(
+                    dlr.as_ref(),
+                    tau_points,
+                );
+                SamplingType::TauBosonic(Arc::new(tau_sampling))
+            }
+            BasisType::DLRRegularizedBoseFermionic(dlr) => {
+                let tau_sampling = sparseir_rust::sampling::TauSampling::with_sampling_points(
+                    dlr.as_ref(),
+                    tau_points,
+                );
+                SamplingType::TauFermionic(Arc::new(tau_sampling))
+            }
+            BasisType::DLRRegularizedBoseBosonic(dlr) => {
+                let tau_sampling = sparseir_rust::sampling::TauSampling::with_sampling_points(
+                    dlr.as_ref(),
+                    tau_points,
+                );
+                SamplingType::TauBosonic(Arc::new(tau_sampling))
             }
         };
 
@@ -224,12 +246,18 @@ pub unsafe extern "C" fn spir_matsu_sampling_new(
             BasisType::RegularizedBoseBosonic(ir_basis) => {
                 create_matsu_sampling!(ir_basis.as_ref(), Bosonic)
             }
-            // DLR: not supported for Matsubara sampling
-            BasisType::DLRLogisticFermionic(_) |
-            BasisType::DLRLogisticBosonic(_) |
-            BasisType::DLRRegularizedBoseFermionic(_) |
-            BasisType::DLRRegularizedBoseBosonic(_) => {
-                return (std::ptr::null_mut(), SPIR_NOT_SUPPORTED);
+            // DLR: Matsubara sampling supported via Basis trait
+            BasisType::DLRLogisticFermionic(dlr) => {
+                create_matsu_sampling!(dlr.as_ref(), Fermionic)
+            }
+            BasisType::DLRLogisticBosonic(dlr) => {
+                create_matsu_sampling!(dlr.as_ref(), Bosonic)
+            }
+            BasisType::DLRRegularizedBoseFermionic(dlr) => {
+                create_matsu_sampling!(dlr.as_ref(), Fermionic)
+            }
+            BasisType::DLRRegularizedBoseBosonic(dlr) => {
+                create_matsu_sampling!(dlr.as_ref(), Bosonic)
             }
         };
 
@@ -775,8 +803,16 @@ pub unsafe extern "C" fn spir_sampling_eval_dz(
         let flat_tensor = Tensor::<f64, (usize,)>::from(input_vec);
         let input_tensor = flat_tensor.into_dyn().reshape(&dims[..]).to_tensor();
         
-        // Evaluate based on sampling type (Matsubara positive-only)
+        // Evaluate based on sampling type (Matsubara, both full and positive-only)
         let result_tensor = match &sampling_ref.inner {
+            // Full range Matsubara: use evaluate_nd_real
+            SamplingType::MatsubaraFermionic(matsu) => {
+                matsu.evaluate_nd_real(&input_tensor, mdarray_target_dim)
+            }
+            SamplingType::MatsubaraBosonic(matsu) => {
+                matsu.evaluate_nd_real(&input_tensor, mdarray_target_dim)
+            }
+            // Positive-only Matsubara: use evaluate_nd (already real → complex)
             SamplingType::MatsubaraPositiveOnlyFermionic(matsu) => {
                 matsu.evaluate_nd(&input_tensor, mdarray_target_dim)
             }
@@ -1033,8 +1069,16 @@ pub unsafe extern "C" fn spir_sampling_fit_zd(
         let flat_tensor = Tensor::<Complex64, (usize,)>::from(input_vec);
         let input_tensor = flat_tensor.into_dyn().reshape(&dims[..]).to_tensor();
         
-        // Fit (positive-only Matsubara → real coefficients)
+        // Fit (Matsubara → real coefficients, both full and positive-only)
         let result_tensor = match &sampling_ref.inner {
+            // Full range Matsubara: use fit_nd_real
+            SamplingType::MatsubaraFermionic(matsu) => {
+                matsu.fit_nd_real(&input_tensor, mdarray_target_dim)
+            }
+            SamplingType::MatsubaraBosonic(matsu) => {
+                matsu.fit_nd_real(&input_tensor, mdarray_target_dim)
+            }
+            // Positive-only Matsubara: use fit_nd (already complex → real)
             SamplingType::MatsubaraPositiveOnlyFermionic(matsu) => {
                 matsu.fit_nd(&input_tensor, mdarray_target_dim)
             }

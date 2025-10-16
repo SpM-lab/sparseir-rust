@@ -181,7 +181,7 @@ where
     /// Inverse weights for each pole: inv_weight[i] = 1 / weight[i]
     /// - Fermionic: inv_weight = 1.0
     /// - Bosonic (LogisticKernel): inv_weight = tanh(β·ω/2)
-    inv_weights: Vec<f64>,
+    pub inv_weights: Vec<f64>,
     
     /// Fitting matrix from IR: fitmat = -s · V(poles)
     /// Used for to_IR transformation
@@ -222,17 +222,17 @@ where
         // Compute fitting matrix: fitmat = -s · V(poles)
         // This transforms DLR coefficients to IR coefficients
         let v_at_poles = basis.evaluate_omega(&poles);  // shape: [n_poles, basis_size]
-        let s = basis.significance();  // Normalized by first singular value
-        let first_s = s[0];
+        let s = basis.svals();  // Non-normalized singular values (same as C++)
         
         let basis_size = basis.size();
         let n_poles = poles.len();
         
-        // fitmat[l, i] = -s[l] * s[0] * V_l(pole[i])
+        // fitmat[l, i] = -s[l] * V_l(pole[i])
+        // C++: fitmat = (-A_array * s_array.replicate(1, A.cols())).matrix()
         let fitmat = DTensor::<f64, 2>::from_fn([basis_size, n_poles], |idx| {
             let l = idx[0];
             let i = idx[1];
-            -s[l] * first_s * v_at_poles[[i, l]]
+            -s[l] * v_at_poles[[i, l]]
         });
         
         // Create fitter for from_IR (inverse operation)
@@ -425,6 +425,11 @@ where
         vec![1.0; self.poles.len()]
     }
     
+    fn svals(&self) -> Vec<f64> {
+        // All poles are equally significant in DLR (no singular value concept)
+        vec![1.0; self.poles.len()]
+    }
+    
     fn default_tau_sampling_points(&self) -> Vec<f64> {
         // TODO: Could use the original IR basis sampling points
         // For now, return empty - not well-defined for DLR
@@ -445,8 +450,9 @@ where
         let n_points = tau.len();
         let n_poles = self.poles.len();
         
-        // Evaluate TauPoles basis functions: u_i(τ) = -K(x, y_i)
+        // Evaluate TauPoles basis functions: u_i(τ) = -K(x, y_i) / weight[i]
         // where x = 2τ/β - 1, y_i = pole_i/ωmax
+        // Normalize tau to [0, β] for kernel evaluation
         let lambda = self.beta * self.wmax;
         let kernel = LogisticKernel::new(lambda);
         
@@ -455,15 +461,16 @@ where
             let pole = self.poles[idx[1]];
             let inv_weight = self.inv_weights[idx[1]];
             
-            // Normalize tau to [0, β] with periodicity (for extended range support)
-            let (tau_norm, sign) = normalize_tau::<S>(tau_val, self.beta);
+            // Normalize tau to [0, β] (ignore sign for DLR)
+            let (tau_norm, _sign) = normalize_tau::<S>(tau_val, self.beta);
             
             // Compute kernel value
             let x = 2.0 * tau_norm / self.beta - 1.0;
             let y = pole / self.wmax;
             
             // u_i(τ) = -K(x, y_i) * inv_weight[i]
-            sign * (-kernel.compute(x, y)) * inv_weight
+            // Note: No sign factor for DLR (unlike IR)
+            (-kernel.compute(x, y)) * inv_weight
         })
     }
     

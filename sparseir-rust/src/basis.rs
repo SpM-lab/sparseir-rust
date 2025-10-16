@@ -384,12 +384,15 @@ where
     pub fn default_omega_sampling_points(&self) -> Vec<f64> {
         let sz = self.size();
         
-        // Get sampling points in [-1, 1] from spectral basis functions
+        // Use UNTRUNCATED sve_result.v (same as C++)
+        // C++: default_sampling_points(*(sve_result->v), sz)
         let y = default_sampling_points(&self.sve_result.v, sz);
         
         // Scale to [-ωmax, ωmax]
         let wmax = self.kernel.lambda() / self.beta;
-        y.into_iter().map(|yi| wmax * yi).collect()
+        let omega_points: Vec<f64> = y.into_iter().map(|yi| wmax * yi).collect();
+        
+        omega_points
     }
 }
 
@@ -434,6 +437,10 @@ where
         } else {
             vec![]
         }
+    }
+    
+    fn svals(&self) -> Vec<f64> {
+        self.s.clone()
     }
     
     fn default_tau_sampling_points(&self) -> Vec<f64> {
