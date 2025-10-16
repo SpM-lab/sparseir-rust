@@ -307,6 +307,29 @@ pub(crate) struct PolyVectorFuncs {
     pub domain: FunctionDomain,
 }
 
+impl PolyVectorFuncs {
+    /// Evaluate all functions at a single point
+    pub fn evaluate_at(&self, x: f64, beta: f64) -> Vec<f64> {
+        // Regularize x based on domain
+        let (x_reg, sign) = match self.domain {
+            FunctionDomain::Tau(stats) => {
+                // u functions: regularize tau to [0, beta]
+                let fermionic_sign = if stats == Statistics::Fermionic { -1.0 } else { 1.0 };
+                regularize_tau(x, beta, fermionic_sign)
+            },
+            FunctionDomain::Omega => {
+                // v functions: no regularization needed
+                (x, 1.0)
+            },
+        };
+        
+        // Evaluate all polynomials at the regularized point
+        self.poly.polyvec.iter()
+            .map(|p| sign * p.evaluate(x_reg))
+            .collect()
+    }
+}
+
 /// Wrapper for Fourier-transformed functions (PiecewiseLegendreFTVector)
 #[derive(Clone)]
 pub(crate) struct FTVectorFuncs {
@@ -324,6 +347,38 @@ pub(crate) struct DLRTauFuncs {
     pub inv_weights: Vec<f64>,
     pub kernel_type: i32,  // 0 = LogisticKernel, 1 = RegularizedBoseKernel
     pub statistics: Statistics,
+}
+
+impl DLRTauFuncs {
+    /// Evaluate all DLR tau functions at a single point
+    pub fn evaluate_at(&self, tau: f64) -> Vec<f64> {
+        use sparseir_rust::kernel::{LogisticKernel, RegularizedBoseKernel};
+        
+        // Regularize tau to [0, beta]
+        let fermionic_sign = if self.statistics == Statistics::Fermionic { -1.0 } else { 1.0 };
+        let (tau_reg, sign) = regularize_tau(tau, self.beta, fermionic_sign);
+        
+        // Compute kernel parameters
+        let lambda = self.beta * self.wmax;
+        let x_kern = 2.0 * tau_reg / self.beta - 1.0;  // x_kern ∈ [-1, 1]
+        
+        // Evaluate DLR functions: u_l(tau) = sign * inv_weight[l] * (-K(x, y_l))
+        self.poles.iter().zip(self.inv_weights.iter())
+            .map(|(&pole, &inv_weight)| {
+                let y = pole / self.wmax;
+                let k_val = if self.kernel_type == 0 {
+                    // LogisticKernel
+                    let kernel = LogisticKernel::new(lambda);
+                    kernel.compute(x_kern, y)
+                } else {
+                    // RegularizedBoseKernel
+                    let kernel = RegularizedBoseKernel::new(lambda);
+                    kernel.compute(x_kern, y)
+                };
+                sign * (-k_val) * inv_weight
+            })
+            .collect()
+    }
 }
 
 /// Wrapper for DLR functions in Matsubara domain
@@ -531,63 +586,10 @@ impl spir_funcs {
     pub(crate) fn eval_continuous(&self, x: f64) -> Option<Vec<f64>> {
         match &self.inner {
             FuncsType::PolyVector(pv) => {
-                // For u (tau functions): handle periodicity
-                // For v (omega functions): no periodicity
-                let (x_reg, sign) = match pv.domain {
-                    FunctionDomain::Tau(stats) => {
-                        // u functions: regularize tau to [0, beta]
-                        let fermionic_sign = if stats == Statistics::Fermionic { -1.0 } else { 1.0 };
-                        regularize_tau(x, self.beta, fermionic_sign)
-                    },
-                    FunctionDomain::Omega => {
-                        // v functions: no regularization needed
-                        (x, 1.0)
-                    },
-                };
-                
-                let mut result = Vec::with_capacity(pv.poly.polyvec.len());
-                for (i, p) in pv.poly.polyvec.iter().enumerate() {
-                    let p_eval = p.evaluate(x_reg);
-                    let val = sign * p_eval;
-                    result.push(val);
-                }
-                Some(result)
+                Some(pv.evaluate_at(x, self.beta))
             },
             FuncsType::DLRTau(dlr) => {
-                // Evaluate DLR tau functions: u_l(τ) = -K(x, y_l) / weight[l]
-                // where x = 2τ/β - 1, y_l = pole_l/ωmax
-                // Need to handle periodicity like IR basis
-                let fermionic_sign = match dlr.statistics {
-                        Statistics::Fermionic => -1.0,
-                        Statistics::Bosonic => 1.0,
-                    };
-                let (tau_reg, sign) = regularize_tau(x, dlr.beta, fermionic_sign);
-                
-                use sparseir_rust::kernel::{LogisticKernel, RegularizedBoseKernel};
-                
-                let lambda = dlr.beta * dlr.wmax;
-                let x_kern = 2.0 * tau_reg / dlr.beta - 1.0;  // Now x_kern ∈ [-1, 1]
-                let mut result = Vec::with_capacity(dlr.poles.len());
-                
-                for (i, &pole) in dlr.poles.iter().enumerate() {
-                    let y = pole / dlr.wmax;
-                    let inv_weight = dlr.inv_weights[i];
-                    
-                    let k_val = if dlr.kernel_type == 0 {
-                        // LogisticKernel
-                        let kernel = LogisticKernel::new(lambda);
-                        kernel.compute(x_kern, y)
-                    } else {
-                        // RegularizedBoseKernel
-                        let kernel = RegularizedBoseKernel::new(lambda);
-                        kernel.compute(x_kern, y)
-                    };
-                    
-                    // u_l(τ) = sign * (-K(x, y_l)) * inv_weight[l]
-                    // Apply sign for periodicity (same as IR basis)
-                    result.push(sign * (-k_val) * inv_weight);
-                }
-                Some(result)
+                Some(dlr.evaluate_at(x))
             },
             _ => None,
         }
