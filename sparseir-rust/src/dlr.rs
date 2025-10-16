@@ -530,19 +530,23 @@ mod tests {
         let beta = 1.0;
         let omega = 5.0;
         
-        // Use interior points, avoiding boundaries
+        // Test periodicity by comparing G(τ) with G(τ-β)
+        // Since normalize_tau is restricted to [-β, β], we test:
+        // For τ ∈ (0, β]: compare G(τ) with G(τ-β)
+        // For fermions: G(τ) should equal -G(τ-β)
+        // For bosons: G(τ) should equal G(τ-β)
         for tau in [0.1, 0.3, 0.7] {
             let g_tau = gtau_single_pole::<S>(tau, omega, beta);
-            let g_tau_plus_beta = gtau_single_pole::<S>(tau + beta, omega, beta);
+            let g_tau_minus_beta = gtau_single_pole::<S>(tau - beta, omega, beta);
             
-            // For fermions: G(τ+β) = -G(τ) → sign = -1
-            // For bosons: G(τ+β) = G(τ) → sign = 1
+            // For fermions: G(τ) = -G(τ-β) → G(τ-β) = -G(τ)
+            // For bosons: G(τ) = G(τ-β)
             let expected = expected_sign * g_tau;
             
             assert!(
-                (expected - g_tau_plus_beta).abs() < 1e-14,
-                "{} periodicity violated at τ={}: G(τ)={}, G(τ+β)={}, expected={}",
-                stat_name, tau, g_tau, g_tau_plus_beta, expected
+                (expected - g_tau_minus_beta).abs() < 1e-14,
+                "{} periodicity violated at τ={}: G(τ)={}, G(τ-β)={}, expected={}",
+                stat_name, tau, g_tau, g_tau_minus_beta, expected
             );
         }
     }
