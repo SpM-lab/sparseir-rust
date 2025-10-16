@@ -8,10 +8,11 @@ use sparseir_rust::kernel::{LogisticKernel, RegularizedBoseKernel, CentrosymmKer
 use sparseir_rust::sve::SVEResult;
 use sparseir_rust::basis::FiniteTempBasis;
 use sparseir_rust::{Bosonic, Fermionic};
-use sparseir_rust::traits::Statistics;
+use sparseir_rust::traits::{Statistics, StatisticsType};
 use sparseir_rust::poly::PiecewiseLegendrePolyVector;
 use sparseir_rust::polyfourier::PiecewiseLegendreFTVector;
 use sparseir_rust::freq::MatsubaraFreq;
+use sparseir_rust::taufuncs::normalize_tau;
 
 /// Convert Statistics enum to C-API integer
 #[inline]
@@ -310,20 +311,23 @@ pub(crate) struct PolyVectorFuncs {
 impl PolyVectorFuncs {
     /// Evaluate all functions at a single point
     pub fn evaluate_at(&self, x: f64, beta: f64) -> Vec<f64> {
-        // Regularize x based on domain
+        // Normalize x based on domain
         let (x_reg, sign) = match self.domain {
-            FunctionDomain::Tau(stats) => {
-                // u functions: regularize tau to [0, beta]
-                let fermionic_sign = if stats == Statistics::Fermionic { -1.0 } else { 1.0 };
-                regularize_tau(x, beta, fermionic_sign)
+            FunctionDomain::Tau(Statistics::Fermionic) => {
+                // u functions (fermionic): normalize tau to [0, beta]
+                normalize_tau::<Fermionic>(x, beta)
+            },
+            FunctionDomain::Tau(Statistics::Bosonic) => {
+                // u functions (bosonic): normalize tau to [0, beta]
+                normalize_tau::<Bosonic>(x, beta)
             },
             FunctionDomain::Omega => {
-                // v functions: no regularization needed
+                // v functions: no normalization needed
                 (x, 1.0)
             },
         };
         
-        // Evaluate all polynomials at the regularized point
+        // Evaluate all polynomials at the normalized point
         self.poly.polyvec.iter()
             .map(|p| sign * p.evaluate(x_reg))
             .collect()
@@ -336,20 +340,22 @@ impl PolyVectorFuncs {
         let n_points = xs.len();
         let mut result = vec![vec![0.0; n_points]; n_funcs];
         
-        // Regularize all points based on domain
-        let regularized: Vec<(f64, f64)> = xs.iter().map(|&x| {
+        // Normalize all points based on domain
+        let normalized: Vec<(f64, f64)> = xs.iter().map(|&x| {
             match self.domain {
-                FunctionDomain::Tau(stats) => {
-                    let fermionic_sign = if stats == Statistics::Fermionic { -1.0 } else { 1.0 };
-                    regularize_tau(x, beta, fermionic_sign)
+                FunctionDomain::Tau(Statistics::Fermionic) => {
+                    normalize_tau::<Fermionic>(x, beta)
+                },
+                FunctionDomain::Tau(Statistics::Bosonic) => {
+                    normalize_tau::<Bosonic>(x, beta)
                 },
                 FunctionDomain::Omega => (x, 1.0),
             }
         }).collect();
         
-        // Extract regularized x values and signs
-        let xs_reg: Vec<f64> = regularized.iter().map(|(x, _)| *x).collect();
-        let signs: Vec<f64> = regularized.iter().map(|(_, s)| *s).collect();
+        // Extract normalized x values and signs
+        let xs_reg: Vec<f64> = normalized.iter().map(|(x, _)| *x).collect();
+        let signs: Vec<f64> = normalized.iter().map(|(_, s)| *s).collect();
         
         // Evaluate each polynomial at all regularized points using evaluate_many
         for (i, p) in self.poly.polyvec.iter().enumerate() {
@@ -386,9 +392,11 @@ impl DLRTauFuncs {
     pub fn evaluate_at(&self, tau: f64) -> Vec<f64> {
         use sparseir_rust::kernel::LogisticKernel;
         
-        // Regularize tau to [0, beta]
-        let fermionic_sign = if self.statistics == Statistics::Fermionic { -1.0 } else { 1.0 };
-        let (tau_reg, sign) = regularize_tau(tau, self.beta, fermionic_sign);
+        // Normalize tau to [0, beta] using the appropriate statistics
+        let (tau_reg, sign) = match self.statistics {
+            Statistics::Fermionic => normalize_tau::<Fermionic>(tau, self.beta),
+            Statistics::Bosonic => normalize_tau::<Bosonic>(tau, self.beta),
+        };
         
         // Compute kernel parameters
         // DLR always uses LogisticKernel
@@ -415,15 +423,17 @@ impl DLRTauFuncs {
         let n_points = taus.len();
         let mut result = vec![vec![0.0; n_points]; n_funcs];
         
-        let fermionic_sign = if self.statistics == Statistics::Fermionic { -1.0 } else { 1.0 };
-        
         // DLR always uses LogisticKernel
         let lambda = self.beta * self.wmax;
         let kernel = LogisticKernel::new(lambda);
         
         // Evaluate at each point
         for (j, &tau) in taus.iter().enumerate() {
-            let (tau_reg, sign) = regularize_tau(tau, self.beta, fermionic_sign);
+            // Normalize tau to [0, beta] using the appropriate statistics
+            let (tau_reg, sign) = match self.statistics {
+                Statistics::Fermionic => normalize_tau::<Fermionic>(tau, self.beta),
+                Statistics::Bosonic => normalize_tau::<Bosonic>(tau, self.beta),
+            };
             let x_kern = 2.0 * tau_reg / self.beta - 1.0;
             
             for (i, (&pole, &inv_weight)) in self.poles.iter().zip(self.inv_weights.iter()).enumerate() {
@@ -877,27 +887,7 @@ impl spir_funcs {
     }
 }
 
-// Helper function for tau regularization (same as C++)
-fn regularize_tau(tau: f64, beta: f64, fermionic_sign: f64) -> (f64, f64) {
-    // C++: libsparseir/include/sparseir/funcs.hpp:52-73
-    if tau < -beta || tau > beta {
-        panic!("tau {} is outside range [-beta={}, beta={}]", tau, beta, beta);
-    }
-    
-    if tau > 0.0 && tau <= beta {
-        (tau, 1.0)
-    } else if tau >= -beta && tau < 0.0 {
-        (tau + beta, fermionic_sign)
-    } else {
-        // tau == 0.0 (or -0.0)
-        // Check sign bit for -0.0 vs +0.0
-        if tau.is_sign_negative() {
-            (beta, fermionic_sign)
-        } else {
-            (0.0, 1.0)
-        }
-    }
-}
+// Helper function for tau normalization is now provided by sparseir_rust::taufuncs::normalize_tau
 
 #[cfg(test)]
 mod tests {
