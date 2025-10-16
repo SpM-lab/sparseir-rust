@@ -155,17 +155,14 @@ pub fn giwn_single_pole<S: StatisticsType>(
 /// - `a[i]` are expansion coefficients  
 /// - `reg[i]` are regularization factors (1 for fermions, tanh(βω/2) for bosons)
 ///
+/// Note: DLR always uses LogisticKernel-type weights, regardless of the IR basis kernel type.
+///
 /// # Type Parameters
-/// * `K` - Kernel type
 /// * `S` - Statistics type (Fermionic or Bosonic)
-pub struct DiscreteLehmannRepresentation<K, S>
+pub struct DiscreteLehmannRepresentation<S>
 where
-    K: crate::kernel::KernelProperties + Clone,
     S: StatisticsType,
 {
-    /// The kernel used to construct this DLR
-    pub kernel: K,
-    
     /// Pole positions on the real-frequency axis ω ∈ [-ωmax, ωmax]
     pub poles: Vec<f64>,
     
@@ -175,12 +172,17 @@ where
     /// Maximum frequency ωmax
     pub wmax: f64,
     
+    /// LogisticKernel used for weight computations
+    /// DLR always uses LogisticKernel regardless of the IR basis kernel type
+    kernel: crate::kernel::LogisticKernel,
+    
     /// Accuracy of the representation
     pub accuracy: f64,
     
     /// Inverse weights for each pole: inv_weight[i] = 1 / weight[i]
+    /// Always computed using LogisticKernel:
     /// - Fermionic: inv_weight = 1.0
-    /// - Bosonic (LogisticKernel): inv_weight = tanh(β·ω/2)
+    /// - Bosonic: inv_weight = tanh(β·ω/2)
     pub inv_weights: Vec<f64>,
     
     /// Fitting matrix from IR: fitmat = -s · V(poles)
@@ -194,12 +196,13 @@ where
     _phantom: PhantomData<S>,
 }
 
-impl<K, S> DiscreteLehmannRepresentation<K, S>
+impl<S> DiscreteLehmannRepresentation<S>
 where
-    K: crate::kernel::KernelProperties + Clone,
     S: StatisticsType,
 {
     /// Create DLR from IR basis with custom poles
+    ///
+    /// Note: Always uses LogisticKernel-type weights, regardless of the basis kernel type.
     ///
     /// # Arguments
     /// * `basis` - The IR basis to construct DLR from
@@ -207,14 +210,16 @@ where
     ///
     /// # Returns
     /// A new DLR representation
-    pub fn with_poles(
+    pub fn with_poles<K>(
         basis: &impl crate::basis_trait::Basis<S, Kernel = K>,
         poles: Vec<f64>,
     ) -> Self
     where
         S: 'static,
+        K: crate::kernel::KernelProperties + Clone,
     {
-        let kernel = basis.kernel().clone();
+        use crate::kernel::{LogisticKernel, KernelProperties};
+        
         let beta = basis.beta();
         let wmax = basis.wmax();
         let accuracy = basis.accuracy();
@@ -238,16 +243,19 @@ where
         // Create fitter for from_IR (inverse operation)
         let fitter = RealMatrixFitter::new(fitmat.clone());
         
-        // Compute inverse weights for each pole using kernel's inv_weight function
+        // Compute inverse weights for each pole using LogisticKernel
+        // (regardless of the basis kernel type)
+        let lambda = beta * wmax;
+        let logistic_kernel = LogisticKernel::new(lambda);
         let inv_weights: Vec<f64> = poles.iter()
-            .map(|&pole| kernel.inv_weight::<S>(beta, pole))
+            .map(|&pole| logistic_kernel.inv_weight::<S>(beta, pole))
             .collect();
         
         Self {
-            kernel,
             poles,
             beta,
             wmax,
+            kernel: logistic_kernel,
             accuracy,
             inv_weights,
             fitmat,
@@ -265,9 +273,10 @@ where
     ///
     /// # Returns
     /// A new DLR representation with default poles
-    pub fn new(basis: &impl crate::basis_trait::Basis<S, Kernel = K>) -> Self
+    pub fn new<K>(basis: &impl crate::basis_trait::Basis<S, Kernel = K>) -> Self
     where
         S: 'static,
+        K: crate::kernel::KernelProperties + Clone,
     {
         let poles = basis.default_omega_sampling_points();
         assert!(basis.size() <= poles.len(), "The number of poles must be greater than or equal to the basis size");
@@ -389,14 +398,14 @@ where
 // Basis trait implementation for DLR
 // ============================================================================
 
-impl<K, S> crate::basis_trait::Basis<S> for DiscreteLehmannRepresentation<K, S>
+impl<S> crate::basis_trait::Basis<S> for DiscreteLehmannRepresentation<S>
 where
-    K: crate::kernel::KernelProperties + Clone,
     S: StatisticsType + 'static,
 {
-    type Kernel = K;
+    type Kernel = crate::kernel::LogisticKernel;
     
     fn kernel(&self) -> &Self::Kernel {
+        // DLR always uses LogisticKernel for weight computations
         &self.kernel
     }
     
@@ -444,7 +453,6 @@ where
     
     fn evaluate_tau(&self, tau: &[f64]) -> mdarray::DTensor<f64, 2> {
         use mdarray::DTensor;
-        use crate::kernel::LogisticKernel;
         use crate::taufuncs::normalize_tau;
         
         let n_points = tau.len();
@@ -453,8 +461,6 @@ where
         // Evaluate TauPoles basis functions: u_i(τ) = -K(x, y_i) / weight[i]
         // where x = 2τ/β - 1, y_i = pole_i/ωmax
         // Normalize tau to [0, β] for kernel evaluation
-        let lambda = self.beta * self.wmax;
-        let kernel = LogisticKernel::new(lambda);
         
         DTensor::<f64, 2>::from_fn([n_points, n_poles], |idx| {
             let tau_val = tau[idx[0]];
@@ -470,7 +476,7 @@ where
             
             // u_i(τ) = -K(x, y_i) * inv_weight[i]
             // Note: No sign factor for DLR (unlike IR)
-            (-kernel.compute(x, y)) * inv_weight
+            (-self.kernel.compute(x, y)) * inv_weight
         })
     }
     
