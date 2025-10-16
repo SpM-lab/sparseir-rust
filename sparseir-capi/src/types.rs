@@ -213,8 +213,6 @@ impl spir_basis {
             BasisType::RegularizedBoseBosonic(b) => b.size(),
             BasisType::DLRFermionic(dlr) => dlr.poles.len(),
             BasisType::DLRBosonic(dlr) => dlr.poles.len(),
-            BasisType::DLRFermionic(dlr) => dlr.poles.len(),
-            BasisType::DLRBosonic(dlr) => dlr.poles.len(),
         }
     }
 
@@ -225,10 +223,7 @@ impl spir_basis {
             BasisType::RegularizedBoseFermionic(b) => b.s.clone(),
             BasisType::RegularizedBoseBosonic(b) => b.s.clone(),
             // DLR: no singular values, return empty
-            BasisType::DLRFermionic(_) => vec![],
-            BasisType::DLRBosonic(_) => vec![],
-            BasisType::DLRFermionic(_) => vec![],
-            BasisType::DLRBosonic(_) => vec![],
+            BasisType::DLRFermionic(_) | BasisType::DLRBosonic(_) => vec![],
         }
     }
 
@@ -239,8 +234,6 @@ impl spir_basis {
             BasisType::LogisticBosonic(_) => 0,
             BasisType::RegularizedBoseFermionic(_) => 1,
             BasisType::RegularizedBoseBosonic(_) => 0,
-            BasisType::DLRFermionic(_) => 1,
-            BasisType::DLRBosonic(_) => 0,
             BasisType::DLRFermionic(_) => 1,
             BasisType::DLRBosonic(_) => 0,
         }
@@ -254,8 +247,6 @@ impl spir_basis {
             BasisType::RegularizedBoseBosonic(b) => b.beta,
             BasisType::DLRFermionic(dlr) => dlr.beta,
             BasisType::DLRBosonic(dlr) => dlr.beta,
-            BasisType::DLRFermionic(dlr) => dlr.beta,
-            BasisType::DLRBosonic(dlr) => dlr.beta,
         }
     }
 
@@ -265,8 +256,6 @@ impl spir_basis {
             BasisType::LogisticBosonic(b) => b.wmax(),
             BasisType::RegularizedBoseFermionic(b) => b.wmax(),
             BasisType::RegularizedBoseBosonic(b) => b.wmax(),
-            BasisType::DLRFermionic(dlr) => dlr.wmax,
-            BasisType::DLRBosonic(dlr) => dlr.wmax,
             BasisType::DLRFermionic(dlr) => dlr.wmax,
             BasisType::DLRBosonic(dlr) => dlr.wmax,
         }
@@ -279,10 +268,7 @@ impl spir_basis {
             BasisType::RegularizedBoseFermionic(b) => b.default_tau_sampling_points(),
             BasisType::RegularizedBoseBosonic(b) => b.default_tau_sampling_points(),
             // DLR: no default tau sampling points
-            BasisType::DLRFermionic(_) => vec![],
-            BasisType::DLRBosonic(_) => vec![],
-            BasisType::DLRFermionic(_) => vec![],
-            BasisType::DLRBosonic(_) => vec![],
+            BasisType::DLRFermionic(_) | BasisType::DLRBosonic(_) => vec![],
         }
     }
 
@@ -293,10 +279,7 @@ impl spir_basis {
             BasisType::RegularizedBoseFermionic(b) => b.default_matsubara_sampling_points_i64(positive_only),
             BasisType::RegularizedBoseBosonic(b) => b.default_matsubara_sampling_points_i64(positive_only),
             // DLR: no default Matsubara sampling points
-            BasisType::DLRFermionic(_) => vec![],
-            BasisType::DLRBosonic(_) => vec![],
-            BasisType::DLRFermionic(_) => vec![],
-            BasisType::DLRBosonic(_) => vec![],
+            BasisType::DLRFermionic(_) | BasisType::DLRBosonic(_) => vec![],
         }
     }
 
@@ -307,8 +290,6 @@ impl spir_basis {
             BasisType::RegularizedBoseFermionic(b) => b.default_omega_sampling_points(),
             BasisType::RegularizedBoseBosonic(b) => b.default_omega_sampling_points(),
             // DLR: return poles as omega sampling points
-            BasisType::DLRFermionic(dlr) => dlr.poles.clone(),
-            BasisType::DLRBosonic(dlr) => dlr.poles.clone(),
             BasisType::DLRFermionic(dlr) => dlr.poles.clone(),
             BasisType::DLRBosonic(dlr) => dlr.poles.clone(),
         }
