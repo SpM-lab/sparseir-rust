@@ -34,52 +34,75 @@ fn is_odd_period(tau: f64, beta: f64) -> bool {
 /// * `S` - Statistics type (Fermionic or Bosonic)
 ///
 /// # Arguments
-/// * `tau` - Imaginary time (can be outside [0, β])
+/// * `tau` - Imaginary time in range [-β, β]
 /// * `beta` - Inverse temperature
 ///
 /// # Returns
 /// * `(tau_normalized, sign)` - Normalized τ ∈ [0, β] and sign factor
 ///
+/// # Panics
+/// Panics if `tau` is outside [-β, β]
+///
 /// # Boundary Interpretation
 /// * `β` is interpreted as `β-` (left limit at β): `tau == beta` stays in normal range
-/// * `-β` is interpreted as `-β + 0` (right limit at -β): `tau == -beta` wraps to normal range
+/// * `-β` wraps to 0 for bosons, or to β with sign flip for fermions
+/// * `-0.0` (negative zero) is treated as being in the odd period for fermions
+///
+/// # Special Cases
+/// For Fermionic statistics:
+/// * `tau = -0.0` (negative zero) → `(tau_normalized = β, sign = -1.0)`
+/// * `tau = 0.0` (positive zero) → `(tau_normalized = 0.0, sign = 1.0)`
+/// * `tau ∈ [-β, 0)` → wraps to [0, β] with `sign = -1.0`
+///
+/// For Bosonic statistics:
+/// * `tau ∈ [-β, 0)` → wraps to [0, β] with `sign = 1.0`
 ///
 /// # Examples
 /// ```ignore
 /// use crate::taufuncs::normalize_tau;
 /// use crate::traits::Fermionic;
 ///
+/// // Normal negative value
 /// let (tau_norm, sign) = normalize_tau::<Fermionic>(-0.3, 1.0);
 /// assert!((tau_norm - 0.7).abs() < 1e-14);
 /// assert_eq!(sign, -1.0);
+///
+/// // Negative zero
+/// let (tau_norm, sign) = normalize_tau::<Fermionic>(-0.0, 1.0);
+/// assert!((tau_norm - 1.0).abs() < 1e-14);
+/// assert_eq!(sign, -1.0);
 /// ```
 pub fn normalize_tau<S: StatisticsType>(tau: f64, beta: f64) -> (f64, f64) {
-    // Normalize τ to [0, β) for arbitrary τ ranges
-    // Supports: τ ∈ (-∞, +∞) with periodicity
+    // Normalize τ ∈ [-β, β] to [0, β]
+    // Panics if tau is outside this range
     
-    // Find period number: n = floor(τ / β)
-    let tau_beta = tau / beta;
-    let n = tau_beta.floor();
+    if tau < -beta || tau > beta {
+        panic!("tau = {} is outside allowed range [-beta = {}, beta = {}]", tau, -beta, beta);
+    }
     
-    // Normalize to [0, β)
-    let tau_normalized = tau - n * beta;
+    // Special handling for negative zero: treat as being in odd period
+    if tau.is_sign_negative() && tau == 0.0 {
+        // tau = -0.0
+        return match S::STATISTICS {
+            Statistics::Fermionic => (beta, -1.0),
+            Statistics::Bosonic => (0.0, 1.0),
+        };
+    }
     
-    // Compute sign based on statistics and period parity
+    // If already in [0, β], return as-is with sign = 1
+    if tau >= 0.0 && tau <= beta {
+        return (tau, 1.0);
+    }
+    
+    // tau ∈ [-β, 0): wrap to [0, β]
+    // For tau ∈ (-β, 0): tau_normalized = tau + β
+    // For tau = -β: wraps to 0
+    let tau_normalized = tau + beta;
+    
+    // Sign depends on statistics
     let sign = match S::STATISTICS {
-        Statistics::Fermionic => {
-            // Anti-periodic: G(τ + β) = -G(τ)
-            // Sign flips for each period
-            if n.abs() as i64 % 2 == 0 {
-                1.0
-            } else {
-                -1.0
-            }
-        }
-        Statistics::Bosonic => {
-            // Periodic: G(τ + β) = G(τ)
-            // Sign never flips
-            1.0
-        }
+        Statistics::Fermionic => -1.0,  // Anti-periodic: sign flips
+        Statistics::Bosonic => 1.0,     // Periodic: sign stays
     };
     
     (tau_normalized, sign)
@@ -117,21 +140,45 @@ mod tests {
         let (tau_norm, sign) = normalize_tau::<Fermionic>(beta, beta);
         assert!((tau_norm - beta).abs() < 1e-14);
         assert!((sign - 1.0).abs() < 1e-14);
+        
+        // At 0
+        let (tau_norm, sign) = normalize_tau::<Fermionic>(0.0, beta);
+        assert!(tau_norm.abs() < 1e-14);
+        assert!((sign - 1.0).abs() < 1e-14);
 
         // Negative range
         let (tau_norm, sign) = normalize_tau::<Fermionic>(-0.3, beta);
         assert!((tau_norm - 0.7).abs() < 1e-14);
         assert!((sign - (-1.0)).abs() < 1e-14);
-
-        // Extended range
-        let (tau_norm, sign) = normalize_tau::<Fermionic>(1.2, beta);
-        assert!((tau_norm - 0.2).abs() < 1e-14);
-        assert!((sign - (-1.0)).abs() < 1e-14);
         
-        // Test -β (interpreted as -β + 0, wraps to normal range)
+        // Test -β: wraps to 0 with sign flip
         let (tau_norm, sign) = normalize_tau::<Fermionic>(-beta, beta);
         assert!(tau_norm.abs() < 1e-14);  // wraps to 0
         assert!((sign - (-1.0)).abs() < 1e-14);
+    }
+
+    #[test]
+    fn test_normalize_tau_negative_zero_fermionic() {
+        // Test negative zero: -0.0 should be treated as being in odd period
+        let beta = 1.0;
+        
+        // Negative zero should normalize to beta with sign = -1
+        let (tau_norm, sign) = normalize_tau::<Fermionic>(-0.0, beta);
+        assert!((tau_norm - beta).abs() < 1e-14, 
+                "Expected tau_normalized = {}, got {}", beta, tau_norm);
+        assert!((sign - (-1.0)).abs() < 1e-14, 
+                "Expected sign = -1.0, got {}", sign);
+        
+        // Positive zero should stay at 0 with sign = 1
+        let (tau_norm, sign) = normalize_tau::<Fermionic>(0.0, beta);
+        assert!(tau_norm.abs() < 1e-14, 
+                "Expected tau_normalized = 0.0, got {}", tau_norm);
+        assert!((sign - 1.0).abs() < 1e-14, 
+                "Expected sign = 1.0, got {}", sign);
+        
+        // Verify that Rust distinguishes -0.0 from 0.0
+        assert_ne!((-0.0_f64).to_bits(), 0.0_f64.to_bits(), 
+                   "Rust should distinguish -0.0 from 0.0");
     }
 
     #[test]
@@ -147,20 +194,36 @@ mod tests {
         let (tau_norm, sign) = normalize_tau::<Bosonic>(beta, beta);
         assert!((tau_norm - beta).abs() < 1e-14);
         assert!((sign - 1.0).abs() < 1e-14);
+        
+        // At 0
+        let (tau_norm, sign) = normalize_tau::<Bosonic>(0.0, beta);
+        assert!(tau_norm.abs() < 1e-14);
+        assert!((sign - 1.0).abs() < 1e-14);
 
         // Negative range
         let (tau_norm, sign) = normalize_tau::<Bosonic>(-0.3, beta);
         assert!((tau_norm - 0.7).abs() < 1e-14);
         assert!((sign - 1.0).abs() < 1e-14);
-
-        // Extended range
-        let (tau_norm, sign) = normalize_tau::<Bosonic>(1.2, beta);
-        assert!((tau_norm - 0.2).abs() < 1e-14);
-        assert!((sign - 1.0).abs() < 1e-14);
         
-        // Test -β (interpreted as -β + 0, wraps to normal range)
+        // Test -β: wraps to 0, sign stays 1 (periodic)
         let (tau_norm, sign) = normalize_tau::<Bosonic>(-beta, beta);
         assert!(tau_norm.abs() < 1e-14);  // wraps to 0
         assert!((sign - 1.0).abs() < 1e-14);
+    }
+
+    #[test]
+    #[should_panic(expected = "outside allowed range")]
+    fn test_normalize_tau_out_of_range_positive() {
+        let beta = 1.0;
+        // Should panic for tau > beta
+        let _ = normalize_tau::<Fermionic>(1.5, beta);
+    }
+
+    #[test]
+    #[should_panic(expected = "outside allowed range")]
+    fn test_normalize_tau_out_of_range_negative() {
+        let beta = 1.0;
+        // Should panic for tau < -beta
+        let _ = normalize_tau::<Fermionic>(-1.5, beta);
     }
 }
