@@ -53,6 +53,154 @@ Located at: `/Users/hiroshi/git/sparseir-rust/twofloat/`
 - Start with minimal viable implementation, iterate
 - Comprehensive test suite comparing against libxprec
 
+## Critical Implementation Rules
+
+### ⚠️ MANDATORY REQUIREMENTS ⚠️
+
+These rules MUST be followed without exception:
+
+#### 1. Algorithm Fidelity
+**RULE**: All arithmetic algorithms must be identical to libxprec implementation.
+
+- **Line-by-line correspondence**: Each Rust function must match the corresponding C++ function in libxprec
+- **No simplifications**: Do not "optimize" or "simplify" algorithms without explicit justification
+- **Same precision**: Use identical error bounds and flop counts
+- **Reference required**: Every algorithm must cite the exact C++ file and line numbers it's ported from
+
+**Example**:
+```rust
+/// Port of libxprec/src/floats.cpp:42-48
+/// Algorithm 4 from Joldeș et al. (2018), p.10
+/// Cost: 10 flops, Error bound: 2u²
+#[inline]
+fn add_dd_d(x: DDouble, y: f64) -> DDouble {
+    // Exact translation of C++ code
+    let (s, e) = two_sum(x.hi(), y);
+    let v = x.lo() + e;
+    fast_two_sum(s, v)
+}
+```
+
+**Verification**:
+- Side-by-side code review with C++ source
+- Bit-exact output comparison for test cases
+- Document any intentional deviations (with rationale and approval)
+
+#### 2. Test Coverage
+**RULE**: All tests from libxprec must be ported without omission.
+
+- **Complete test suite**: Port every test from libxprec/test/ directory
+- **Same test cases**: Use identical input values and test scenarios
+- **No skipping**: Do not skip tests because "Rust is different" or "not applicable"
+- **Add, don't subtract**: New tests can be added, but existing ones cannot be removed
+
+**Test inventory checklist**:
+```
+libxprec/test/
+├── [ ] arith.cpp          → tests/arith.rs
+├── [ ] circular.cpp       → tests/circular.rs  
+├── [ ] compare-mpfloat.hpp → tests/compare_mpfloat.rs
+├── [ ] convert.cpp        → tests/convert.rs
+├── [ ] eigen.cpp          → tests/eigen.rs (if implementing Eigen integration)
+├── [ ] exp.cpp            → tests/exp.rs
+├── [ ] gauss.cpp          → tests/gauss.rs
+├── [ ] hyperbolic.cpp     → tests/hyperbolic.rs
+├── [ ] inline.cpp         → tests/inline.rs
+├── [ ] limits.cpp         → tests/limits.rs
+├── [ ] mpfloat.cpp        → tests/mpfloat.rs (MPFR reference tests)
+├── [ ] random.cpp         → tests/random.rs
+├── [ ] round.cpp          → tests/round.rs
+└── [ ] sqrt.cpp           → tests/sqrt.rs
+```
+
+**Documentation**: Each test module must document which C++ test file it corresponds to.
+
+#### 3. Precision Requirements
+**RULE**: Error tolerances must NOT be relaxed from libxprec values.
+
+- **Exact tolerances**: Use the same epsilon/tolerance values as C++ tests
+- **No rounding up**: If libxprec uses `1e-30`, do not use `1e-29` or `1e-15`
+- **Document bounds**: Every function must state its proven error bound in doc comments
+- **Verify bounds**: Test must verify error is within the stated bound
+
+**Tolerance specification**:
+```rust
+/// Error bound: 2u² where u² ≈ 1.32e-32
+const TOLERANCE_2U2: f64 = 2.64e-32;
+
+#[test]
+fn test_add_dd_d() {
+    let x = DDouble::from_parts(1.0, 1e-20);
+    let y = 0.5;
+    let result = x + y;
+    let expected = DDouble::from_parts(1.5, 1e-20);
+    
+    // Must use proven error bound, not arbitrary tolerance
+    assert_approx_eq!(result, expected, TOLERANCE_2U2);
+}
+```
+
+**Forbidden practices**:
+- ❌ Using `assert!((a - b).abs() < 1e-10)` without justification
+- ❌ Increasing tolerance because "test is flaky"
+- ❌ Skipping precision checks for "performance"
+- ❌ Using different tolerance for Rust than C++
+
+#### 4. Verification Strategy
+
+**Before marking any component as "complete"**:
+
+1. **Algorithm Review**:
+   - [ ] Compare Rust code side-by-side with C++ source
+   - [ ] Verify identical structure and operations
+   - [ ] Document any differences (with explanation)
+
+2. **Test Verification**:
+   - [ ] Count tests in C++ file
+   - [ ] Count tests in Rust file
+   - [ ] Verify counts match
+   - [ ] Run diff on test outputs (Rust vs C++)
+
+3. **Precision Verification**:
+   - [ ] Extract tolerance values from C++ tests
+   - [ ] Verify Rust tests use same values
+   - [ ] Run MPFR comparison tests (high-precision reference)
+   - [ ] Verify error bounds match paper citations
+
+4. **Documentation**:
+   - [ ] Every function cites C++ source location
+   - [ ] Every test cites C++ test location
+   - [ ] Every error bound cites paper theorem
+   - [ ] Deviations (if any) are explicitly documented
+
+#### 5. Review Process
+
+**Pull Request Requirements**:
+- Must include "Fidelity Checklist" comparing with C++ code
+- Must include test coverage report showing 100% of C++ tests ported
+- Must include precision verification results
+- Must include benchmark comparison with C++ libxprec
+
+**Example PR Checklist**:
+```markdown
+## Fidelity Checklist
+- [ ] Algorithm matches libxprec/src/exp.cpp:42-89
+- [ ] All 15 tests from test/exp.cpp ported
+- [ ] Tolerance values match (1e-30 for exp, 1e-28 for expm1)
+- [ ] Error bounds verified against Joldeș et al. (2018) Theorem 3.2
+- [ ] Benchmark shows performance within 10% of C++
+```
+
+### Consequences of Rule Violations
+
+**If any rule is violated**:
+1. PR will be rejected
+2. Code must be revised to match libxprec
+3. Tests must be restored to full coverage
+4. Tolerances must be corrected to proven bounds
+
+**Rationale**: The purpose of this port is to provide a **faithful** Rust implementation of libxprec, not a "Rust-ified" approximation. Users depend on the proven numerical properties and exhaustive testing of the C++ library.
+
 ## Proposed Architecture
 
 ### Directory Structure
@@ -580,12 +728,17 @@ impl<const N: usize> DDouble {
 
 ---
 
-**Document Version**: 3.0
+**Document Version**: 4.0
 **Changes**: 
 - Focused on Option B (Fresh Implementation)
 - Added comprehensive num-traits integration section
 - Removed timeline sections (phases and week-by-week roadmap)
 - Streamlined to core design and architecture
+- **Added Critical Implementation Rules** (mandatory requirements):
+  - Algorithm fidelity: Must match libxprec exactly
+  - Test coverage: All tests must be ported without omission
+  - Precision requirements: No relaxing of error tolerances
+  - Verification strategy and review process
 **Last Updated**: 2025-10-17
 **Status**: Ready for implementation
 
