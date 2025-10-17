@@ -728,7 +728,7 @@ impl<const N: usize> DDouble {
 
 ---
 
-**Document Version**: 4.0
+**Document Version**: 4.1
 **Changes**: 
 - Focused on Option B (Fresh Implementation)
 - Added comprehensive num-traits integration section
@@ -739,6 +739,10 @@ impl<const N: usize> DDouble {
   - Test coverage: All tests must be ported without omission
   - Precision requirements: No relaxing of error tolerances
   - Verification strategy and review process
+- **Updated libxprec reference**: Updated to v0.8-24-g296235c (2025-10-01)
+  - Intel compiler compatibility improvements
+  - CI enhancements for Intel C++ compiler
+  - Pragmas fixes for better cross-compiler support
 **Last Updated**: 2025-10-17
 **Status**: Ready for implementation
 
