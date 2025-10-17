@@ -920,7 +920,3 @@ pub fn default_sampling_points(
 #[cfg(test)]
 #[path = "poly_tests.rs"]
 mod poly_tests;
-
-#[cfg(test)]
-#[path = "poly_rescale_tests.rs"]
-mod poly_rescale_tests;
