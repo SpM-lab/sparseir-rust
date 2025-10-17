@@ -3,27 +3,30 @@
 //! This crate provides a C-compatible interface to the SparseIR library,
 //! enabling usage from languages like Julia, Python, Fortran, and C++.
 
+// C API requires unsafe operations with raw pointers
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 #[macro_use]
 mod macros;
 
-mod utils;
-mod types;
-mod kernel;
-mod sve;
 mod basis;
-mod funcs;
-mod sampling;
 mod dlr;
+mod funcs;
 mod gemm;
+mod kernel;
+mod sampling;
+mod sve;
+mod types;
+mod utils;
 
-pub use types::*;
-pub use kernel::*;
-pub use sve::*;
 pub use basis::*;
-pub use funcs::*;
-pub use sampling::*;
 pub use dlr::*;
+pub use funcs::*;
 pub use gemm::*;
+pub use kernel::*;
+pub use sampling::*;
+pub use sve::*;
+pub use types::*;
 
 /// Error codes for C API (compatible with libsparseir)
 pub type StatusCode = libc::c_int;
@@ -37,9 +40,6 @@ pub const SPIR_OUTPUT_DIMENSION_MISMATCH: StatusCode = -4;
 pub const SPIR_NOT_SUPPORTED: StatusCode = -5;
 pub const SPIR_INVALID_ARGUMENT: StatusCode = -6;
 pub const SPIR_INTERNAL_ERROR: StatusCode = -7;
-
-// Aliases for convenience
-pub const SPIR_SUCCESS: StatusCode = SPIR_COMPUTATION_SUCCESS;
 
 // Order type constants (matching libsparseir)
 pub const SPIR_ORDER_ROW_MAJOR: libc::c_int = 0;

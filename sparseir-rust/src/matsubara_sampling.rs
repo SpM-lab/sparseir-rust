@@ -6,7 +6,7 @@
 use crate::fitter::{ComplexMatrixFitter, ComplexToRealFitter};
 use crate::freq::MatsubaraFreq;
 use crate::traits::StatisticsType;
-use mdarray::{DTensor, Tensor, DynRank, Shape};
+use mdarray::{DTensor, DynRank, Shape, Tensor};
 use num_complex::Complex;
 use std::marker::PhantomData;
 
@@ -15,11 +15,21 @@ fn movedim<T: Clone>(arr: &Tensor<T, DynRank>, src: usize, dst: usize) -> Tensor
     if src == dst {
         return arr.clone();
     }
-    
+
     let rank = arr.rank();
-    assert!(src < rank, "src axis {} out of bounds for rank {}", src, rank);
-    assert!(dst < rank, "dst axis {} out of bounds for rank {}", dst, rank);
-    
+    assert!(
+        src < rank,
+        "src axis {} out of bounds for rank {}",
+        src,
+        rank
+    );
+    assert!(
+        dst < rank,
+        "dst axis {} out of bounds for rank {}",
+        dst,
+        rank
+    );
+
     // Generate permutation: move src to dst position
     let mut perm = Vec::with_capacity(rank);
     let mut pos = 0;
@@ -36,7 +46,7 @@ fn movedim<T: Clone>(arr: &Tensor<T, DynRank>, src: usize, dst: usize) -> Tensor
             }
         }
     }
-    
+
     arr.permute(&perm[..]).to_tensor()
 }
 
@@ -60,7 +70,7 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
         let sampling_points = basis.default_matsubara_sampling_points(false);
         Self::with_sampling_points(basis, sampling_points)
     }
-    
+
     /// Create Matsubara sampling with custom sampling points
     pub fn with_sampling_points(
         basis: &impl crate::basis_trait::Basis<S>,
@@ -71,21 +81,21 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
     {
         // Sort sampling points
         sampling_points.sort();
-        
+
         // Evaluate matrix at sampling points
         // Use Basis trait's evaluate_matsubara method
         let matrix = basis.evaluate_matsubara(&sampling_points);
-        
+
         // Create fitter (complex → complex, no symmetry)
         let fitter = ComplexMatrixFitter::new(matrix);
-        
+
         Self {
             sampling_points,
             fitter,
             _phantom: PhantomData,
         }
     }
-    
+
     /// Create Matsubara sampling with custom sampling points and pre-computed matrix
     ///
     /// This constructor is useful when the sampling matrix is already computed
@@ -105,37 +115,41 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
         matrix: DTensor<Complex<f64>, 2>,
     ) -> Self {
         assert!(!sampling_points.is_empty(), "No sampling points given");
-        assert_eq!(matrix.shape().0, sampling_points.len(), 
-            "Matrix rows ({}) must match number of sampling points ({})", 
-            matrix.shape().0, sampling_points.len());
-        
+        assert_eq!(
+            matrix.shape().0,
+            sampling_points.len(),
+            "Matrix rows ({}) must match number of sampling points ({})",
+            matrix.shape().0,
+            sampling_points.len()
+        );
+
         // Sort sampling points
         sampling_points.sort();
-        
+
         let fitter = ComplexMatrixFitter::new(matrix);
-        
+
         Self {
             sampling_points,
             fitter,
             _phantom: PhantomData,
         }
     }
-    
+
     /// Get sampling points
     pub fn sampling_points(&self) -> &[MatsubaraFreq<S>] {
         &self.sampling_points
     }
-    
+
     /// Number of sampling points
     pub fn n_sampling_points(&self) -> usize {
         self.sampling_points.len()
     }
-    
+
     /// Basis size
     pub fn basis_size(&self) -> usize {
         self.fitter.basis_size()
     }
-    
+
     /// Evaluate complex basis coefficients at sampling points
     ///
     /// # Arguments
@@ -146,7 +160,7 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
     pub fn evaluate(&self, coeffs: &[Complex<f64>]) -> Vec<Complex<f64>> {
         self.fitter.evaluate(coeffs)
     }
-    
+
     /// Fit complex basis coefficients from values at sampling points
     ///
     /// # Arguments
@@ -157,7 +171,7 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
     pub fn fit(&self, values: &[Complex<f64>]) -> Vec<Complex<f64>> {
         self.fitter.fit(values)
     }
-    
+
     /// Evaluate N-dimensional array of complex basis coefficients at sampling points
     ///
     /// # Arguments
@@ -173,36 +187,35 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
     ) -> Tensor<Complex<f64>, DynRank> {
         let rank = coeffs.rank();
         assert!(dim < rank, "dim={} must be < rank={}", dim, rank);
-        
+
         let basis_size = self.basis_size();
         let target_dim_size = coeffs.shape().dim(dim);
-        
+
         assert_eq!(
-            target_dim_size,
-            basis_size,
+            target_dim_size, basis_size,
             "coeffs.shape().dim({}) = {} must equal basis_size = {}",
-            dim,
-            target_dim_size,
-            basis_size
+            dim, target_dim_size, basis_size
         );
-        
+
         // 1. Move target dimension to position 0
         let coeffs_dim0 = movedim(coeffs, dim, 0);
-        
+
         // 2. Reshape to 2D: (basis_size, extra_size)
         let extra_size: usize = coeffs_dim0.len() / basis_size;
-        
-        let coeffs_2d_dyn = coeffs_dim0.reshape(&[basis_size, extra_size][..]).to_tensor();
-        
+
+        let coeffs_2d_dyn = coeffs_dim0
+            .reshape(&[basis_size, extra_size][..])
+            .to_tensor();
+
         // 3. Convert to DTensor and evaluate using GEMM
         let coeffs_2d = DTensor::<Complex<f64>, 2>::from_fn([basis_size, extra_size], |idx| {
             coeffs_2d_dyn[&[idx[0], idx[1]][..]]
         });
-        
+
         // Use fitter's efficient 2D evaluate (GEMM-based)
         let n_points = self.n_sampling_points();
         let result_2d = self.fitter.evaluate_2d(&coeffs_2d);
-        
+
         // 4. Reshape back to N-D with n_points at position 0
         let mut result_shape = vec![n_points];
         coeffs_dim0.shape().with_dims(|dims| {
@@ -210,13 +223,13 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
                 result_shape.push(dims[i]);
             }
         });
-        
+
         let result_dim0 = result_2d.into_dyn().reshape(&result_shape[..]).to_tensor();
-        
+
         // 5. Move dimension 0 back to original position dim
         movedim(&result_dim0, 0, dim)
     }
-    
+
     /// Evaluate real basis coefficients at Matsubara sampling points (N-dimensional)
     ///
     /// This method takes real coefficients and produces complex values, useful when
@@ -235,35 +248,34 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
     ) -> Tensor<Complex<f64>, DynRank> {
         let rank = coeffs.rank();
         assert!(dim < rank, "dim={} must be < rank={}", dim, rank);
-        
+
         let basis_size = self.basis_size();
         let target_dim_size = coeffs.shape().dim(dim);
-        
+
         assert_eq!(
-            target_dim_size,
-            basis_size,
+            target_dim_size, basis_size,
             "coeffs.shape().dim({}) = {} must equal basis_size = {}",
-            dim,
-            target_dim_size,
-            basis_size
+            dim, target_dim_size, basis_size
         );
-        
+
         // 1. Move target dimension to position 0
         let coeffs_dim0 = movedim(coeffs, dim, 0);
-        
+
         // 2. Reshape to 2D: (basis_size, extra_size)
         let extra_size: usize = coeffs_dim0.len() / basis_size;
-        
-        let coeffs_2d_dyn = coeffs_dim0.reshape(&[basis_size, extra_size][..]).to_tensor();
-        
+
+        let coeffs_2d_dyn = coeffs_dim0
+            .reshape(&[basis_size, extra_size][..])
+            .to_tensor();
+
         // 3. Convert to DTensor and evaluate using ComplexMatrixFitter
         let coeffs_2d = DTensor::<f64, 2>::from_fn([basis_size, extra_size], |idx| {
             coeffs_2d_dyn[&[idx[0], idx[1]][..]]
         });
-        
+
         // 4. Evaluate: values = A * coeffs (A is complex, coeffs is real)
         let values_2d = self.fitter.evaluate_2d_real(&coeffs_2d);
-        
+
         // 5. Reshape result back to N-D with first dimension = n_sampling_points
         let n_points = self.n_sampling_points();
         let mut result_shape = Vec::with_capacity(rank);
@@ -273,13 +285,13 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
                 result_shape.push(dims[i]);
             }
         });
-        
+
         let result_dim0 = values_2d.into_dyn().reshape(&result_shape[..]).to_tensor();
-        
+
         // 6. Move dimension 0 back to original position dim
         movedim(&result_dim0, 0, dim)
     }
-    
+
     /// Fit N-dimensional array of complex values to complex basis coefficients
     ///
     /// # Arguments
@@ -295,34 +307,31 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
     ) -> Tensor<Complex<f64>, DynRank> {
         let rank = values.rank();
         assert!(dim < rank, "dim={} must be < rank={}", dim, rank);
-        
+
         let n_points = self.n_sampling_points();
         let target_dim_size = values.shape().dim(dim);
-        
+
         assert_eq!(
-            target_dim_size,
-            n_points,
+            target_dim_size, n_points,
             "values.shape().dim({}) = {} must equal n_sampling_points = {}",
-            dim,
-            target_dim_size,
-            n_points
+            dim, target_dim_size, n_points
         );
-        
+
         // 1. Move target dimension to position 0
         let values_dim0 = movedim(values, dim, 0);
-        
+
         // 2. Reshape to 2D: (n_points, extra_size)
         let extra_size: usize = values_dim0.len() / n_points;
         let values_2d_dyn = values_dim0.reshape(&[n_points, extra_size][..]).to_tensor();
-        
+
         // 3. Convert to DTensor and fit using GEMM
         let values_2d = DTensor::<Complex<f64>, 2>::from_fn([n_points, extra_size], |idx| {
             values_2d_dyn[&[idx[0], idx[1]][..]]
         });
-        
+
         // Use fitter's efficient 2D fit (GEMM-based)
         let coeffs_2d = self.fitter.fit_2d(&values_2d);
-        
+
         // 4. Reshape back to N-D with basis_size at position 0
         let basis_size = self.basis_size();
         let mut coeffs_shape = vec![basis_size];
@@ -331,13 +340,13 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
                 coeffs_shape.push(dims[i]);
             }
         });
-        
+
         let coeffs_dim0 = coeffs_2d.into_dyn().reshape(&coeffs_shape[..]).to_tensor();
-        
+
         // 5. Move dimension 0 back to original position dim
         movedim(&coeffs_dim0, 0, dim)
     }
-    
+
     /// Fit N-dimensional array of complex values to real basis coefficients
     ///
     /// This method fits complex Matsubara values to real IR coefficients.
@@ -356,34 +365,31 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
     ) -> Tensor<f64, DynRank> {
         let rank = values.rank();
         assert!(dim < rank, "dim={} must be < rank={}", dim, rank);
-        
+
         let n_points = self.n_sampling_points();
         let target_dim_size = values.shape().dim(dim);
-        
+
         assert_eq!(
-            target_dim_size,
-            n_points,
+            target_dim_size, n_points,
             "values.shape().dim({}) = {} must equal n_sampling_points = {}",
-            dim,
-            target_dim_size,
-            n_points
+            dim, target_dim_size, n_points
         );
-        
+
         // 1. Move target dimension to position 0
         let values_dim0 = movedim(values, dim, 0);
-        
+
         // 2. Reshape to 2D: (n_points, extra_size)
         let extra_size: usize = values_dim0.len() / n_points;
         let values_2d_dyn = values_dim0.reshape(&[n_points, extra_size][..]).to_tensor();
-        
+
         // 3. Convert to DTensor and fit
         let values_2d = DTensor::<Complex<f64>, 2>::from_fn([n_points, extra_size], |idx| {
             values_2d_dyn[&[idx[0], idx[1]][..]]
         });
-        
+
         // Use fitter's fit_2d_real method
         let coeffs_2d = self.fitter.fit_2d_real(&values_2d);
-        
+
         // 4. Reshape back to N-D with basis_size at position 0
         let basis_size = self.basis_size();
         let mut coeffs_shape = vec![basis_size];
@@ -392,9 +398,9 @@ impl<S: StatisticsType> MatsubaraSampling<S> {
                 coeffs_shape.push(dims[i]);
             }
         });
-        
+
         let coeffs_dim0 = coeffs_2d.into_dyn().reshape(&coeffs_shape[..]).to_tensor();
-        
+
         // 5. Move dimension 0 back to original position dim
         movedim(&coeffs_dim0, 0, dim)
     }
@@ -422,7 +428,7 @@ impl<S: StatisticsType> MatsubaraSamplingPositiveOnly<S> {
         let sampling_points = basis.default_matsubara_sampling_points(true);
         Self::with_sampling_points(basis, sampling_points)
     }
-    
+
     /// Create Matsubara sampling with custom positive-only sampling points
     pub fn with_sampling_points(
         basis: &impl crate::basis_trait::Basis<S>,
@@ -433,23 +439,23 @@ impl<S: StatisticsType> MatsubaraSamplingPositiveOnly<S> {
     {
         // Sort and validate (all n >= 0)
         sampling_points.sort();
-        
+
         // TODO: Validate that all points are non-negative
-        
+
         // Evaluate matrix at sampling points
         // Use Basis trait's evaluate_matsubara method
         let matrix = basis.evaluate_matsubara(&sampling_points);
-        
+
         // Create fitter (complex → real, exploits symmetry)
         let fitter = ComplexToRealFitter::new(&matrix);
-        
+
         Self {
             sampling_points,
             fitter,
             _phantom: PhantomData,
         }
     }
-    
+
     /// Create Matsubara sampling (positive-only) with custom sampling points and pre-computed matrix
     ///
     /// This constructor is useful when the sampling matrix is already computed.
@@ -469,47 +475,51 @@ impl<S: StatisticsType> MatsubaraSamplingPositiveOnly<S> {
         matrix: DTensor<Complex<f64>, 2>,
     ) -> Self {
         assert!(!sampling_points.is_empty(), "No sampling points given");
-        assert_eq!(matrix.shape().0, sampling_points.len(), 
-            "Matrix rows ({}) must match number of sampling points ({})", 
-            matrix.shape().0, sampling_points.len());
-        
+        assert_eq!(
+            matrix.shape().0,
+            sampling_points.len(),
+            "Matrix rows ({}) must match number of sampling points ({})",
+            matrix.shape().0,
+            sampling_points.len()
+        );
+
         // Sort sampling points
         sampling_points.sort();
-        
+
         let fitter = ComplexToRealFitter::new(&matrix);
-        
+
         Self {
             sampling_points,
             fitter,
             _phantom: PhantomData,
         }
     }
-    
+
     /// Get sampling points
     pub fn sampling_points(&self) -> &[MatsubaraFreq<S>] {
         &self.sampling_points
     }
-    
+
     /// Number of sampling points
     pub fn n_sampling_points(&self) -> usize {
         self.sampling_points.len()
     }
-    
+
     /// Basis size
     pub fn basis_size(&self) -> usize {
         self.fitter.basis_size()
     }
-    
+
     /// Evaluate basis coefficients at sampling points
     pub fn evaluate(&self, coeffs: &[f64]) -> Vec<Complex<f64>> {
         self.fitter.evaluate(coeffs)
     }
-    
+
     /// Fit basis coefficients from values at sampling points
     pub fn fit(&self, values: &[Complex<f64>]) -> Vec<f64> {
         self.fitter.fit(values)
     }
-    
+
     /// Evaluate N-dimensional array of real basis coefficients at sampling points
     ///
     /// # Arguments
@@ -525,35 +535,34 @@ impl<S: StatisticsType> MatsubaraSamplingPositiveOnly<S> {
     ) -> Tensor<Complex<f64>, DynRank> {
         let rank = coeffs.rank();
         assert!(dim < rank, "dim={} must be < rank={}", dim, rank);
-        
+
         let basis_size = self.basis_size();
         let target_dim_size = coeffs.shape().dim(dim);
-        
+
         assert_eq!(
-            target_dim_size,
-            basis_size,
+            target_dim_size, basis_size,
             "coeffs.shape().dim({}) = {} must equal basis_size = {}",
-            dim,
-            target_dim_size,
-            basis_size
+            dim, target_dim_size, basis_size
         );
-        
+
         // 1. Move target dimension to position 0
         let coeffs_dim0 = movedim(coeffs, dim, 0);
-        
+
         // 2. Reshape to 2D: (basis_size, extra_size)
         let extra_size: usize = coeffs_dim0.len() / basis_size;
-        
-        let coeffs_2d_dyn = coeffs_dim0.reshape(&[basis_size, extra_size][..]).to_tensor();
-        
+
+        let coeffs_2d_dyn = coeffs_dim0
+            .reshape(&[basis_size, extra_size][..])
+            .to_tensor();
+
         // 3. Convert to DTensor and evaluate using GEMM
         let coeffs_2d = DTensor::<f64, 2>::from_fn([basis_size, extra_size], |idx| {
             coeffs_2d_dyn[&[idx[0], idx[1]][..]]
         });
-        
+
         // Use fitter's efficient 2D evaluate (GEMM-based)
         let result_2d = self.fitter.evaluate_2d(&coeffs_2d);
-        
+
         // 4. Reshape back to N-D with n_points at position 0
         let n_points = self.n_sampling_points();
         let mut result_shape = vec![n_points];
@@ -562,13 +571,13 @@ impl<S: StatisticsType> MatsubaraSamplingPositiveOnly<S> {
                 result_shape.push(dims[i]);
             }
         });
-        
+
         let result_dim0 = result_2d.into_dyn().reshape(&result_shape[..]).to_tensor();
-        
+
         // 5. Move dimension 0 back to original position dim
         movedim(&result_dim0, 0, dim)
     }
-    
+
     /// Fit N-dimensional array of complex values to real basis coefficients
     ///
     /// # Arguments
@@ -584,34 +593,31 @@ impl<S: StatisticsType> MatsubaraSamplingPositiveOnly<S> {
     ) -> Tensor<f64, DynRank> {
         let rank = values.rank();
         assert!(dim < rank, "dim={} must be < rank={}", dim, rank);
-        
+
         let n_points = self.n_sampling_points();
         let target_dim_size = values.shape().dim(dim);
-        
+
         assert_eq!(
-            target_dim_size,
-            n_points,
+            target_dim_size, n_points,
             "values.shape().dim({}) = {} must equal n_sampling_points = {}",
-            dim,
-            target_dim_size,
-            n_points
+            dim, target_dim_size, n_points
         );
-        
+
         // 1. Move target dimension to position 0
         let values_dim0 = movedim(values, dim, 0);
-        
+
         // 2. Reshape to 2D: (n_points, extra_size)
         let extra_size: usize = values_dim0.len() / n_points;
         let values_2d_dyn = values_dim0.reshape(&[n_points, extra_size][..]).to_tensor();
-        
+
         // 3. Convert to DTensor and fit using GEMM
         let values_2d = DTensor::<Complex<f64>, 2>::from_fn([n_points, extra_size], |idx| {
             values_2d_dyn[&[idx[0], idx[1]][..]]
         });
-        
+
         // Use fitter's efficient 2D fit (GEMM-based)
         let coeffs_2d = self.fitter.fit_2d(&values_2d);
-        
+
         // 4. Reshape back to N-D with basis_size at position 0
         let basis_size = self.basis_size();
         let mut coeffs_shape = vec![basis_size];
@@ -620,15 +626,13 @@ impl<S: StatisticsType> MatsubaraSamplingPositiveOnly<S> {
                 coeffs_shape.push(dims[i]);
             }
         });
-        
+
         let coeffs_dim0 = coeffs_2d.into_dyn().reshape(&coeffs_shape[..]).to_tensor();
-        
+
         // 5. Move dimension 0 back to original position dim
         movedim(&coeffs_dim0, 0, dim)
     }
 }
-
-
 
 #[cfg(test)]
 #[path = "matsubara_sampling_tests.rs"]

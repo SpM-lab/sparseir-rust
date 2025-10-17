@@ -11,10 +11,10 @@
 //! # Example
 //! ```ignore
 //! use sparseir_rust::gemm::{matmul_par, set_blas_backend};
-//! 
+//!
 //! // Use default Faer backend
 //! let c = matmul_par(&a, &b);
-//! 
+//!
 //! // Or inject custom BLAS (from C-API)
 //! unsafe {
 //!     set_blas_backend(my_dgemm_ptr, my_zgemm_ptr);
@@ -23,8 +23,8 @@
 //! ```
 
 use mdarray::DTensor;
-use std::sync::RwLock;
 use once_cell::sync::Lazy;
+use std::sync::RwLock;
 
 //==============================================================================
 // BLAS Function Pointer Types
@@ -146,15 +146,7 @@ const CBLAS_NO_TRANS: libc::c_int = 111;
 /// GEMM backend trait for runtime dispatch
 pub trait GemmBackend: Send + Sync {
     /// Matrix multiplication: C = A * B (f64)
-    fn dgemm(
-        &self,
-        m: usize,
-        n: usize,
-        k: usize,
-        a: &[f64],
-        b: &[f64],
-        c: &mut [f64],
-    );
+    fn dgemm(&self, m: usize, n: usize, k: usize, a: &[f64], b: &[f64], c: &mut [f64]);
 
     /// Matrix multiplication: C = A * B (Complex<f64>)
     fn zgemm(
@@ -216,8 +208,10 @@ impl GemmBackend for FaerBackend {
         use mdarray_linalg_faer::Faer;
 
         // Create tensors from slices (row-major order)
-        let a_tensor = DTensor::<num_complex::Complex<f64>, 2>::from_fn([m, k], |idx| a[idx[0] * k + idx[1]]);
-        let b_tensor = DTensor::<num_complex::Complex<f64>, 2>::from_fn([k, n], |idx| b[idx[0] * n + idx[1]]);
+        let a_tensor =
+            DTensor::<num_complex::Complex<f64>, 2>::from_fn([m, k], |idx| a[idx[0] * k + idx[1]]);
+        let b_tensor =
+            DTensor::<num_complex::Complex<f64>, 2>::from_fn([k, n], |idx| b[idx[0] * n + idx[1]]);
 
         // Perform matrix multiplication
         let c_tensor = Faer.matmul(&a_tensor, &b_tensor).parallelize().eval();
@@ -248,9 +242,18 @@ struct ExternalBlasBackend {
 impl GemmBackend for ExternalBlasBackend {
     fn dgemm(&self, m: usize, n: usize, k: usize, a: &[f64], b: &[f64], c: &mut [f64]) {
         // Validate dimensions fit in i32
-        assert!(m <= i32::MAX as usize, "Matrix dimension m too large for LP64 BLAS");
-        assert!(n <= i32::MAX as usize, "Matrix dimension n too large for LP64 BLAS");
-        assert!(k <= i32::MAX as usize, "Matrix dimension k too large for LP64 BLAS");
+        assert!(
+            m <= i32::MAX as usize,
+            "Matrix dimension m too large for LP64 BLAS"
+        );
+        assert!(
+            n <= i32::MAX as usize,
+            "Matrix dimension n too large for LP64 BLAS"
+        );
+        assert!(
+            k <= i32::MAX as usize,
+            "Matrix dimension k too large for LP64 BLAS"
+        );
 
         unsafe {
             (self.dgemm)(
@@ -260,14 +263,14 @@ impl GemmBackend for ExternalBlasBackend {
                 m as i32,
                 n as i32,
                 k as i32,
-                1.0,                  // alpha
+                1.0, // alpha
                 a.as_ptr(),
-                m as i32,             // lda
+                m as i32, // lda
                 b.as_ptr(),
-                k as i32,             // ldb
-                0.0,                  // beta
+                k as i32, // ldb
+                0.0,      // beta
                 c.as_mut_ptr(),
-                m as i32,             // ldc
+                m as i32, // ldc
             );
         }
     }
@@ -281,9 +284,18 @@ impl GemmBackend for ExternalBlasBackend {
         b: &[num_complex::Complex<f64>],
         c: &mut [num_complex::Complex<f64>],
     ) {
-        assert!(m <= i32::MAX as usize, "Matrix dimension m too large for LP64 BLAS");
-        assert!(n <= i32::MAX as usize, "Matrix dimension n too large for LP64 BLAS");
-        assert!(k <= i32::MAX as usize, "Matrix dimension k too large for LP64 BLAS");
+        assert!(
+            m <= i32::MAX as usize,
+            "Matrix dimension m too large for LP64 BLAS"
+        );
+        assert!(
+            n <= i32::MAX as usize,
+            "Matrix dimension n too large for LP64 BLAS"
+        );
+        assert!(
+            k <= i32::MAX as usize,
+            "Matrix dimension k too large for LP64 BLAS"
+        );
 
         let alpha = num_complex::Complex::new(1.0, 0.0);
         let beta = num_complex::Complex::new(0.0, 0.0);
@@ -387,9 +399,8 @@ impl GemmBackend for ExternalBlas64Backend {
 //==============================================================================
 
 /// Global BLAS dispatcher (thread-safe)
-static BLAS_DISPATCHER: Lazy<RwLock<Box<dyn GemmBackend>>> = Lazy::new(|| {
-    RwLock::new(Box::new(FaerBackend))
-});
+static BLAS_DISPATCHER: Lazy<RwLock<Box<dyn GemmBackend>>> =
+    Lazy::new(|| RwLock::new(Box::new(FaerBackend)));
 
 /// Set BLAS backend (LP64: 32-bit integers)
 ///
@@ -486,11 +497,9 @@ where
 
     // Validate dimensions
     assert_eq!(
-        k,
-        k2,
+        k, k2,
         "Matrix dimension mismatch: A.cols ({}) != B.rows ({})",
-        k,
-        k2
+        k, k2
     );
 
     let dispatcher = BLAS_DISPATCHER.read().unwrap();
@@ -520,8 +529,12 @@ where
         dispatcher.zgemm(m, n, k, a_slice, b_slice, &mut c_vec);
 
         // Convert back to DTensor
-        let c_tensor = DTensor::<num_complex::Complex<f64>, 2>::from_fn([m, n], |idx| c_vec[idx[0] * n + idx[1]]);
-        unsafe { std::mem::transmute::<DTensor<num_complex::Complex<f64>, 2>, DTensor<T, 2>>(c_tensor) }
+        let c_tensor = DTensor::<num_complex::Complex<f64>, 2>::from_fn([m, n], |idx| {
+            c_vec[idx[0] * n + idx[1]]
+        });
+        unsafe {
+            std::mem::transmute::<DTensor<num_complex::Complex<f64>, 2>, DTensor<T, 2>>(c_tensor)
+        }
     } else {
         panic!("Unsupported type for matmul_par: only f64 and Complex<f64> are supported");
     }
@@ -549,9 +562,9 @@ mod tests {
 
     #[test]
     fn test_matmul_f64() {
-        let a_data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let b_data = vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0];
-        
+        let a_data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let b_data = [7.0, 8.0, 9.0, 10.0, 11.0, 12.0];
+
         let a = DTensor::<f64, 2>::from_fn([2, 3], |idx| a_data[idx[0] * 3 + idx[1]]);
         let b = DTensor::<f64, 2>::from_fn([3, 2], |idx| b_data[idx[0] * 2 + idx[1]]);
         let c = matmul_par(&a, &b);
@@ -571,7 +584,7 @@ mod tests {
         let a: DTensor<f64, 2> = tensor![[1.0, 2.0], [3.0, 4.0]];
         let b: DTensor<f64, 2> = tensor![[5.0, 6.0], [7.0, 8.0]];
         let c = matmul_par(&a, &b);
-        
+
         // Expected: [[1*5+2*7, 1*6+2*8], [3*5+4*7, 3*6+4*8]]
         //         = [[19, 22], [43, 50]]
         assert!((c[[0, 0]] - 19.0).abs() < 1e-10);
@@ -586,7 +599,7 @@ mod tests {
         let a: DTensor<f64, 2> = tensor![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]; // 2x3
         let b: DTensor<f64, 2> = tensor![[7.0], [8.0], [9.0]]; // 3x1
         let c = matmul_par(&a, &b);
-        
+
         // Expected: [[1*7+2*8+3*9], [4*7+5*8+6*9]]
         //         = [[50], [122]]
         assert!((c[[0, 0]] - 50.0).abs() < 1e-10);

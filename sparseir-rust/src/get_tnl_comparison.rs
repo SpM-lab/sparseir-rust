@@ -1,8 +1,8 @@
-use mdarray::tensor;
 use crate::poly::PiecewiseLegendrePoly;
 use crate::polyfourier::{FermionicPiecewiseLegendreFT, PiecewiseLegendreFT};
 use crate::special_functions::spherical_bessel_j;
 use crate::traits::Fermionic;
+use mdarray::tensor;
 
 /// Test to compare get_tnl implementation with expected values
 /// This is a simplified test - in practice we would need reference values from C++

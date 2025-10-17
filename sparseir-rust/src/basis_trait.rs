@@ -4,8 +4,8 @@
 //! (IR basis, DLR basis, augmented basis, etc.) in imaginary-time/frequency domains.
 
 use crate::freq::MatsubaraFreq;
-use crate::traits::StatisticsType;
 use crate::kernel::KernelProperties;
+use crate::traits::StatisticsType;
 
 /// Common trait for basis representations in imaginary-time/frequency domains
 ///
@@ -24,19 +24,19 @@ use crate::kernel::KernelProperties;
 pub trait Basis<S: StatisticsType> {
     /// Associated kernel type
     type Kernel: KernelProperties;
-    
+
     /// Get reference to the kernel
     ///
     /// # Returns
     /// Reference to the kernel used to construct this basis
     fn kernel(&self) -> &Self::Kernel;
-    
+
     /// Inverse temperature β
     ///
     /// # Returns
     /// The inverse temperature in units where ℏ = kB = 1
     fn beta(&self) -> f64;
-    
+
     /// Maximum frequency ωmax
     ///
     /// The basis functions are designed to accurately represent
@@ -45,7 +45,7 @@ pub trait Basis<S: StatisticsType> {
     /// # Returns
     /// The maximum frequency cutoff
     fn wmax(&self) -> f64;
-    
+
     /// Kernel parameter Λ = β × ωmax
     ///
     /// This is the dimensionless parameter that controls the basis.
@@ -55,13 +55,13 @@ pub trait Basis<S: StatisticsType> {
     fn lambda(&self) -> f64 {
         self.beta() * self.wmax()
     }
-    
+
     /// Number of basis functions
     ///
     /// # Returns
     /// The size of the basis (number of basis functions)
     fn size(&self) -> usize;
-    
+
     /// Accuracy of the basis
     ///
     /// Upper bound to the relative error of representing a propagator
@@ -70,7 +70,7 @@ pub trait Basis<S: StatisticsType> {
     /// # Returns
     /// A number between 0 and 1 representing the accuracy
     fn accuracy(&self) -> f64;
-    
+
     /// Significance of each basis function
     ///
     /// Returns a vector where `σ[i]` (0 ≤ σ[i] ≤ 1) is the significance
@@ -83,7 +83,7 @@ pub trait Basis<S: StatisticsType> {
     /// # Returns
     /// Vector of significance values for each basis function
     fn significance(&self) -> Vec<f64>;
-    
+
     /// Get singular values (non-normalized)
     ///
     /// Returns the singular values s[i] from the SVE decomposition.
@@ -92,7 +92,7 @@ pub trait Basis<S: StatisticsType> {
     /// # Returns
     /// Vector of singular values
     fn svals(&self) -> Vec<f64>;
-    
+
     /// Get default tau sampling points
     ///
     /// Returns sampling points in imaginary time τ ∈ [0, β].
@@ -102,7 +102,7 @@ pub trait Basis<S: StatisticsType> {
     /// # Returns
     /// Vector of tau sampling points
     fn default_tau_sampling_points(&self) -> Vec<f64>;
-    
+
     /// Get default Matsubara sampling points
     ///
     /// Returns sampling points in Matsubara frequency space.
@@ -116,7 +116,7 @@ pub trait Basis<S: StatisticsType> {
     fn default_matsubara_sampling_points(&self, positive_only: bool) -> Vec<MatsubaraFreq<S>>
     where
         S: 'static;
-    
+
     /// Evaluate basis functions at imaginary time points
     ///
     /// Computes the value of basis functions at given τ points.
@@ -129,7 +129,7 @@ pub trait Basis<S: StatisticsType> {
     /// # Returns
     /// Matrix of shape [tau.len(), self.size()] where result[i, l] = u_l(τ_i)
     fn evaluate_tau(&self, tau: &[f64]) -> mdarray::DTensor<f64, 2>;
-    
+
     /// Evaluate basis functions at Matsubara frequencies
     ///
     /// Computes the value of basis functions at given Matsubara frequencies.
@@ -141,10 +141,13 @@ pub trait Basis<S: StatisticsType> {
     ///
     /// # Returns
     /// Matrix of shape [freqs.len(), self.size()] where result[i, l] = û_l(iωn_i)
-    fn evaluate_matsubara(&self, freqs: &[MatsubaraFreq<S>]) -> mdarray::DTensor<num_complex::Complex<f64>, 2>
+    fn evaluate_matsubara(
+        &self,
+        freqs: &[MatsubaraFreq<S>],
+    ) -> mdarray::DTensor<num_complex::Complex<f64>, 2>
     where
         S: 'static;
-    
+
     /// Evaluate spectral basis functions at real frequencies
     ///
     /// Computes the value of spectral basis functions at given real frequencies.
@@ -157,7 +160,7 @@ pub trait Basis<S: StatisticsType> {
     /// # Returns
     /// Matrix of shape [omega.len(), self.size()] where result[i, l] = V_l(ω_i)
     fn evaluate_omega(&self, omega: &[f64]) -> mdarray::DTensor<f64, 2>;
-    
+
     /// Get default omega (real frequency) sampling points
     ///
     /// Returns sampling points on the real-frequency axis ω ∈ [-ωmax, ωmax].
@@ -174,4 +177,3 @@ pub trait Basis<S: StatisticsType> {
 #[cfg(test)]
 #[path = "basis_trait_tests.rs"]
 mod tests;
-

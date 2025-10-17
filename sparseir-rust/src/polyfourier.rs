@@ -173,8 +173,8 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
         }
 
         let inv_iw = 1.0 / iw;
-        let result = inv_iw * Self::evalpoly(inv_iw, &self.model.moments);
-        result
+
+        inv_iw * Self::evalpoly(inv_iw, &self.model.moments)
     }
 
     /// Evaluate polynomial at complex point (Horner's method)
@@ -187,14 +187,14 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
     }
 
     /// Compute midpoint relative to nearest integer
-    /// 
+    ///
     /// Returns (xmid_diff, extra_shift) where:
     /// - xmid_diff: midpoint values for numerical stability
     /// - extra_shift: nearest integer shift (-1, 0, or 1)
     fn shift_xmid(knots: &[f64], delta_x: &[f64]) -> (Vec<f64>, Vec<i32>) {
         let n_segments = delta_x.len();
         let delta_x_half: Vec<f64> = delta_x.iter().map(|&dx| dx / 2.0).collect();
-        
+
         // xmid_m1: cumsum(Δx) - Δx_half
         let mut xmid_m1 = Vec::with_capacity(n_segments);
         let mut cumsum = 0.0;
@@ -202,7 +202,7 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
             cumsum += delta_x[i];
             xmid_m1.push(cumsum - delta_x_half[i]);
         }
-        
+
         // xmid_p1: -reverse(cumsum(reverse(Δx))) + Δx_half
         let mut xmid_p1 = Vec::with_capacity(n_segments);
         let mut cumsum_rev = 0.0;
@@ -210,52 +210,52 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
             cumsum_rev += delta_x[i];
             xmid_p1.insert(0, -cumsum_rev + delta_x_half[i]);
         }
-        
+
         // xmid_0: knots[1:] - Δx_half
         let xmid_0: Vec<f64> = (0..n_segments)
             .map(|i| knots[i + 1] - delta_x_half[i])
             .collect();
-        
+
         // Determine shift and diff
         let mut xmid_diff = Vec::with_capacity(n_segments);
         let mut extra_shift = Vec::with_capacity(n_segments);
-        
+
         for i in 0..n_segments {
             let shift = xmid_0[i].round() as i32;
             extra_shift.push(shift);
-            
+
             // Choose appropriate xmid based on shift
             let diff = match shift {
                 -1 => xmid_m1[i],
                 0 => xmid_0[i],
                 1 => xmid_p1[i],
-                _ => xmid_0[i],  // Fallback
+                _ => xmid_0[i], // Fallback
             };
             xmid_diff.push(diff);
         }
-        
+
         (xmid_diff, extra_shift)
     }
 
     /// Compute stable phase factors
-    /// 
+    ///
     /// Computes: im^mod(wn * (extra_shift + 1), 4) * cispi(wn * xmid_diff / 2)
     /// where cispi(x) = exp(i*π*x)
     fn phase_stable(poly: &PiecewiseLegendrePoly, wn: i32) -> Vec<Complex64> {
         let (xmid_diff, extra_shift) = Self::shift_xmid(&poly.knots, &poly.delta_x);
         let mut phase_wi = Vec::with_capacity(xmid_diff.len());
-        
+
         let im_unit = Complex64::new(0.0, 1.0);
-        
+
         for j in 0..xmid_diff.len() {
             // Compute im^mod(wn * (extra_shift[j] + 1), 4)
-            let power = ((wn * (extra_shift[j] + 1)) % 4 + 4) % 4;  // Ensure positive mod
+            let power = ((wn * (extra_shift[j] + 1)) % 4 + 4) % 4; // Ensure positive mod
             let im_power = im_unit.powi(power);
-            
+
             // Compute cispi(wn * xmid_diff[j] / 2) = exp(i*π*wn*xmid_diff/2)
             let arg = PI * wn as f64 * xmid_diff[j] / 2.0;
             let cispi = Complex64::new(arg.cos(), arg.sin());
-            
+
             phase_wi.push(im_power * cispi);
         }
 
@@ -504,11 +504,7 @@ impl<S: StatisticsType> PiecewiseLegendreFT<S> {
         let result = 2.0 * im_power * sph_bessel;
 
         // Apply conjugation for negative w
-        if w < 0.0 {
-            result.conj()
-        } else {
-            result
-        }
+        if w < 0.0 { result.conj() } else { result }
     }
 }
 
@@ -539,12 +535,12 @@ impl<S: StatisticsType> PiecewiseLegendreFTVector<S> {
             _phantom: std::marker::PhantomData,
         }
     }
-    
+
     /// Get the number of polynomials in the vector
     pub fn len(&self) -> usize {
         self.polyvec.len()
     }
-    
+
     /// Check if the vector is empty
     pub fn is_empty(&self) -> bool {
         self.polyvec.is_empty()
@@ -643,7 +639,7 @@ impl<S: StatisticsType> Default for PiecewiseLegendreFTVector<S> {
 // ===== Matsubara sampling point selection =====
 
 /// Default grid for finding extrema/sign changes
-const DEFAULT_GRID: i64 = 1 << 23;  // 2^23, same as C++
+const DEFAULT_GRID: i64 = 1 << 23; // 2^23, same as C++
 
 /// Find sign changes of a Matsubara basis function
 ///
@@ -654,17 +650,16 @@ pub fn sign_changes<S: StatisticsType + 'static>(
 ) -> Vec<MatsubaraFreq<S>> {
     let f = func_for_part(u_hat);
     let x0 = find_all(&f, DEFAULT_GRID);
-    
+
     // Convert to Matsubara indices: n = 2*x + zeta
-    let mut indices: Vec<i64> = x0.iter()
-        .map(|&x| 2 * x + u_hat.zeta())
-        .collect();
-    
+    let mut indices: Vec<i64> = x0.iter().map(|&x| 2 * x + u_hat.zeta()).collect();
+
     if !positive_only {
         symmetrize_matsubara_inplace(&mut indices);
     }
-    
-    indices.iter()
+
+    indices
+        .iter()
         .filter_map(|&n| MatsubaraFreq::<S>::new(n).ok())
         .collect()
 }
@@ -678,17 +673,16 @@ pub fn find_extrema<S: StatisticsType + 'static>(
 ) -> Vec<MatsubaraFreq<S>> {
     let f = func_for_part(u_hat);
     let x0 = discrete_extrema(&f, DEFAULT_GRID);
-    
+
     // Convert to Matsubara indices: n = 2*x + zeta
-    let mut indices: Vec<i64> = x0.iter()
-        .map(|&x| 2 * x + u_hat.zeta())
-        .collect();
-    
+    let mut indices: Vec<i64> = x0.iter().map(|&x| 2 * x + u_hat.zeta()).collect();
+
     if !positive_only {
         symmetrize_matsubara_inplace(&mut indices);
     }
-    
-    indices.iter()
+
+    indices
+        .iter()
         .filter_map(|&n| MatsubaraFreq::<S>::new(n).ok())
         .collect()
 }
@@ -699,14 +693,14 @@ fn func_for_part<S: StatisticsType + 'static>(
 ) -> Box<dyn Fn(i64) -> f64> {
     let parity = poly_ft.poly.symm();
     let zeta = poly_ft.zeta();
-    
+
     // Clone what we need
     let poly_ft_clone = poly_ft.clone();
-    
+
     Box::new(move |n: i64| {
         let omega = MatsubaraFreq::<S>::new(2 * n + zeta).unwrap();
         let value = poly_ft_clone.evaluate(&omega);
-        
+
         // Select real or imaginary part based on parity and statistics
         if parity == 1 {
             // Even parity
@@ -732,7 +726,7 @@ fn func_for_part<S: StatisticsType + 'static>(
 fn find_all(f: &dyn Fn(i64) -> f64, grid_size: i64) -> Vec<i64> {
     let mut results = Vec::new();
     let mut prev_val = f(0);
-    
+
     for n in 1..grid_size {
         let val = f(n);
         if prev_val.signum() != val.signum() && val != 0.0 {
@@ -740,34 +734,35 @@ fn find_all(f: &dyn Fn(i64) -> f64, grid_size: i64) -> Vec<i64> {
         }
         prev_val = val;
     }
-    
+
     results
 }
 
 /// Find discrete extrema of a function on a grid
 fn discrete_extrema(f: &dyn Fn(i64) -> f64, grid_size: i64) -> Vec<i64> {
     let mut results = Vec::new();
-    
+
     if grid_size < 3 {
         return results;
     }
-    
+
     let mut prev_val = f(0);
     let mut curr_val = f(1);
-    
+
     for n in 2..grid_size {
         let next_val = f(n);
-        
+
         // Check if curr_val is a local extremum
-        if (curr_val > prev_val && curr_val > next_val) ||
-           (curr_val < prev_val && curr_val < next_val) {
-            results.push((n - 1) as i64);
+        if (curr_val > prev_val && curr_val > next_val)
+            || (curr_val < prev_val && curr_val < next_val)
+        {
+            results.push(n - 1);
         }
-        
+
         prev_val = curr_val;
         curr_val = next_val;
     }
-    
+
     results
 }
 
@@ -776,14 +771,14 @@ fn symmetrize_matsubara_inplace(xs: &mut Vec<i64>) {
     if xs.is_empty() {
         return;
     }
-    
+
     // Remove zero if present
     xs.retain(|&x| x != 0);
-    
+
     // Add negative frequencies
     let positives: Vec<i64> = xs.iter().filter(|&&x| x > 0).copied().collect();
     let mut negatives: Vec<i64> = positives.iter().map(|&x| -x).collect();
-    
+
     xs.append(&mut negatives);
     xs.sort();
     xs.dedup();

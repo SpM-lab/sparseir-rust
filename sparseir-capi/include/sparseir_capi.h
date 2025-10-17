@@ -129,8 +129,6 @@ typedef struct spir_sampling {
 
 #define SPIR_INTERNAL_ERROR -7
 
-#define SPIR_SUCCESS SPIR_COMPUTATION_SUCCESS
-
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
@@ -144,7 +142,7 @@ extern "C" {
  * * `points` - Pre-allocated array to store Matsubara indices
  *
  * # Returns
- * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_COMPUTATION_SUCCESS` (0) on success
  * * `SPIR_INVALID_ARGUMENT` (-6) if b or points is null
  * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
  */
@@ -163,7 +161,7 @@ StatusCode spir_basis_get_default_matsus(const struct spir_basis *b,
  * * `n_points_returned` - Pointer to store actual number of points returned
  *
  * # Returns
- * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_COMPUTATION_SUCCESS` (0) on success
  * * `SPIR_INVALID_ARGUMENT` (-6) if any pointer is null or n_points < 0
  * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
  *
@@ -184,7 +182,7 @@ StatusCode spir_basis_get_default_matsus_ext(const struct spir_basis *b,
  * * `points` - Pre-allocated array to store tau points
  *
  * # Returns
- * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_COMPUTATION_SUCCESS` (0) on success
  * * `SPIR_INVALID_ARGUMENT` (-6) if b or points is null
  * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
  */
@@ -200,7 +198,7 @@ StatusCode spir_basis_get_default_taus(const struct spir_basis *b, double *point
  * * `n_points_returned` - Pointer to store actual number of points returned
  *
  * # Returns
- * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_COMPUTATION_SUCCESS` (0) on success
  * * `SPIR_INVALID_ARGUMENT` (-6) if any pointer is null or n_points < 0
  * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
  *
@@ -220,7 +218,7 @@ StatusCode spir_basis_get_default_taus_ext(const struct spir_basis *b,
  * * `points` - Pre-allocated array to store the omega sampling points
  *
  * # Returns
- * Status code (SPIR_SUCCESS on success)
+ * Status code (SPIR_COMPUTATION_SUCCESS on success)
  *
  * # Safety
  * The caller must ensure that `points` has size >= `spir_basis_get_n_default_ws(b)`
@@ -236,7 +234,7 @@ StatusCode spir_basis_get_default_ws(const struct spir_basis *b, double *points)
  * * `num_points` - Pointer to store the number of points
  *
  * # Returns
- * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_COMPUTATION_SUCCESS` (0) on success
  * * `SPIR_INVALID_ARGUMENT` (-6) if b or num_points is null
  * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
  */
@@ -254,7 +252,7 @@ StatusCode spir_basis_get_n_default_matsus(const struct spir_basis *b,
  * * `num_points_returned` - Pointer to store actual number of points
  *
  * # Returns
- * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_COMPUTATION_SUCCESS` (0) on success
  * * `SPIR_INVALID_ARGUMENT` (-6) if any pointer is null or L < 0
  * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
  *
@@ -274,7 +272,7 @@ StatusCode spir_basis_get_n_default_matsus_ext(const struct spir_basis *b,
  * * `num_points` - Pointer to store the number of points
  *
  * # Returns
- * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_COMPUTATION_SUCCESS` (0) on success
  * * `SPIR_INVALID_ARGUMENT` (-6) if b or num_points is null
  * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
  */
@@ -288,7 +286,7 @@ StatusCode spir_basis_get_n_default_taus(const struct spir_basis *b, int *num_po
  * * `num_points` - Pointer to store the number of sampling points
  *
  * # Returns
- * Status code (SPIR_SUCCESS on success)
+ * Status code (SPIR_COMPUTATION_SUCCESS on success)
  *
  * # Safety
  * The caller must ensure that `b` and `num_points` are valid pointers
@@ -308,7 +306,7 @@ StatusCode spir_basis_get_singular_values(const struct spir_basis *b, double *sv
  * * `size` - Pointer to store the size
  *
  * # Returns
- * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_COMPUTATION_SUCCESS` (0) on success
  * * `SPIR_INVALID_ARGUMENT` (-6) if b or size is null
  * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
  */
@@ -322,7 +320,7 @@ StatusCode spir_basis_get_size(const struct spir_basis *b, int *size);
  * * `statistics` - Pointer to store statistics (0 = Bosonic, 1 = Fermionic)
  *
  * # Returns
- * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_COMPUTATION_SUCCESS` (0) on success
  * * `SPIR_INVALID_ARGUMENT` (-6) if b or statistics is null
  * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
  */
@@ -336,7 +334,7 @@ StatusCode spir_basis_get_stats(const struct spir_basis *b, int *statistics);
  * * `svals` - Pre-allocated array to store singular values (size must be >= basis size)
  *
  * # Returns
- * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_COMPUTATION_SUCCESS` (0) on success
  * * `SPIR_INVALID_ARGUMENT` (-6) if b or svals is null
  * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
  */
@@ -546,7 +544,7 @@ struct spir_basis *spir_dlr_new_with_poles(const struct spir_basis *b,
  * * `out` - Pre-allocated array to store results
  *
  * # Returns
- * Status code (SPIR_SUCCESS on success, SPIR_NOT_SUPPORTED if not continuous)
+ * Status code (SPIR_COMPUTATION_SUCCESS on success, SPIR_NOT_SUPPORTED if not continuous)
  *
  * # Safety
  * - `xs` must have size >= `num_points`
@@ -570,7 +568,7 @@ StatusCode spir_funcs_batch_eval(const struct spir_funcs *funcs,
  * * `out` - Pre-allocated array to store complex results
  *
  * # Returns
- * Status code (SPIR_SUCCESS on success, SPIR_NOT_SUPPORTED if not Matsubara type)
+ * Status code (SPIR_COMPUTATION_SUCCESS on success, SPIR_NOT_SUPPORTED if not Matsubara type)
  *
  * # Safety
  * - `ns` must have size >= `num_freqs`
@@ -593,7 +591,7 @@ StatusCode spir_funcs_batch_eval_matsu(const struct spir_funcs *funcs,
  * * `out` - Pre-allocated array to store function values
  *
  * # Returns
- * Status code (SPIR_SUCCESS on success, SPIR_NOT_SUPPORTED if not continuous)
+ * Status code (SPIR_COMPUTATION_SUCCESS on success, SPIR_NOT_SUPPORTED if not continuous)
  *
  * # Safety
  * The caller must ensure that `out` has size >= `spir_funcs_get_size(funcs)`
@@ -609,7 +607,7 @@ StatusCode spir_funcs_eval(const struct spir_funcs *funcs, double x, double *out
  * * `out` - Pre-allocated array to store complex function values
  *
  * # Returns
- * Status code (SPIR_SUCCESS on success, SPIR_NOT_SUPPORTED if not Matsubara type)
+ * Status code (SPIR_COMPUTATION_SUCCESS on success, SPIR_NOT_SUPPORTED if not Matsubara type)
  *
  * # Safety
  * The caller must ensure that `out` has size >= `spir_funcs_get_size(funcs)`
@@ -625,7 +623,7 @@ StatusCode spir_funcs_eval_matsu(const struct spir_funcs *funcs, int64_t n, Comp
  * * `knots` - Pre-allocated array to store knot positions
  *
  * # Returns
- * Status code (SPIR_SUCCESS on success, SPIR_NOT_SUPPORTED if not continuous)
+ * Status code (SPIR_COMPUTATION_SUCCESS on success, SPIR_NOT_SUPPORTED if not continuous)
  *
  * # Safety
  * The caller must ensure that `knots` has size >= `spir_funcs_get_n_knots(funcs)`
@@ -640,7 +638,7 @@ StatusCode spir_funcs_get_knots(const struct spir_funcs *funcs, double *knots);
  * * `n_knots` - Pointer to store the number of knots
  *
  * # Returns
- * Status code (SPIR_SUCCESS on success, SPIR_NOT_SUPPORTED if not continuous)
+ * Status code (SPIR_COMPUTATION_SUCCESS on success, SPIR_NOT_SUPPORTED if not continuous)
  */
 StatusCode spir_funcs_get_n_knots(const struct spir_funcs *funcs, int *n_knots);
 
@@ -652,7 +650,7 @@ StatusCode spir_funcs_get_n_knots(const struct spir_funcs *funcs, int *n_knots);
  * * `size` - Pointer to store the number of functions
  *
  * # Returns
- * Status code (SPIR_SUCCESS on success)
+ * Status code (SPIR_COMPUTATION_SUCCESS on success)
  */
 StatusCode spir_funcs_get_size(const struct spir_funcs *funcs, int *size);
 
@@ -739,7 +737,7 @@ StatusCode spir_ir2dlr_zz(const struct spir_basis *dlr,
  * * `out` - Pointer to store the result
  *
  * # Returns
- * * `SPIR_SUCCESS` on success
+ * * `SPIR_COMPUTATION_SUCCESS` on success
  * * `SPIR_INVALID_ARGUMENT` if kernel or out is null
  * * `SPIR_INTERNAL_ERROR` if internal panic occurs
  */
@@ -753,7 +751,7 @@ StatusCode spir_kernel_compute(const struct spir_kernel *kernel, double x, doubl
  * * `lambda_out` - Pointer to store the lambda value
  *
  * # Returns
- * * `SPIR_SUCCESS` on success
+ * * `SPIR_COMPUTATION_SUCCESS` on success
  * * `SPIR_INVALID_ARGUMENT` if kernel or lambda_out is null
  * * `SPIR_INTERNAL_ERROR` if internal panic occurs
  */
@@ -855,7 +853,7 @@ struct spir_kernel *spir_reg_bose_kernel_new(double lambda, StatusCode *status);
  * * `cblas_zgemm` - Function pointer to CBLAS zgemm (complex double precision)
  *
  * # Returns
- * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_COMPUTATION_SUCCESS` (0) on success
  * * `SPIR_INVALID_ARGUMENT` (-6) if function pointers are null
  *
  * # Safety
@@ -875,7 +873,7 @@ struct spir_kernel *spir_reg_bose_kernel_new(double lambda, StatusCode *status);
  *     (void*)cblas_zgemm
  * );
  *
- * if (status != SPIR_SUCCESS) {
+ * if (status != SPIR_COMPUTATION_SUCCESS) {
  *     fprintf(stderr, "Failed to register BLAS functions\n");
  * }
  * ```
@@ -923,7 +921,7 @@ StatusCode spir_register_blas_functions(const void *cblas_dgemm,
  * * `cblas_zgemm64` - Function pointer to ILP64 CBLAS zgemm (complex double precision)
  *
  * # Returns
- * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_COMPUTATION_SUCCESS` (0) on success
  * * `SPIR_INVALID_ARGUMENT` (-6) if function pointers are null
  *
  * # Safety
@@ -944,7 +942,7 @@ StatusCode spir_register_blas_functions(const void *cblas_dgemm,
  *     (void*)cblas_zgemm   // MKL's ILP64 version
  * );
  *
- * if (status != SPIR_SUCCESS) {
+ * if (status != SPIR_COMPUTATION_SUCCESS) {
  *     fprintf(stderr, "Failed to register ILP64 BLAS functions\n");
  * }
  * ```
@@ -1087,7 +1085,7 @@ StatusCode spir_sampling_get_taus(const struct spir_sampling *s, double *points)
  * * `size` - Pointer to store the size
  *
  * # Returns
- * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_COMPUTATION_SUCCESS` (0) on success
  * * `SPIR_INVALID_ARGUMENT` (-6) if sve or size is null
  * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
  */
@@ -1101,7 +1099,7 @@ StatusCode spir_sve_result_get_size(const struct spir_sve_result *sve, int *size
  * * `svals` - Pre-allocated array to store singular values (size must be >= result size)
  *
  * # Returns
- * * `SPIR_SUCCESS` (0) on success
+ * * `SPIR_COMPUTATION_SUCCESS` (0) on success
  * * `SPIR_INVALID_ARGUMENT` (-6) if sve or svals is null
  * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
  */
@@ -1153,7 +1151,7 @@ struct spir_sve_result *spir_sve_result_new(const struct spir_kernel *k,
  * # Returns
  * * Pointer to new truncated SVE result, or NULL on failure
  * * Status code:
- *   - `SPIR_SUCCESS` (0) on success
+ *   - `SPIR_COMPUTATION_SUCCESS` (0) on success
  *   - `SPIR_INVALID_ARGUMENT` (-6) if sve or status is null, or epsilon is invalid
  *   - `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
  *

@@ -34,11 +34,18 @@ impl<T: CustomNumeric + Debug + Clone + 'static> Interpolate1D<T> {
     /// # Returns
     /// New Interpolate1D instance with pre-computed coefficients
     pub fn new(values: &[T], gauss_rule: &Rule<T>) -> Self {
-        assert!(!values.is_empty(), "Cannot create interpolation from empty values");
-        assert_eq!(values.len(), gauss_rule.x.len(), "Values length must match Gauss points");
-        
+        assert!(
+            !values.is_empty(),
+            "Cannot create interpolation from empty values"
+        );
+        assert_eq!(
+            values.len(),
+            gauss_rule.x.len(),
+            "Values length must match Gauss points"
+        );
+
         let coeffs = interpolate_1d_legendre(values, gauss_rule);
-        
+
         Interpolate1D {
             x_min: gauss_rule.a,
             x_max: gauss_rule.b,
@@ -46,7 +53,7 @@ impl<T: CustomNumeric + Debug + Clone + 'static> Interpolate1D<T> {
             gauss_rule: gauss_rule.clone(),
         }
     }
-    
+
     /// Evaluate the interpolated function at a given point
     ///
     /// # Arguments
@@ -58,18 +65,22 @@ impl<T: CustomNumeric + Debug + Clone + 'static> Interpolate1D<T> {
     /// # Panics
     /// Panics if x is outside the interpolation domain [x_min, x_max]
     pub fn evaluate(&self, x: T) -> T {
-        assert!(x >= self.x_min && x <= self.x_max, 
-                "Point x={:?} is outside interpolation domain [{:?}, {:?}]", 
-                x, self.x_min, self.x_max);
-        
+        assert!(
+            x >= self.x_min && x <= self.x_max,
+            "Point x={:?} is outside interpolation domain [{:?}, {:?}]",
+            x,
+            self.x_min,
+            self.x_max
+        );
+
         evaluate_interpolated_polynomial(x, &self.coeffs)
     }
-    
+
     /// Get the domain boundaries
     pub fn domain(&self) -> (T, T) {
         (self.x_min, self.x_max)
     }
-    
+
     /// Get the number of interpolation points
     pub fn n_points(&self) -> usize {
         self.coeffs.len()
@@ -77,7 +88,7 @@ impl<T: CustomNumeric + Debug + Clone + 'static> Interpolate1D<T> {
 }
 
 /// Create Legendre collocation matrix (inverse of Vandermonde matrix)
-/// 
+///
 /// This function creates a matrix C such that V * C ≈ I, where V is the
 /// Legendre Vandermonde matrix. This avoids solving linear systems during
 /// interpolation by pre-computing the inverse.
@@ -89,13 +100,13 @@ impl<T: CustomNumeric + Debug + Clone + 'static> Interpolate1D<T> {
 /// Collocation matrix C where V * C ≈ I
 pub fn legendre_collocation_matrix<T: CustomNumeric>(gauss_rule: &Rule<T>) -> DTensor<T, 2> {
     let n = gauss_rule.x.len();
-    
+
     // Create Legendre Vandermonde matrix
     let v = legendre_vandermonde(&gauss_rule.x, n - 1);
-    
+
     // Create normalization factors: range(0.5; length=n) in Julia
     let invnorm: Vec<T> = (0..n).map(|i| T::from_f64(0.5 + i as f64)).collect();
-    
+
     // Compute: res = permutedims(V .* w) .* invnorm
     // This is equivalent to: result[i,j] = V[j,i] * w[j] * invnorm[i]
     DTensor::<T, 2>::from_fn([n, n], |idx| {
@@ -117,11 +128,15 @@ pub fn legendre_collocation_matrix<T: CustomNumeric>(gauss_rule: &Rule<T>) -> DT
 /// Coefficient vector for the interpolating polynomial
 pub fn interpolate_1d_legendre<T: CustomNumeric>(values: &[T], gauss_rule: &Rule<T>) -> Vec<T> {
     let n = values.len();
-    assert_eq!(n, gauss_rule.x.len(), "Values length must match grid points");
-    
+    assert_eq!(
+        n,
+        gauss_rule.x.len(),
+        "Values length must match grid points"
+    );
+
     // Get collocation matrix (pre-computed inverse of Vandermonde matrix)
     let collocation_matrix = legendre_collocation_matrix(gauss_rule);
-    
+
     // Compute coefficients: coeffs = C * values
     let mut coeffs = vec![T::zero(); n];
     for i in 0..n {
@@ -129,7 +144,7 @@ pub fn interpolate_1d_legendre<T: CustomNumeric>(values: &[T], gauss_rule: &Rule
             coeffs[i] = coeffs[i] + collocation_matrix[[i, j]] * values[j];
         }
     }
-    
+
     coeffs
 }
 
@@ -144,11 +159,11 @@ pub fn interpolate_1d_legendre<T: CustomNumeric>(values: &[T], gauss_rule: &Rule
 pub fn evaluate_interpolated_polynomial<T: CustomNumeric>(x: T, coeffs: &[T]) -> T {
     let n = coeffs.len();
     let mut result = T::zero();
-    
+
     for i in 0..n {
         result = result + coeffs[i] * evaluate_legendre_polynomial(x, i);
     }
-    
+
     result
 }
 
@@ -171,29 +186,28 @@ pub fn evaluate_legendre_basis<T: CustomNumeric>(x: T, n: usize) -> Vec<T> {
     if n == 0 {
         return Vec::new();
     }
-    
+
     let mut p = Vec::with_capacity(n);
-    
+
     // P_0(x) = 1
     p.push(T::from_f64(1.0));
-    
+
     if n > 1 {
         // P_1(x) = x
         p.push(x);
     }
-    
+
     // Recurrence relation: (n+1) * P_{n+1}(x) = (2n+1) * x * P_n(x) - n * P_{n-1}(x)
-    for i in 1..n-1 {
+    for i in 1..n - 1 {
         let i_f64 = i as f64;
-        let next_p = (T::from_f64(2.0 * i_f64 + 1.0) * x * p[i] - T::from_f64(i_f64) * p[i-1]) 
-                    / T::from_f64(i_f64 + 1.0);
+        let next_p = (T::from_f64(2.0 * i_f64 + 1.0) * x * p[i] - T::from_f64(i_f64) * p[i - 1])
+            / T::from_f64(i_f64 + 1.0);
         p.push(next_p);
     }
-    
+
     p
 }
 
 #[cfg(test)]
 #[path = "interpolation1d_tests.rs"]
 mod tests;
-

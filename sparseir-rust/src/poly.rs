@@ -107,29 +107,33 @@ impl PiecewiseLegendrePoly {
     pub fn symm(&self) -> i32 {
         self.symm
     }
-    
+
     /// Create a new PiecewiseLegendrePoly with new data and symmetry
-    pub fn with_data_and_symmetry(&self, new_data: mdarray::DTensor<f64, 2>, new_symm: i32) -> Self {
+    pub fn with_data_and_symmetry(
+        &self,
+        new_data: mdarray::DTensor<f64, 2>,
+        new_symm: i32,
+    ) -> Self {
         Self {
             data: new_data,
             symm: new_symm,
             ..self.clone()
         }
     }
-    
+
     /// Rescale domain: create a new polynomial with the same data but different knots
-    /// 
+    ///
     /// This is useful for transforming from one domain to another, e.g.,
     /// from x ∈ [-1, 1] to τ ∈ [0, β].
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `new_knots` - New knot points
     /// * `new_delta_x` - Optional new segment widths (computed from knots if None)
     /// * `new_symm` - Optional new symmetry parameter (keeps old if None)
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// New polynomial with rescaled domain
     pub fn rescale_domain(
         &self,
@@ -145,23 +149,24 @@ impl PiecewiseLegendrePoly {
             new_symm.unwrap_or(self.symm),
         )
     }
-    
+
     /// Scale all data values by a constant factor
-    /// 
+    ///
     /// This is useful for normalizations, e.g., multiplying by √β for
     /// Fourier transform preparations.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `factor` - Scaling factor to multiply all data by
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// New polynomial with scaled data
     pub fn scale_data(&self, factor: f64) -> Self {
-        Self::with_data(&self, mdarray::DTensor::<f64, 2>::from_fn(*self.data.shape(), |idx| {
-            self.data[idx] * factor
-        }))
+        Self::with_data(
+            self,
+            mdarray::DTensor::<f64, 2>::from_fn(*self.data.shape(), |idx| self.data[idx] * factor),
+        )
     }
 
     /// Evaluate the polynomial at a given point
@@ -212,7 +217,7 @@ impl PiecewiseLegendrePoly {
         let mut p_curr = x; // P_1(x) = x
 
         // Add first two terms
-        if coeffs.len() > 0 {
+        if !coeffs.is_empty() {
             result += coeffs[0] * p_prev;
         }
         if coeffs.len() > 1 {
@@ -559,7 +564,8 @@ impl PiecewiseLegendrePolyVector {
         for i in 0..npolys {
             // Extract 2D data for this polynomial
             let data3d_shape = data3d.shape();
-            let mut data = mdarray::DTensor::<f64, 2>::from_elem([data3d_shape.0, data3d_shape.1], 0.0);
+            let mut data =
+                mdarray::DTensor::<f64, 2>::from_elem([data3d_shape.0, data3d_shape.1], 0.0);
             for j in 0..data3d_shape.0 {
                 for k in 0..data3d_shape.1 {
                     data[[j, k]] = data3d[[j, k, i]];
@@ -584,20 +590,20 @@ impl PiecewiseLegendrePolyVector {
     pub fn size(&self) -> usize {
         self.polyvec.len()
     }
-    
+
     /// Rescale domain for all polynomials in the vector
-    /// 
+    ///
     /// Creates a new PiecewiseLegendrePolyVector where each polynomial has
     /// the same data but new knots and delta_x.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `new_knots` - New knot points (same for all polynomials)
     /// * `new_delta_x` - Optional new segment widths
     /// * `new_symm` - Optional vector of new symmetry parameters (one per polynomial)
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// New vector with rescaled domains
     pub fn rescale_domain(
         &self,
@@ -605,7 +611,8 @@ impl PiecewiseLegendrePolyVector {
         new_delta_x: Option<Vec<f64>>,
         new_symm: Option<Vec<i32>>,
     ) -> Self {
-        let polyvec = self.polyvec
+        let polyvec = self
+            .polyvec
             .iter()
             .enumerate()
             .map(|(i, poly)| {
@@ -613,27 +620,28 @@ impl PiecewiseLegendrePolyVector {
                 poly.rescale_domain(new_knots.clone(), new_delta_x.clone(), symm)
             })
             .collect();
-        
+
         Self { polyvec }
     }
-    
+
     /// Scale all data values by a constant factor
-    /// 
+    ///
     /// Multiplies the data of all polynomials by the same factor.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `factor` - Scaling factor to multiply all data by
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// New vector with scaled data
     pub fn scale_data(&self, factor: f64) -> Self {
-        let polyvec = self.polyvec
+        let polyvec = self
+            .polyvec
             .iter()
             .map(|poly| poly.scale_data(factor))
             .collect();
-        
+
         Self { polyvec }
     }
 
@@ -818,12 +826,13 @@ impl PiecewiseLegendrePolyVector {
         }
         all_roots
     }
-    
+
     /// Get reference to last polynomial
-    /// 
+    ///
     /// C++ equivalent: u.polyvec.back()
     pub fn last(&self) -> &PiecewiseLegendrePoly {
-        self.polyvec.last()
+        self.polyvec
+            .last()
             .expect("Cannot get last from empty PiecewiseLegendrePolyVector")
     }
 
@@ -852,33 +861,27 @@ impl std::ops::Index<usize> for PiecewiseLegendrePolyVector {
 /// ideal sampling points for a basis of size L are the roots of the L-th
 /// polynomial. We empirically find that these stay good sampling points
 /// for our kernels (probably because the kernels are totally positive).
-/// 
+///
 /// If we do not have enough polynomials in the basis, we approximate the
 /// roots of the L'th polynomial by the extrema of the last basis function,
 /// which is sensible due to the strong interleaving property of these
 /// functions' roots.
-pub fn default_sampling_points(
-    u: &PiecewiseLegendrePolyVector,
-    l: usize,
-) -> Vec<f64> {
+pub fn default_sampling_points(u: &PiecewiseLegendrePolyVector, l: usize) -> Vec<f64> {
     // C++: if (u.xmin() != -1.0 || u.xmax() != 1.0)
     //          throw std::runtime_error("Expecting unscaled functions here.");
     if (u.xmin() - (-1.0)).abs() > 1e-10 || (u.xmax() - 1.0).abs() > 1e-10 {
         panic!("Expecting unscaled functions here.");
     }
 
-    
     let x0 = if l < u.polyvec.len() {
         // C++: return u.polyvec[L].roots();
         u[l].roots()
     } else {
-
         // C++: PiecewiseLegendrePoly poly = u.polyvec.back();
         //      Eigen::VectorXd maxima = poly.deriv().roots();
         let poly = u.last();
         let poly_deriv = poly.deriv(1);
         let maxima = poly_deriv.roots();
-        
 
         // C++: double left = (maxima[0] + poly.xmin) / 2.0;
         let left = (maxima[0] + poly.xmin) / 2.0;

@@ -1,9 +1,10 @@
-    use super::*;
-    use mdarray::DTensor;
-    use crate::interpolation1d::{legendre_collocation_matrix, interpolate_1d_legendre, evaluate_interpolated_polynomial};
-    use crate::numeric::CustomNumeric;
-    use twofloat::TwoFloat;
-    
+use super::*;
+use crate::interpolation1d::{
+    evaluate_interpolated_polynomial, interpolate_1d_legendre, legendre_collocation_matrix,
+};
+use crate::numeric::CustomNumeric;
+use mdarray::DTensor;
+use twofloat::TwoFloat;
 
 #[test]
 fn test_rule_constructor() {
@@ -305,7 +306,7 @@ fn test_twofloat_gauss_rule_validation() {
         // Check weight sum (should be 2.0 for [-1, 1])
         let mut weight_sum = TwoFloat::from_f64(0.0);
         for &w in rule.w.iter() {
-            weight_sum = weight_sum + w;
+            weight_sum += w;
         }
         let expected_sum = TwoFloat::from_f64(2.0);
         let weight_error = (weight_sum - expected_sum).abs();
@@ -346,7 +347,7 @@ fn test_twofloat_integration_convergence_analysis() {
 
         for i in 0..rule.x.len() {
             let f_val = test_function(rule.x[i]);
-            integral = integral + f_val * rule.w[i];
+            integral += f_val * rule.w[i];
         }
 
         let error = (integral - analytical).abs().to_f64();
@@ -371,39 +372,40 @@ fn evaluate_legendre_polynomial<T: CustomNumeric>(x: T, n: usize) -> T {
     } else {
         let mut p_prev2 = T::from_f64(1.0);
         let mut p_prev1 = x;
-        
+
         for i in 2..=n {
             let i_f64 = i as f64;
-            let p_curr = ((T::from_f64(2.0 * i_f64 - 1.0) * x * p_prev1) - (T::from_f64(i_f64 - 1.0) * p_prev2)) / T::from_f64(i_f64);
+            let p_curr = ((T::from_f64(2.0 * i_f64 - 1.0) * x * p_prev1)
+                - (T::from_f64(i_f64 - 1.0) * p_prev2))
+                / T::from_f64(i_f64);
             p_prev2 = p_prev1;
             p_prev1 = p_curr;
         }
-        
+
         p_prev1
     }
 }
-
 
 #[test]
 fn test_legendre_vandermonde_basic() {
     // Test with simple 3-point grid
     let x = vec![-1.0, 0.0, 1.0];
     let v = legendre_vandermonde(&x, 2);
-    
+
     // Check dimensions
     assert_eq!(v.shape().0, 3);
     assert_eq!(v.shape().1, 3);
-    
+
     // Check first column (P_0 = 1)
     for i in 0..3 {
         assert!((v[[i, 0]] - 1.0).abs() < 1e-12);
     }
-    
+
     // Check second column (P_1 = x)
     for i in 0..3 {
         assert!((v[[i, 1]] - x[i]).abs() < 1e-12);
     }
-    
+
     // Check third column (P_2 = (3x^2 - 1)/2)
     for i in 0..3 {
         let expected = (3.0 * x[i] * x[i] - 1.0) / 2.0;
@@ -420,46 +422,52 @@ fn test_interpolate_1d_legendre_sin_generic<T: CustomNumeric + 'static>(
     T: std::fmt::Display,
 {
     // Create Gauss rule using generic function
-    let gauss_rule = legendre_generic::<T>(n_points).reseat(
-        T::from_f64(-1.0),
-        T::from_f64(1.0),
-    );
-    
+    let gauss_rule = legendre_generic::<T>(n_points).reseat(T::from_f64(-1.0), T::from_f64(1.0));
+
     // Sample sin(x) at Gauss points
     let values: Vec<T> = gauss_rule.x.iter().map(|&x| x.sin()).collect();
-    
+
     // Get interpolation coefficients
     let coeffs = interpolate_1d_legendre(&values, &gauss_rule);
-    
+
     // Test interpolation at grid points (should be exact)
     for &x_grid in &gauss_rule.x {
         let expected = x_grid.sin();
         let interpolated = evaluate_interpolated_polynomial(x_grid, &coeffs);
-        assert!((interpolated - expected).abs() < T::from_f64(1e-12),
-            "Interpolation failed at grid point {}: expected {}, got {}", 
-            x_grid, expected, interpolated);
+        assert!(
+            (interpolated - expected).abs() < T::from_f64(1e-12),
+            "Interpolation failed at grid point {}: expected {}, got {}",
+            x_grid,
+            expected,
+            interpolated
+        );
     }
-    
+
     // Test interpolation at interior points
     for &x_test in &test_points {
         let expected = x_test.sin();
         let interpolated = evaluate_interpolated_polynomial(x_test, &coeffs);
         let error = (interpolated - expected).abs();
-        assert!(error < tolerance,
-            "High-precision interpolation failed at point {}: expected {}, got {}, error={} > tolerance={}", 
-            x_test, expected, interpolated, error, tolerance);
+        assert!(
+            error < tolerance,
+            "High-precision interpolation failed at point {}: expected {}, got {}, error={} > tolerance={}",
+            x_test,
+            expected,
+            interpolated,
+            error,
+            tolerance
+        );
     }
 }
-
 
 #[test]
 #[ignore] // MOVED TO interpolation1d_tests.rs
 fn _test_interpolate_1d_legendre_sin_f64_high_precision() {
     // Test high-precision interpolation of sin(x) with f64
     test_interpolate_1d_legendre_sin_generic::<f64>(
-        100,  // n_points
-        f64::EPSILON * 100.0,  // tolerance: EPSILON * 100
-        vec![-0.8, -0.5, -0.2, 0.1, 0.4, 0.7, 0.9],  // test_points
+        100,                                        // n_points
+        f64::EPSILON * 100.0,                       // tolerance: EPSILON * 100
+        vec![-0.8, -0.5, -0.2, 0.1, 0.4, 0.7, 0.9], // test_points
     );
 }
 
@@ -468,8 +476,8 @@ fn _test_interpolate_1d_legendre_sin_f64_high_precision() {
 fn _test_interpolate_1d_legendre_sin_twofloat_ultra_high_precision() {
     // Test ultra high-precision interpolation of sin(x) with TwoFloat
     test_interpolate_1d_legendre_sin_generic::<TwoFloat>(
-        200,  // n_points (higher for better precision)
-        TwoFloat::from_f64(1e-19),  // tolerance: 1e-19 (achieved maximum precision)
+        200,                       // n_points (higher for better precision)
+        TwoFloat::from_f64(1e-19), // tolerance: 1e-19 (achieved maximum precision)
         vec![
             TwoFloat::from_f64(-0.8),
             TwoFloat::from_f64(-0.5),
@@ -478,10 +486,9 @@ fn _test_interpolate_1d_legendre_sin_twofloat_ultra_high_precision() {
             TwoFloat::from_f64(0.4),
             TwoFloat::from_f64(0.7),
             TwoFloat::from_f64(0.9),
-        ],  // test_points
+        ], // test_points
     );
 }
-
 
 /// Test that the collocation matrix is approximately the inverse of the Vandermonde matrix - MOVED TO interpolation1d_tests.rs
 #[test]
@@ -490,13 +497,13 @@ fn _test_legendre_collocation_matrix_inverse() {
     // Test with different sizes
     for n in [2, 3, 5, 10] {
         let gauss_rule = legendre_generic::<f64>(n).reseat(-1.0, 1.0);
-        
+
         // Create Vandermonde matrix
         let vandermonde = legendre_vandermonde(&gauss_rule.x.to_vec(), n - 1);
-        
+
         // Create collocation matrix
         let collocation = legendre_collocation_matrix(&gauss_rule);
-        
+
         // Compute V * C and check if it's approximately the identity matrix
         let mut product = DTensor::<f64, 2>::from_elem([n, n], 0.0);
         for i in 0..n {
@@ -506,7 +513,7 @@ fn _test_legendre_collocation_matrix_inverse() {
                 }
             }
         }
-        
+
         // Check that V * C ≈ I
         let mut error = 0.0;
         for i in 0..n {
@@ -516,10 +523,14 @@ fn _test_legendre_collocation_matrix_inverse() {
             }
         }
         error /= (n * n) as f64;
-        
+
         println!("n={}, error={}", n, error);
-        assert!(error < 1e-10, 
-            "Collocation matrix is not inverse of Vandermonde matrix for n={}: error={}", n, error);
+        assert!(
+            error < 1e-10,
+            "Collocation matrix is not inverse of Vandermonde matrix for n={}: error={}",
+            n,
+            error
+        );
     }
 }
 
@@ -530,38 +541,44 @@ fn _test_interpolate_1d_legendre_fast() {
     // Test with different sizes and functions
     for n in [2, 3, 5] {
         let gauss_rule = legendre_generic::<f64>(n).reseat(-1.0, 1.0);
-        
+
         // Test different functions
         let test_functions = vec![
-            |x: f64| x,                    // Linear
-            |x: f64| x * x,                // Quadratic
-            |x: f64| x * x * x,            // Cubic
-            |x: f64| x.sin(),              // Sine
+            |x: f64| x,         // Linear
+            |x: f64| x * x,     // Quadratic
+            |x: f64| x * x * x, // Cubic
+            |x: f64| x.sin(),   // Sine
         ];
-        
+
         for (func_idx, func) in test_functions.iter().enumerate() {
             // Sample function at Gauss points
             let values: Vec<f64> = gauss_rule.x.iter().map(|&x| func(x)).collect();
-            
+
             // Get coefficients using the fast method
             let coeffs = interpolate_1d_legendre(&values, &gauss_rule);
-            
+
             // Test interpolation at grid points (should be exact)
             for (i, &x_grid) in gauss_rule.x.iter().enumerate() {
                 let expected = func(x_grid);
                 let interpolated = evaluate_interpolated_polynomial(x_grid, &coeffs);
                 let error = (interpolated - expected).abs();
-                
-                assert!(error < 1e-12,
-                    "Interpolation failed for n={}, func={}, point={}: expected {}, got {}, error={}", 
-                    n, func_idx, x_grid, expected, interpolated, error);
+
+                assert!(
+                    error < 1e-12,
+                    "Interpolation failed for n={}, func={}, point={}: expected {}, got {}, error={}",
+                    n,
+                    func_idx,
+                    x_grid,
+                    expected,
+                    interpolated,
+                    error
+                );
             }
-            
+
             println!("n={}, func={}: interpolation successful", n, func_idx);
         }
     }
 }
-
 
 /// Helper function to check if two vectors are approximately equal within tolerance
 fn vecs_approx_equal<T>(a: &[T], b: &[T], tolerance: T) -> bool
@@ -639,7 +656,7 @@ fn test_high_precision_legendre_f64() {
     let rule = legendre_custom::<f64>(n);
 
     // Expected values computed with high precision (similar to C++ DDouble test)
-    let x_expected = vec![
+    let x_expected = [
         -0.9894009349916499,
         -0.9445750230732325,
         -0.8656312023878318,
@@ -658,7 +675,7 @@ fn test_high_precision_legendre_f64() {
         0.9894009349916499,
     ];
 
-    let w_expected = vec![
+    let w_expected = [
         0.027152459411754124,
         0.06225352393864806,
         0.0951585116824928,
@@ -864,7 +881,7 @@ fn test_large_legendre_rule_high_precision() {
 
     // Check that all points are within [-1, 1]
     for &xi in rule.x.iter() {
-        assert!(xi >= -1.0 && xi <= 1.0);
+        assert!((-1.0..=1.0).contains(&xi));
     }
 
     // Check that points are sorted
@@ -911,7 +928,7 @@ fn test_piecewise_high_precision() {
 
     // Check that all points are within the overall interval
     for &xi in rule.x.iter() {
-        assert!(xi >= -4.0 && xi <= 3.0);
+        assert!((-4.0..=3.0).contains(&xi));
     }
 
     // Check that points are sorted

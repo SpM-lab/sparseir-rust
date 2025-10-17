@@ -4,14 +4,13 @@
 //! which represents Green's functions as a linear combination of poles on the
 //! real-frequency axis.
 
-use crate::traits::{StatisticsType, Statistics};
-use crate::freq::MatsubaraFreq;
 use crate::fitter::RealMatrixFitter;
+use crate::freq::MatsubaraFreq;
 use crate::kernel::CentrosymmKernel;
+use crate::traits::{Statistics, StatisticsType};
 use mdarray::DTensor;
 use num_complex::Complex;
 use std::marker::PhantomData;
-
 
 /// Generic single-pole Green's function at imaginary time τ
 ///
@@ -32,7 +31,7 @@ use std::marker::PhantomData;
 /// ```ignore
 /// use sparseir_rust::traits::Fermionic;
 /// let g_f = gtau_single_pole::<Fermionic>(0.5, 5.0, 1.0);
-/// 
+///
 /// use sparseir_rust::traits::Bosonic;
 /// let g_b = gtau_single_pole::<Bosonic>(0.5, 5.0, 1.0);
 /// ```
@@ -69,11 +68,11 @@ pub fn gtau_single_pole<S: StatisticsType>(tau: f64, omega: f64, beta: f64) -> f
 pub fn fermionic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
     use crate::taufuncs::normalize_tau;
     use crate::traits::Fermionic;
-    
+
     // Normalize τ to [0, β] and track sign from anti-periodicity
     // G(τ + β) = -G(τ) for fermions
     let (tau_normalized, sign) = normalize_tau::<Fermionic>(tau, beta);
-    
+
     sign * (-(-omega * tau_normalized).exp() / (1.0 + (-beta * omega).exp()))
 }
 
@@ -103,11 +102,11 @@ pub fn fermionic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
 pub fn bosonic_single_pole(tau: f64, omega: f64, beta: f64) -> f64 {
     use crate::taufuncs::normalize_tau;
     use crate::traits::Bosonic;
-    
+
     // Normalize τ to [0, β] using periodicity
     // G(τ + β) = G(τ) for bosons
     let tau_normalized = normalize_tau::<Bosonic>(tau, beta).0;
-    
+
     (-omega * tau_normalized).exp() / (1.0 - (-beta * omega).exp())
 }
 
@@ -165,33 +164,33 @@ where
 {
     /// Pole positions on the real-frequency axis ω ∈ [-ωmax, ωmax]
     pub poles: Vec<f64>,
-    
+
     /// Inverse temperature β
     pub beta: f64,
-    
+
     /// Maximum frequency ωmax
     pub wmax: f64,
-    
+
     /// LogisticKernel used for weight computations
     /// DLR always uses LogisticKernel regardless of the IR basis kernel type
     kernel: crate::kernel::LogisticKernel,
-    
+
     /// Accuracy of the representation
     pub accuracy: f64,
-    
+
     /// Inverse weights for each pole: inv_weight[i] = 1 / weight[i]
     /// Always computed using LogisticKernel:
     /// - Fermionic: inv_weight = 1.0
     /// - Bosonic: inv_weight = tanh(β·ω/2)
     pub inv_weights: Vec<f64>,
-    
+
     /// Fitting matrix from IR: fitmat = -s · V(poles)
     /// Used for to_IR transformation
     fitmat: DTensor<f64, 2>,
-    
+
     /// Fitter for from_IR transformation (uses SVD of fitmat)
     fitter: RealMatrixFitter,
-    
+
     /// Marker for statistics type
     _phantom: PhantomData<S>,
 }
@@ -218,20 +217,20 @@ where
         S: 'static,
         K: crate::kernel::KernelProperties + Clone,
     {
-        use crate::kernel::{LogisticKernel, KernelProperties};
-        
+        use crate::kernel::{KernelProperties, LogisticKernel};
+
         let beta = basis.beta();
         let wmax = basis.wmax();
         let accuracy = basis.accuracy();
-        
+
         // Compute fitting matrix: fitmat = -s · V(poles)
         // This transforms DLR coefficients to IR coefficients
-        let v_at_poles = basis.evaluate_omega(&poles);  // shape: [n_poles, basis_size]
-        let s = basis.svals();  // Non-normalized singular values (same as C++)
-        
+        let v_at_poles = basis.evaluate_omega(&poles); // shape: [n_poles, basis_size]
+        let s = basis.svals(); // Non-normalized singular values (same as C++)
+
         let basis_size = basis.size();
         let n_poles = poles.len();
-        
+
         // fitmat[l, i] = -s[l] * V_l(pole[i])
         // C++: fitmat = (-A_array * s_array.replicate(1, A.cols())).matrix()
         let fitmat = DTensor::<f64, 2>::from_fn([basis_size, n_poles], |idx| {
@@ -239,18 +238,19 @@ where
             let i = idx[1];
             -s[l] * v_at_poles[[i, l]]
         });
-        
+
         // Create fitter for from_IR (inverse operation)
         let fitter = RealMatrixFitter::new(fitmat.clone());
-        
+
         // Compute inverse weights for each pole using LogisticKernel
         // (regardless of the basis kernel type)
         let lambda = beta * wmax;
         let logistic_kernel = LogisticKernel::new(lambda);
-        let inv_weights: Vec<f64> = poles.iter()
+        let inv_weights: Vec<f64> = poles
+            .iter()
             .map(|&pole| logistic_kernel.inv_weight::<S>(beta, pole))
             .collect();
-        
+
         Self {
             poles,
             beta,
@@ -263,7 +263,7 @@ where
             _phantom: PhantomData,
         }
     }
-    
+
     /// Create DLR from IR basis with default pole locations
     ///
     /// Uses the default omega sampling points from the basis.
@@ -279,14 +279,17 @@ where
         K: crate::kernel::KernelProperties + Clone,
     {
         let poles = basis.default_omega_sampling_points();
-        assert!(basis.size() <= poles.len(), "The number of poles must be greater than or equal to the basis size");
+        assert!(
+            basis.size() <= poles.len(),
+            "The number of poles must be greater than or equal to the basis size"
+        );
         Self::with_poles(basis, poles)
     }
-    
+
     // ========================================================================
     // Public API (generic, user-friendly)
     // ========================================================================
-    
+
     /// Convert IR coefficients to DLR (N-dimensional, generic over real/complex)
     ///
     /// # Type Parameters
@@ -298,35 +301,49 @@ where
     ///
     /// # Returns
     /// DLR coefficients as N-D tensor
-    pub fn from_IR_nd<T>(&self, gl: &mdarray::Tensor<T, mdarray::DynRank>, dim: usize) -> mdarray::Tensor<T, mdarray::DynRank>
+    pub fn from_IR_nd<T>(
+        &self,
+        gl: &mdarray::Tensor<T, mdarray::DynRank>,
+        dim: usize,
+    ) -> mdarray::Tensor<T, mdarray::DynRank>
     where
-        T: num_complex::ComplexFloat + faer_traits::ComplexField + From<f64> + Copy + Default + 'static,
+        T: num_complex::ComplexFloat
+            + faer_traits::ComplexField
+            + From<f64>
+            + Copy
+            + Default
+            + 'static,
     {
         use mdarray::{DTensor, Shape};
-        
+
         let mut gl_shape = vec![];
         gl.shape().with_dims(|dims| {
             gl_shape.extend_from_slice(dims);
         });
-        
+
         let basis_size = gl_shape[dim];
-        assert_eq!(basis_size, self.fitmat.shape().0,
-                   "IR basis size mismatch: expected {}, got {}", self.fitmat.shape().0, basis_size);
-        
+        assert_eq!(
+            basis_size,
+            self.fitmat.shape().0,
+            "IR basis size mismatch: expected {}, got {}",
+            self.fitmat.shape().0,
+            basis_size
+        );
+
         // Move target dimension to position 0
         let gl_dim0 = crate::sampling::movedim(gl, dim, 0);
-        
+
         // Reshape to 2D
         let extra_size = gl_dim0.len() / basis_size;
         let gl_2d_dyn = gl_dim0.reshape(&[basis_size, extra_size][..]).to_tensor();
-        
+
         let gl_2d = DTensor::<T, 2>::from_fn([basis_size, extra_size], |idx| {
             gl_2d_dyn[&[idx[0], idx[1]][..]]
         });
-        
+
         // Fit using fitter's generic 2D method
         let g_dlr_2d = self.fitter.fit_2d_generic::<T>(&gl_2d);
-        
+
         // Reshape back
         let n_poles = self.poles.len();
         let mut g_dlr_shape = vec![n_poles];
@@ -335,11 +352,11 @@ where
                 g_dlr_shape.push(dims[i]);
             }
         });
-        
+
         let g_dlr_dim0 = g_dlr_2d.into_dyn().reshape(&g_dlr_shape[..]).to_tensor();
         crate::sampling::movedim(&g_dlr_dim0, 0, dim)
     }
-    
+
     /// Convert DLR coefficients to IR (N-dimensional, generic over real/complex)
     ///
     /// # Type Parameters
@@ -351,35 +368,49 @@ where
     ///
     /// # Returns
     /// IR coefficients as N-D tensor
-    pub fn to_IR_nd<T>(&self, g_dlr: &mdarray::Tensor<T, mdarray::DynRank>, dim: usize) -> mdarray::Tensor<T, mdarray::DynRank>
+    pub fn to_IR_nd<T>(
+        &self,
+        g_dlr: &mdarray::Tensor<T, mdarray::DynRank>,
+        dim: usize,
+    ) -> mdarray::Tensor<T, mdarray::DynRank>
     where
-        T: num_complex::ComplexFloat + faer_traits::ComplexField + From<f64> + Copy + Default + 'static,
+        T: num_complex::ComplexFloat
+            + faer_traits::ComplexField
+            + From<f64>
+            + Copy
+            + Default
+            + 'static,
     {
         use mdarray::{DTensor, Shape};
-        
+
         let mut g_dlr_shape = vec![];
         g_dlr.shape().with_dims(|dims| {
             g_dlr_shape.extend_from_slice(dims);
         });
-        
+
         let n_poles = g_dlr_shape[dim];
-        assert_eq!(n_poles, self.poles.len(),
-                   "DLR size mismatch: expected {}, got {}", self.poles.len(), n_poles);
-        
+        assert_eq!(
+            n_poles,
+            self.poles.len(),
+            "DLR size mismatch: expected {}, got {}",
+            self.poles.len(),
+            n_poles
+        );
+
         // Move target dimension to position 0
         let g_dlr_dim0 = crate::sampling::movedim(g_dlr, dim, 0);
-        
+
         // Reshape to 2D
         let extra_size = g_dlr_dim0.len() / n_poles;
         let g_dlr_2d_dyn = g_dlr_dim0.reshape(&[n_poles, extra_size][..]).to_tensor();
-        
+
         let g_dlr_2d = DTensor::<T, 2>::from_fn([n_poles, extra_size], |idx| {
             g_dlr_2d_dyn[&[idx[0], idx[1]][..]]
         });
-        
+
         // Evaluate using fitter's generic 2D method
         let gl_2d = self.fitter.evaluate_2d_generic::<T>(&g_dlr_2d);
-        
+
         // Reshape back
         let basis_size = self.fitmat.shape().0;
         let mut gl_shape = vec![basis_size];
@@ -388,7 +419,7 @@ where
                 gl_shape.push(dims[i]);
             }
         });
-        
+
         let gl_dim0 = gl_2d.into_dyn().reshape(&gl_shape[..]).to_tensor();
         crate::sampling::movedim(&gl_dim0, 0, dim)
     }
@@ -403,117 +434,123 @@ where
     S: StatisticsType + 'static,
 {
     type Kernel = crate::kernel::LogisticKernel;
-    
+
     fn kernel(&self) -> &Self::Kernel {
         // DLR always uses LogisticKernel for weight computations
         &self.kernel
     }
-    
+
     fn beta(&self) -> f64 {
         self.beta
     }
-    
+
     fn wmax(&self) -> f64 {
         self.wmax
     }
-    
+
     fn lambda(&self) -> f64 {
         self.beta * self.wmax
     }
-    
+
     fn size(&self) -> usize {
         self.poles.len()
     }
-    
+
     fn accuracy(&self) -> f64 {
         self.accuracy
     }
-    
+
     fn significance(&self) -> Vec<f64> {
         // All poles are equally significant in DLR
         vec![1.0; self.poles.len()]
     }
-    
+
     fn svals(&self) -> Vec<f64> {
         // All poles are equally significant in DLR (no singular value concept)
         vec![1.0; self.poles.len()]
     }
-    
+
     fn default_tau_sampling_points(&self) -> Vec<f64> {
         // TODO: Could use the original IR basis sampling points
         // For now, return empty - not well-defined for DLR
         vec![]
     }
-    
-    fn default_matsubara_sampling_points(&self, _positive_only: bool) -> Vec<crate::freq::MatsubaraFreq<S>> {
+
+    fn default_matsubara_sampling_points(
+        &self,
+        _positive_only: bool,
+    ) -> Vec<crate::freq::MatsubaraFreq<S>> {
         // TODO: Could use the original IR basis sampling points
         // For now, return empty - not well-defined for DLR
         vec![]
     }
-    
+
     fn evaluate_tau(&self, tau: &[f64]) -> mdarray::DTensor<f64, 2> {
-        use mdarray::DTensor;
         use crate::taufuncs::normalize_tau;
-        
+        use mdarray::DTensor;
+
         let n_points = tau.len();
         let n_poles = self.poles.len();
-        
+
         // Evaluate TauPoles basis functions: u_i(τ) = -K(x, y_i) / weight[i]
         // where x = 2τ/β - 1, y_i = pole_i/ωmax
         // Normalize tau to [0, β] for kernel evaluation
-        
+
         DTensor::<f64, 2>::from_fn([n_points, n_poles], |idx| {
             let tau_val = tau[idx[0]];
             let pole = self.poles[idx[1]];
             let inv_weight = self.inv_weights[idx[1]];
-            
+
             // Normalize tau to [0, β] (ignore sign for DLR)
             let (tau_norm, _sign) = normalize_tau::<S>(tau_val, self.beta);
-            
+
             // Compute kernel value
             let x = 2.0 * tau_norm / self.beta - 1.0;
             let y = pole / self.wmax;
-            
+
             // u_i(τ) = -K(x, y_i) * inv_weight[i]
             // Note: No sign factor for DLR (unlike IR)
             (-self.kernel.compute(x, y)) * inv_weight
         })
     }
-    
-    fn evaluate_matsubara(&self, freqs: &[crate::freq::MatsubaraFreq<S>]) -> mdarray::DTensor<num_complex::Complex<f64>, 2> {
+
+    fn evaluate_matsubara(
+        &self,
+        freqs: &[crate::freq::MatsubaraFreq<S>],
+    ) -> mdarray::DTensor<num_complex::Complex<f64>, 2> {
         use mdarray::DTensor;
         use num_complex::Complex;
-        
+
         let n_points = freqs.len();
         let n_poles = self.poles.len();
-        
+
         // Evaluate MatsubaraPoles basis functions
         DTensor::<Complex<f64>, 2>::from_fn([n_points, n_poles], |idx| {
             let freq = &freqs[idx[0]];
             let pole = self.poles[idx[1]];
             let inv_weight = self.inv_weights[idx[1]];
-            
+
             // iν = i * π * (2n + ζ) / β
             let iv = freq.value_imaginary(self.beta);
-            
+
             // u_i(iν) = inv_weight / (iν - pole_i)
             // Fermionic: inv_weight = 1.0
             // Bosonic: inv_weight = tanh(β·pole_i/2)
             Complex::new(inv_weight, 0.0) / (iv - Complex::new(pole, 0.0))
         })
     }
-    
+
     fn evaluate_omega(&self, omega: &[f64]) -> mdarray::DTensor<f64, 2> {
         use mdarray::DTensor;
-        
+
         let n_points = omega.len();
         let n_poles = self.poles.len();
-        
+
         // For DLR, this could return identity or delta function
         // For now, return zeros (not well-defined)
         DTensor::<f64, 2>::from_fn([n_points, n_poles], |_idx| 0.0)
     }
-    
+
     fn default_omega_sampling_points(&self) -> Vec<f64> {
         // DLR poles ARE the omega sampling points
         self.poles.clone()
@@ -523,13 +560,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::traits::{Fermionic, Bosonic};
+    use crate::traits::{Bosonic, Fermionic};
 
     /// Generic test for periodicity/anti-periodicity
     fn test_periodicity_generic<S: StatisticsType>(expected_sign: f64, stat_name: &str) {
         let beta = 1.0;
         let omega = 5.0;
-        
+
         // Test periodicity by comparing G(τ) with G(τ-β)
         // Since normalize_tau is restricted to [-β, β], we test:
         // For τ ∈ (0, β]: compare G(τ) with G(τ-β)
@@ -538,15 +575,19 @@ mod tests {
         for tau in [0.1, 0.3, 0.7] {
             let g_tau = gtau_single_pole::<S>(tau, omega, beta);
             let g_tau_minus_beta = gtau_single_pole::<S>(tau - beta, omega, beta);
-            
+
             // For fermions: G(τ) = -G(τ-β) → G(τ-β) = -G(τ)
             // For bosons: G(τ) = G(τ-β)
             let expected = expected_sign * g_tau;
-            
+
             assert!(
                 (expected - g_tau_minus_beta).abs() < 1e-14,
                 "{} periodicity violated at τ={}: G(τ)={}, G(τ-β)={}, expected={}",
-                stat_name, tau, g_tau, g_tau_minus_beta, expected
+                stat_name,
+                tau,
+                g_tau,
+                g_tau_minus_beta,
+                expected
             );
         }
     }
@@ -568,21 +609,25 @@ mod tests {
         let beta = 1.0;
         let omega = 5.0;
         let tau = 0.5;
-        
+
         // Test that generic function matches specific functions
         let g_f_specific = fermionic_single_pole(tau, omega, beta);
         let g_f_generic = gtau_single_pole::<Fermionic>(tau, omega, beta);
-        
+
         let g_b_specific = bosonic_single_pole(tau, omega, beta);
         let g_b_generic = gtau_single_pole::<Bosonic>(tau, omega, beta);
-        
+
         assert!(
             (g_f_specific - g_f_generic).abs() < 1e-14,
-            "Fermionic: specific={}, generic={}", g_f_specific, g_f_generic
+            "Fermionic: specific={}, generic={}",
+            g_f_specific,
+            g_f_generic
         );
         assert!(
             (g_b_specific - g_b_generic).abs() < 1e-14,
-            "Bosonic: specific={}, generic={}", g_b_specific, g_b_generic
+            "Bosonic: specific={}, generic={}",
+            g_b_specific,
+            g_b_generic
         );
     }
 }

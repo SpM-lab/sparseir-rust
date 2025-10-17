@@ -9,15 +9,15 @@
 //! - Introspection: spir_dlr_get_npoles, spir_dlr_get_poles
 //! - Conversion: spir_ir2dlr_dd, spir_ir2dlr_zz, spir_dlr2ir_dd, spir_dlr2ir_zz
 
+use num_complex::Complex64;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
-use num_complex::Complex64;
 
 use crate::types::{spir_basis, BasisType};
-use crate::utils::{copy_tensor_to_c_array, convert_dims_for_row_major, MemoryOrder};
+use crate::utils::{convert_dims_for_row_major, copy_tensor_to_c_array, MemoryOrder};
 use crate::{StatusCode, SPIR_COMPUTATION_SUCCESS, SPIR_INVALID_ARGUMENT, SPIR_NOT_SUPPORTED};
-use sparseir_rust::Tensor;
 use sparseir_rust::dlr::DiscreteLehmannRepresentation;
+use sparseir_rust::Tensor;
 
 // ============================================================================
 // Creation Functions
@@ -71,9 +71,7 @@ pub unsafe extern "C" fn spir_dlr_new(
             }
         };
 
-        let dlr_basis = spir_basis {
-            inner: dlr_type,
-        };
+        let dlr_basis = spir_basis { inner: dlr_type };
 
         (Box::into_raw(Box::new(dlr_basis)), SPIR_COMPUTATION_SUCCESS)
     }));
@@ -151,9 +149,7 @@ pub unsafe extern "C" fn spir_dlr_new_with_poles(
             }
         };
 
-        let dlr_basis = spir_basis {
-            inner: dlr_type,
-        };
+        let dlr_basis = spir_basis { inner: dlr_type };
 
         (Box::into_raw(Box::new(dlr_basis)), SPIR_COMPUTATION_SUCCESS)
     }));
@@ -229,10 +225,7 @@ pub unsafe extern "C" fn spir_dlr_get_npoles(
 /// # Safety
 /// Caller must ensure `dlr` is valid and `poles` has sufficient size
 #[no_mangle]
-pub unsafe extern "C" fn spir_dlr_get_poles(
-    dlr: *const spir_basis,
-    poles: *mut f64,
-) -> StatusCode {
+pub unsafe extern "C" fn spir_dlr_get_poles(dlr: *const spir_basis, poles: *mut f64) -> StatusCode {
     if dlr.is_null() || poles.is_null() {
         return SPIR_INVALID_ARGUMENT;
     }
@@ -309,11 +302,8 @@ pub unsafe extern "C" fn spir_ir2dlr_dd(
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
 
         // Convert dims and target_dim for row-major mdarray
-        let (dims, mdarray_target_dim) = convert_dims_for_row_major(
-            &orig_dims,
-            target_dim as usize,
-            mem_order,
-        );
+        let (dims, mdarray_target_dim) =
+            convert_dims_for_row_major(&orig_dims, target_dim as usize, mem_order);
 
         // Calculate total input size
         let total_input: usize = dims.iter().product();
@@ -326,18 +316,10 @@ pub unsafe extern "C" fn spir_ir2dlr_dd(
 
         // Convert IR to DLR based on DLR type
         let result_tensor = match &dlr_ref.inner {
-            BasisType::DLRFermionic(dlr) => {
-                dlr.from_IR_nd(&input_tensor, mdarray_target_dim)
-            }
-            BasisType::DLRBosonic(dlr) => {
-                dlr.from_IR_nd(&input_tensor, mdarray_target_dim)
-            }
-            BasisType::DLRFermionic(dlr) => {
-                dlr.from_IR_nd(&input_tensor, mdarray_target_dim)
-            }
-            BasisType::DLRBosonic(dlr) => {
-                dlr.from_IR_nd(&input_tensor, mdarray_target_dim)
-            }
+            BasisType::DLRFermionic(dlr) => dlr.from_IR_nd(&input_tensor, mdarray_target_dim),
+            BasisType::DLRBosonic(dlr) => dlr.from_IR_nd(&input_tensor, mdarray_target_dim),
+            BasisType::DLRFermionic(dlr) => dlr.from_IR_nd(&input_tensor, mdarray_target_dim),
+            BasisType::DLRBosonic(dlr) => dlr.from_IR_nd(&input_tensor, mdarray_target_dim),
             _ => return SPIR_NOT_SUPPORTED, // Not a DLR
         };
 
@@ -395,11 +377,8 @@ pub unsafe extern "C" fn spir_ir2dlr_zz(
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
 
         // Convert dims and target_dim for row-major mdarray
-        let (dims, mdarray_target_dim) = convert_dims_for_row_major(
-            &orig_dims,
-            target_dim as usize,
-            mem_order,
-        );
+        let (dims, mdarray_target_dim) =
+            convert_dims_for_row_major(&orig_dims, target_dim as usize, mem_order);
 
         // Calculate total input size
         let total_input: usize = dims.iter().product();
@@ -412,18 +391,10 @@ pub unsafe extern "C" fn spir_ir2dlr_zz(
 
         // Convert IR to DLR based on DLR type
         let result_tensor = match &dlr_ref.inner {
-            BasisType::DLRFermionic(dlr) => {
-                dlr.from_IR_nd(&input_tensor, mdarray_target_dim)
-            }
-            BasisType::DLRBosonic(dlr) => {
-                dlr.from_IR_nd(&input_tensor, mdarray_target_dim)
-            }
-            BasisType::DLRFermionic(dlr) => {
-                dlr.from_IR_nd(&input_tensor, mdarray_target_dim)
-            }
-            BasisType::DLRBosonic(dlr) => {
-                dlr.from_IR_nd(&input_tensor, mdarray_target_dim)
-            }
+            BasisType::DLRFermionic(dlr) => dlr.from_IR_nd(&input_tensor, mdarray_target_dim),
+            BasisType::DLRBosonic(dlr) => dlr.from_IR_nd(&input_tensor, mdarray_target_dim),
+            BasisType::DLRFermionic(dlr) => dlr.from_IR_nd(&input_tensor, mdarray_target_dim),
+            BasisType::DLRBosonic(dlr) => dlr.from_IR_nd(&input_tensor, mdarray_target_dim),
             _ => return SPIR_NOT_SUPPORTED, // Not a DLR
         };
 
@@ -481,11 +452,8 @@ pub unsafe extern "C" fn spir_dlr2ir_dd(
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
 
         // Convert dims and target_dim for row-major mdarray
-        let (dims, mdarray_target_dim) = convert_dims_for_row_major(
-            &orig_dims,
-            target_dim as usize,
-            mem_order,
-        );
+        let (dims, mdarray_target_dim) =
+            convert_dims_for_row_major(&orig_dims, target_dim as usize, mem_order);
 
         // Calculate total input size
         let total_input: usize = dims.iter().product();
@@ -498,18 +466,10 @@ pub unsafe extern "C" fn spir_dlr2ir_dd(
 
         // Convert DLR to IR based on DLR type
         let result_tensor = match &dlr_ref.inner {
-            BasisType::DLRFermionic(dlr) => {
-                dlr.to_IR_nd(&input_tensor, mdarray_target_dim)
-            }
-            BasisType::DLRBosonic(dlr) => {
-                dlr.to_IR_nd(&input_tensor, mdarray_target_dim)
-            }
-            BasisType::DLRFermionic(dlr) => {
-                dlr.to_IR_nd(&input_tensor, mdarray_target_dim)
-            }
-            BasisType::DLRBosonic(dlr) => {
-                dlr.to_IR_nd(&input_tensor, mdarray_target_dim)
-            }
+            BasisType::DLRFermionic(dlr) => dlr.to_IR_nd(&input_tensor, mdarray_target_dim),
+            BasisType::DLRBosonic(dlr) => dlr.to_IR_nd(&input_tensor, mdarray_target_dim),
+            BasisType::DLRFermionic(dlr) => dlr.to_IR_nd(&input_tensor, mdarray_target_dim),
+            BasisType::DLRBosonic(dlr) => dlr.to_IR_nd(&input_tensor, mdarray_target_dim),
             _ => return SPIR_NOT_SUPPORTED, // Not a DLR
         };
 
@@ -567,11 +527,8 @@ pub unsafe extern "C" fn spir_dlr2ir_zz(
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
 
         // Convert dims and target_dim for row-major mdarray
-        let (dims, mdarray_target_dim) = convert_dims_for_row_major(
-            &orig_dims,
-            target_dim as usize,
-            mem_order,
-        );
+        let (dims, mdarray_target_dim) =
+            convert_dims_for_row_major(&orig_dims, target_dim as usize, mem_order);
 
         // Calculate total input size
         let total_input: usize = dims.iter().product();
@@ -584,18 +541,10 @@ pub unsafe extern "C" fn spir_dlr2ir_zz(
 
         // Convert DLR to IR based on DLR type
         let result_tensor = match &dlr_ref.inner {
-            BasisType::DLRFermionic(dlr) => {
-                dlr.to_IR_nd(&input_tensor, mdarray_target_dim)
-            }
-            BasisType::DLRBosonic(dlr) => {
-                dlr.to_IR_nd(&input_tensor, mdarray_target_dim)
-            }
-            BasisType::DLRFermionic(dlr) => {
-                dlr.to_IR_nd(&input_tensor, mdarray_target_dim)
-            }
-            BasisType::DLRBosonic(dlr) => {
-                dlr.to_IR_nd(&input_tensor, mdarray_target_dim)
-            }
+            BasisType::DLRFermionic(dlr) => dlr.to_IR_nd(&input_tensor, mdarray_target_dim),
+            BasisType::DLRBosonic(dlr) => dlr.to_IR_nd(&input_tensor, mdarray_target_dim),
+            BasisType::DLRFermionic(dlr) => dlr.to_IR_nd(&input_tensor, mdarray_target_dim),
+            BasisType::DLRBosonic(dlr) => dlr.to_IR_nd(&input_tensor, mdarray_target_dim),
             _ => return SPIR_NOT_SUPPORTED, // Not a DLR
         };
 
@@ -615,10 +564,10 @@ pub unsafe extern "C" fn spir_dlr2ir_zz(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::basis::spir_basis_new;
     use crate::kernel::spir_logistic_kernel_new;
     use crate::sve::spir_sve_result_new;
-    use crate::basis::spir_basis_new;
-    use crate::SPIR_SUCCESS;
+    use crate::SPIR_COMPUTATION_SUCCESS;
 
     #[test]
     fn test_dlr_creation() {
@@ -626,19 +575,19 @@ mod tests {
             // Create kernel
             let mut kernel_status = crate::SPIR_INTERNAL_ERROR;
             let kernel = spir_logistic_kernel_new(10.0, &mut kernel_status);
-            assert_eq!(kernel_status, SPIR_SUCCESS);
+            assert_eq!(kernel_status, SPIR_COMPUTATION_SUCCESS);
             assert!(!kernel.is_null());
 
             // Create SVE result
             let mut sve_status = crate::SPIR_INTERNAL_ERROR;
             let sve = spir_sve_result_new(kernel, 1e-6, 1e-6, -1, -1, 0, &mut sve_status);
-            assert_eq!(sve_status, SPIR_SUCCESS);
+            assert_eq!(sve_status, SPIR_COMPUTATION_SUCCESS);
             assert!(!sve.is_null());
 
             // Create IR basis (Fermionic)
             let mut basis_status = crate::SPIR_INTERNAL_ERROR;
             let basis = spir_basis_new(1, 10.0, 1.0, 1e-6, kernel, sve, -1, &mut basis_status);
-            assert_eq!(basis_status, SPIR_SUCCESS);
+            assert_eq!(basis_status, SPIR_COMPUTATION_SUCCESS);
             assert!(!basis.is_null());
 
             // Create DLR
@@ -663,30 +612,42 @@ mod tests {
             // Test get_u funcs from DLR
             let mut u_status = crate::SPIR_INTERNAL_ERROR;
             let u_funcs = crate::basis::spir_basis_get_u(dlr, &mut u_status);
-            assert_eq!(u_status, SPIR_SUCCESS);
+            assert_eq!(u_status, SPIR_COMPUTATION_SUCCESS);
             assert!(!u_funcs.is_null());
             println!("✓ Got u funcs from DLR");
-            
+
             // Evaluate u at tau=0.5
             let tau = 0.5;
             let mut u_values = vec![0.0; npoles as usize];
             let status = crate::funcs::spir_funcs_eval(u_funcs, tau, u_values.as_mut_ptr());
-            assert_eq!(status, SPIR_SUCCESS);
-            println!("✓ Evaluated u at τ={}: {:?}", tau, &u_values[0..3.min(npoles as usize)]);
-            
+            assert_eq!(status, SPIR_COMPUTATION_SUCCESS);
+            println!(
+                "✓ Evaluated u at τ={}: {:?}",
+                tau,
+                &u_values[0..3.min(npoles as usize)]
+            );
+
             // Test get_uhat funcs from DLR
             let mut uhat_status = crate::SPIR_INTERNAL_ERROR;
             let uhat_funcs = crate::basis::spir_basis_get_uhat(dlr, &mut uhat_status);
-            assert_eq!(uhat_status, SPIR_SUCCESS);
+            assert_eq!(uhat_status, SPIR_COMPUTATION_SUCCESS);
             assert!(!uhat_funcs.is_null());
             println!("✓ Got uhat funcs from DLR");
-            
+
             // Evaluate uhat at Matsubara frequency n=1
             let n_matsu = 1i64;
             let mut uhat_values = vec![num_complex::Complex64::new(0.0, 0.0); npoles as usize];
-            let status = crate::funcs::spir_funcs_eval_matsu(uhat_funcs, n_matsu, uhat_values.as_mut_ptr());
-            assert_eq!(status, SPIR_SUCCESS);
-            println!("✓ Evaluated uhat at n={}: |uhat|={:?}", n_matsu, &uhat_values[0..3.min(npoles as usize)].iter().map(|v| v.norm()).collect::<Vec<_>>());
+            let status =
+                crate::funcs::spir_funcs_eval_matsu(uhat_funcs, n_matsu, uhat_values.as_mut_ptr());
+            assert_eq!(status, SPIR_COMPUTATION_SUCCESS);
+            println!(
+                "✓ Evaluated uhat at n={}: |uhat|={:?}",
+                n_matsu,
+                &uhat_values[0..3.min(npoles as usize)]
+                    .iter()
+                    .map(|v| v.norm())
+                    .collect::<Vec<_>>()
+            );
 
             // Cleanup
             crate::funcs::spir_funcs_release(uhat_funcs);
@@ -698,4 +659,3 @@ mod tests {
         }
     }
 }
-

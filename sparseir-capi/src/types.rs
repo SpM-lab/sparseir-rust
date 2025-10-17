@@ -3,16 +3,16 @@
 //! All Rust objects are wrapped in opaque pointers to hide implementation
 //! details from C code.
 
-use std::sync::Arc;
-use sparseir_rust::kernel::{LogisticKernel, RegularizedBoseKernel, CentrosymmKernel};
-use sparseir_rust::sve::SVEResult;
 use sparseir_rust::basis::FiniteTempBasis;
-use sparseir_rust::{Bosonic, Fermionic};
-use sparseir_rust::traits::{Statistics, StatisticsType};
+use sparseir_rust::freq::MatsubaraFreq;
+use sparseir_rust::kernel::{CentrosymmKernel, LogisticKernel, RegularizedBoseKernel};
 use sparseir_rust::poly::PiecewiseLegendrePolyVector;
 use sparseir_rust::polyfourier::PiecewiseLegendreFTVector;
-use sparseir_rust::freq::MatsubaraFreq;
+use sparseir_rust::sve::SVEResult;
 use sparseir_rust::taufuncs::normalize_tau;
+use sparseir_rust::traits::Statistics;
+use sparseir_rust::{Bosonic, Fermionic};
+use std::sync::Arc;
 
 /// Convert Statistics enum to C-API integer
 #[inline]
@@ -46,7 +46,7 @@ impl FunctionDomain {
     pub(crate) fn is_tau_with_statistics(&self, stats: Statistics) -> bool {
         matches!(self, FunctionDomain::Tau(s) if *s == stats)
     }
-    
+
     /// Check if this is an omega function
     pub(crate) fn is_omega(&self) -> bool {
         matches!(self, FunctionDomain::Omega)
@@ -182,7 +182,9 @@ impl spir_sve_result {
 }
 
 impl spir_basis {
-    pub(crate) fn new_logistic_fermionic(basis: FiniteTempBasis<LogisticKernel, Fermionic>) -> Self {
+    pub(crate) fn new_logistic_fermionic(
+        basis: FiniteTempBasis<LogisticKernel, Fermionic>,
+    ) -> Self {
         Self {
             inner: BasisType::LogisticFermionic(Arc::new(basis)),
         }
@@ -194,13 +196,17 @@ impl spir_basis {
         }
     }
 
-    pub(crate) fn new_regularized_bose_fermionic(basis: FiniteTempBasis<RegularizedBoseKernel, Fermionic>) -> Self {
+    pub(crate) fn new_regularized_bose_fermionic(
+        basis: FiniteTempBasis<RegularizedBoseKernel, Fermionic>,
+    ) -> Self {
         Self {
             inner: BasisType::RegularizedBoseFermionic(Arc::new(basis)),
         }
     }
 
-    pub(crate) fn new_regularized_bose_bosonic(basis: FiniteTempBasis<RegularizedBoseKernel, Bosonic>) -> Self {
+    pub(crate) fn new_regularized_bose_bosonic(
+        basis: FiniteTempBasis<RegularizedBoseKernel, Bosonic>,
+    ) -> Self {
         Self {
             inner: BasisType::RegularizedBoseBosonic(Arc::new(basis)),
         }
@@ -275,10 +281,16 @@ impl spir_basis {
 
     pub(crate) fn default_matsubara_sampling_points(&self, positive_only: bool) -> Vec<i64> {
         match &self.inner {
-            BasisType::LogisticFermionic(b) => b.default_matsubara_sampling_points_i64(positive_only),
+            BasisType::LogisticFermionic(b) => {
+                b.default_matsubara_sampling_points_i64(positive_only)
+            }
             BasisType::LogisticBosonic(b) => b.default_matsubara_sampling_points_i64(positive_only),
-            BasisType::RegularizedBoseFermionic(b) => b.default_matsubara_sampling_points_i64(positive_only),
-            BasisType::RegularizedBoseBosonic(b) => b.default_matsubara_sampling_points_i64(positive_only),
+            BasisType::RegularizedBoseFermionic(b) => {
+                b.default_matsubara_sampling_points_i64(positive_only)
+            }
+            BasisType::RegularizedBoseBosonic(b) => {
+                b.default_matsubara_sampling_points_i64(positive_only)
+            }
             // DLR: no default Matsubara sampling points
             BasisType::DLRFermionic(_) | BasisType::DLRBosonic(_) => vec![],
         }
@@ -316,47 +328,46 @@ impl PolyVectorFuncs {
             FunctionDomain::Tau(Statistics::Fermionic) => {
                 // u functions (fermionic): normalize tau to [0, beta]
                 normalize_tau::<Fermionic>(x, beta)
-            },
+            }
             FunctionDomain::Tau(Statistics::Bosonic) => {
                 // u functions (bosonic): normalize tau to [0, beta]
                 normalize_tau::<Bosonic>(x, beta)
-            },
+            }
             FunctionDomain::Omega => {
                 // v functions: no normalization needed
                 (x, 1.0)
-            },
+            }
         };
-        
+
         // Evaluate all polynomials at the normalized point
-        self.poly.polyvec.iter()
+        self.poly
+            .polyvec
+            .iter()
             .map(|p| sign * p.evaluate(x_reg))
             .collect()
     }
-    
+
     /// Batch evaluate all functions at multiple points
     /// Returns Vec<Vec<f64>> where result[i][j] is function i evaluated at point j
     pub fn batch_evaluate_at(&self, xs: &[f64], beta: f64) -> Vec<Vec<f64>> {
         let n_funcs = self.poly.polyvec.len();
         let n_points = xs.len();
         let mut result = vec![vec![0.0; n_points]; n_funcs];
-        
+
         // Normalize all points based on domain
-        let normalized: Vec<(f64, f64)> = xs.iter().map(|&x| {
-            match self.domain {
-                FunctionDomain::Tau(Statistics::Fermionic) => {
-                    normalize_tau::<Fermionic>(x, beta)
-                },
-                FunctionDomain::Tau(Statistics::Bosonic) => {
-                    normalize_tau::<Bosonic>(x, beta)
-                },
+        let normalized: Vec<(f64, f64)> = xs
+            .iter()
+            .map(|&x| match self.domain {
+                FunctionDomain::Tau(Statistics::Fermionic) => normalize_tau::<Fermionic>(x, beta),
+                FunctionDomain::Tau(Statistics::Bosonic) => normalize_tau::<Bosonic>(x, beta),
                 FunctionDomain::Omega => (x, 1.0),
-            }
-        }).collect();
-        
+            })
+            .collect();
+
         // Extract normalized x values and signs
         let xs_reg: Vec<f64> = normalized.iter().map(|(x, _)| *x).collect();
         let signs: Vec<f64> = normalized.iter().map(|(_, s)| *s).collect();
-        
+
         // Evaluate each polynomial at all regularized points using evaluate_many
         for (i, p) in self.poly.polyvec.iter().enumerate() {
             let values = p.evaluate_many(&xs_reg);
@@ -364,7 +375,7 @@ impl PolyVectorFuncs {
                 result[i][j] = signs[j] * val;
             }
         }
-        
+
         result
     }
 }
@@ -391,21 +402,23 @@ impl DLRTauFuncs {
     /// Evaluate all DLR tau functions at a single point
     pub fn evaluate_at(&self, tau: f64) -> Vec<f64> {
         use sparseir_rust::kernel::LogisticKernel;
-        
+
         // Normalize tau to [0, beta] using the appropriate statistics
         let (tau_reg, sign) = match self.statistics {
             Statistics::Fermionic => normalize_tau::<Fermionic>(tau, self.beta),
             Statistics::Bosonic => normalize_tau::<Bosonic>(tau, self.beta),
         };
-        
+
         // Compute kernel parameters
         // DLR always uses LogisticKernel
         let lambda = self.beta * self.wmax;
         let kernel = LogisticKernel::new(lambda);
-        let x_kern = 2.0 * tau_reg / self.beta - 1.0;  // x_kern ∈ [-1, 1]
-        
+        let x_kern = 2.0 * tau_reg / self.beta - 1.0; // x_kern ∈ [-1, 1]
+
         // Evaluate DLR functions: u_l(tau) = sign * inv_weight[l] * (-K(x, y_l))
-        self.poles.iter().zip(self.inv_weights.iter())
+        self.poles
+            .iter()
+            .zip(self.inv_weights.iter())
             .map(|(&pole, &inv_weight)| {
                 let y = pole / self.wmax;
                 let k_val = kernel.compute(x_kern, y);
@@ -413,20 +426,20 @@ impl DLRTauFuncs {
             })
             .collect()
     }
-    
+
     /// Batch evaluate all DLR tau functions at multiple points
     /// Returns Vec<Vec<f64>> where result[i][j] is function i evaluated at point j
     pub fn batch_evaluate_at(&self, taus: &[f64]) -> Vec<Vec<f64>> {
         use sparseir_rust::kernel::LogisticKernel;
-        
+
         let n_funcs = self.poles.len();
         let n_points = taus.len();
         let mut result = vec![vec![0.0; n_points]; n_funcs];
-        
+
         // DLR always uses LogisticKernel
         let lambda = self.beta * self.wmax;
         let kernel = LogisticKernel::new(lambda);
-        
+
         // Evaluate at each point
         for (j, &tau) in taus.iter().enumerate() {
             // Normalize tau to [0, beta] using the appropriate statistics
@@ -435,14 +448,16 @@ impl DLRTauFuncs {
                 Statistics::Bosonic => normalize_tau::<Bosonic>(tau, self.beta),
             };
             let x_kern = 2.0 * tau_reg / self.beta - 1.0;
-            
-            for (i, (&pole, &inv_weight)) in self.poles.iter().zip(self.inv_weights.iter()).enumerate() {
+
+            for (i, (&pole, &inv_weight)) in
+                self.poles.iter().zip(self.inv_weights.iter()).enumerate()
+            {
                 let y = pole / self.wmax;
                 let k_val = kernel.compute(x_kern, y);
                 result[i][j] = sign * (-k_val) * inv_weight;
             }
         }
-        
+
         result
     }
 }
@@ -465,13 +480,13 @@ pub(crate) struct DLRMatsubaraFuncs {
 pub(crate) enum FuncsType {
     /// Continuous functions (u or v): PiecewiseLegendrePolyVector
     PolyVector(PolyVectorFuncs),
-    
+
     /// Fourier-transformed functions (uhat): PiecewiseLegendreFTVector
     FTVector(FTVectorFuncs),
-    
+
     /// DLR functions in tau domain (discrete poles)
     DLRTau(DLRTauFuncs),
-    
+
     /// DLR functions in Matsubara domain (discrete poles)
     DLRMatsubara(DLRMatsubaraFuncs),
 }
@@ -525,7 +540,10 @@ impl spir_funcs {
     }
 
     /// Create uhat funcs (Matsubara-domain, Fermionic)
-    pub(crate) fn from_uhat_fermionic(ft: Arc<PiecewiseLegendreFTVector<Fermionic>>, beta: f64) -> Self {
+    pub(crate) fn from_uhat_fermionic(
+        ft: Arc<PiecewiseLegendreFTVector<Fermionic>>,
+        beta: f64,
+    ) -> Self {
         Self {
             inner: FuncsType::FTVector(FTVectorFuncs {
                 ft_fermionic: Some(ft),
@@ -537,7 +555,10 @@ impl spir_funcs {
     }
 
     /// Create uhat funcs (Matsubara-domain, Bosonic)
-    pub(crate) fn from_uhat_bosonic(ft: Arc<PiecewiseLegendreFTVector<Bosonic>>, beta: f64) -> Self {
+    pub(crate) fn from_uhat_bosonic(
+        ft: Arc<PiecewiseLegendreFTVector<Bosonic>>,
+        beta: f64,
+    ) -> Self {
         Self {
             inner: FuncsType::FTVector(FTVectorFuncs {
                 ft_fermionic: None,
@@ -550,7 +571,12 @@ impl spir_funcs {
 
     /// Create DLR tau funcs (tau-domain, Fermionic)
     /// Note: DLR always uses LogisticKernel regardless of the IR basis kernel type
-    pub(crate) fn from_dlr_tau_fermionic(poles: Vec<f64>, beta: f64, wmax: f64, inv_weights: Vec<f64>) -> Self {
+    pub(crate) fn from_dlr_tau_fermionic(
+        poles: Vec<f64>,
+        beta: f64,
+        wmax: f64,
+        inv_weights: Vec<f64>,
+    ) -> Self {
         Self {
             inner: FuncsType::DLRTau(DLRTauFuncs {
                 poles,
@@ -565,7 +591,12 @@ impl spir_funcs {
 
     /// Create DLR tau funcs (tau-domain, Bosonic)
     /// Note: DLR always uses LogisticKernel regardless of the IR basis kernel type
-    pub(crate) fn from_dlr_tau_bosonic(poles: Vec<f64>, beta: f64, wmax: f64, inv_weights: Vec<f64>) -> Self {
+    pub(crate) fn from_dlr_tau_bosonic(
+        poles: Vec<f64>,
+        beta: f64,
+        wmax: f64,
+        inv_weights: Vec<f64>,
+    ) -> Self {
         Self {
             inner: FuncsType::DLRTau(DLRTauFuncs {
                 poles,
@@ -579,7 +610,11 @@ impl spir_funcs {
     }
 
     /// Create DLR Matsubara funcs (Matsubara-domain, Fermionic)
-    pub(crate) fn from_dlr_matsubara_fermionic(poles: Vec<f64>, beta: f64, inv_weights: Vec<f64>) -> Self {
+    pub(crate) fn from_dlr_matsubara_fermionic(
+        poles: Vec<f64>,
+        beta: f64,
+        inv_weights: Vec<f64>,
+    ) -> Self {
         Self {
             inner: FuncsType::DLRMatsubara(DLRMatsubaraFuncs {
                 poles,
@@ -592,7 +627,11 @@ impl spir_funcs {
     }
 
     /// Create DLR Matsubara funcs (Matsubara-domain, Bosonic)
-    pub(crate) fn from_dlr_matsubara_bosonic(poles: Vec<f64>, beta: f64, inv_weights: Vec<f64>) -> Self {
+    pub(crate) fn from_dlr_matsubara_bosonic(
+        poles: Vec<f64>,
+        beta: f64,
+        inv_weights: Vec<f64>,
+    ) -> Self {
         Self {
             inner: FuncsType::DLRMatsubara(DLRMatsubaraFuncs {
                 poles,
@@ -616,7 +655,7 @@ impl spir_funcs {
                 } else {
                     0
                 }
-            },
+            }
             FuncsType::DLRTau(dlr) => dlr.poles.len(),
             FuncsType::DLRMatsubara(dlr) => dlr.poles.len(),
         }
@@ -637,7 +676,7 @@ impl spir_funcs {
                 }
                 all_knots.sort_by(|a, b| a.partial_cmp(b).unwrap());
                 Some(all_knots)
-            },
+            }
             _ => None, // FT vectors don't have knots in the traditional sense
         }
     }
@@ -651,12 +690,8 @@ impl spir_funcs {
     /// Vector of function values, or None if not continuous
     pub(crate) fn eval_continuous(&self, x: f64) -> Option<Vec<f64>> {
         match &self.inner {
-            FuncsType::PolyVector(pv) => {
-                Some(pv.evaluate_at(x, self.beta))
-            },
-            FuncsType::DLRTau(dlr) => {
-                Some(dlr.evaluate_at(x))
-            },
+            FuncsType::PolyVector(pv) => Some(pv.evaluate_at(x, self.beta)),
+            FuncsType::DLRTau(dlr) => Some(dlr.evaluate_at(x)),
             _ => None,
         }
     }
@@ -690,11 +725,11 @@ impl spir_funcs {
                     }
                     Some(result)
                 }
-            },
+            }
             FuncsType::DLRMatsubara(dlr) => {
                 // Evaluate DLR Matsubara functions: uhat_l(iν_n) = inv_weight[l] / (iν_n - pole_l)
                 use num_complex::Complex;
-                
+
                 let mut result = Vec::with_capacity(dlr.poles.len());
                 if dlr.statistics == Statistics::Fermionic {
                     // Fermionic
@@ -714,7 +749,7 @@ impl spir_funcs {
                     }
                 }
                 Some(result)
-            },
+            }
             _ => None,
         }
     }
@@ -722,12 +757,8 @@ impl spir_funcs {
     /// Batch evaluate at multiple tau/omega points
     pub(crate) fn batch_eval_continuous(&self, xs: &[f64]) -> Option<Vec<Vec<f64>>> {
         match &self.inner {
-            FuncsType::PolyVector(pv) => {
-                Some(pv.batch_evaluate_at(xs, self.beta))
-            },
-            FuncsType::DLRTau(dlr) => {
-                Some(dlr.batch_evaluate_at(xs))
-            },
+            FuncsType::PolyVector(pv) => Some(pv.batch_evaluate_at(xs, self.beta)),
+            FuncsType::DLRTau(dlr) => Some(dlr.batch_evaluate_at(xs)),
             _ => None,
         }
     }
@@ -739,7 +770,10 @@ impl spir_funcs {
     ///
     /// # Returns
     /// Matrix of complex function values (size = `[n_funcs, n_freqs]`), or None if not FT type
-    pub(crate) fn batch_eval_matsubara(&self, ns: &[i64]) -> Option<Vec<Vec<num_complex::Complex64>>> {
+    pub(crate) fn batch_eval_matsubara(
+        &self,
+        ns: &[i64],
+    ) -> Option<Vec<Vec<num_complex::Complex64>>> {
         match &self.inner {
             FuncsType::FTVector(ftv) => {
                 if ftv.statistics == Statistics::Fermionic {
@@ -747,8 +781,9 @@ impl spir_funcs {
                     let ft = ftv.ft_fermionic.as_ref()?;
                     let n_funcs = ft.polyvec.len();
                     let n_points = ns.len();
-                    let mut result = vec![vec![num_complex::Complex64::new(0.0, 0.0); n_points]; n_funcs];
-                    
+                    let mut result =
+                        vec![vec![num_complex::Complex64::new(0.0, 0.0); n_points]; n_funcs];
+
                     for (j, &n) in ns.iter().enumerate() {
                         let freq = MatsubaraFreq::<Fermionic>::new(n).ok()?;
                         for (i, p) in ft.polyvec.iter().enumerate() {
@@ -761,8 +796,9 @@ impl spir_funcs {
                     let ft = ftv.ft_bosonic.as_ref()?;
                     let n_funcs = ft.polyvec.len();
                     let n_points = ns.len();
-                    let mut result = vec![vec![num_complex::Complex64::new(0.0, 0.0); n_points]; n_funcs];
-                    
+                    let mut result =
+                        vec![vec![num_complex::Complex64::new(0.0, 0.0); n_points]; n_funcs];
+
                     for (j, &n) in ns.iter().enumerate() {
                         let freq = MatsubaraFreq::<Bosonic>::new(n).ok()?;
                         for (i, p) in ft.polyvec.iter().enumerate() {
@@ -771,15 +807,15 @@ impl spir_funcs {
                     }
                     Some(result)
                 }
-            },
+            }
             FuncsType::DLRMatsubara(dlr) => {
                 // Batch evaluate DLR Matsubara functions: uhat_l(iν_n) = inv_weight[l] / (iν_n - pole_l)
                 use num_complex::Complex;
-                
+
                 let n_funcs = dlr.poles.len();
                 let n_points = ns.len();
                 let mut result = vec![vec![Complex::new(0.0, 0.0); n_points]; n_funcs];
-                
+
                 for (j, &n) in ns.iter().enumerate() {
                     if dlr.statistics == Statistics::Fermionic {
                         // Fermionic
@@ -787,7 +823,8 @@ impl spir_funcs {
                         let iv = freq.value_imaginary(dlr.beta);
                         for (i, &pole) in dlr.poles.iter().enumerate() {
                             let inv_weight = dlr.inv_weights[i];
-                            result[i][j] = Complex::new(inv_weight, 0.0) / (iv - Complex::new(pole, 0.0));
+                            result[i][j] =
+                                Complex::new(inv_weight, 0.0) / (iv - Complex::new(pole, 0.0));
                         }
                     } else {
                         // Bosonic
@@ -795,17 +832,18 @@ impl spir_funcs {
                         let iv = freq.value_imaginary(dlr.beta);
                         for (i, &pole) in dlr.poles.iter().enumerate() {
                             let inv_weight = dlr.inv_weights[i];
-                            result[i][j] = Complex::new(inv_weight, 0.0) / (iv - Complex::new(pole, 0.0));
+                            result[i][j] =
+                                Complex::new(inv_weight, 0.0) / (iv - Complex::new(pole, 0.0));
                         }
                     }
                 }
-                
+
                 Some(result)
-            },
+            }
             FuncsType::DLRTau(_) => {
                 // DLRTau is for tau, not Matsubara frequencies
                 None
-            },
+            }
             _ => None,
         }
     }
@@ -835,11 +873,11 @@ impl spir_funcs {
                     }),
                     beta: self.beta,
                 })
-            },
+            }
             FuncsType::FTVector(_) => {
                 // FTVector slicing not yet supported (requires public constructor)
                 None
-            },
+            }
             FuncsType::DLRTau(dlr) => {
                 // Select subset of poles
                 let mut new_poles = Vec::with_capacity(indices.len());
@@ -861,7 +899,7 @@ impl spir_funcs {
                     }),
                     beta: dlr.beta,
                 })
-            },
+            }
             FuncsType::DLRMatsubara(dlr) => {
                 // Select subset of poles
                 let mut new_poles = Vec::with_capacity(indices.len());
@@ -882,7 +920,7 @@ impl spir_funcs {
                     }),
                     beta: dlr.beta,
                 })
-            },
+            }
         }
     }
 }
@@ -891,8 +929,7 @@ impl spir_funcs {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    
+
     #[test]
     fn test_funcs_creation() {
         // Basic test that funcs types can be created
@@ -917,17 +954,17 @@ pub(crate) enum SamplingType {
     TauBosonic(Arc<sparseir_rust::sampling::TauSampling<Bosonic>>),
     MatsubaraFermionic(Arc<sparseir_rust::matsubara_sampling::MatsubaraSampling<Fermionic>>),
     MatsubaraBosonic(Arc<sparseir_rust::matsubara_sampling::MatsubaraSampling<Bosonic>>),
-    MatsubaraPositiveOnlyFermionic(Arc<sparseir_rust::matsubara_sampling::MatsubaraSamplingPositiveOnly<Fermionic>>),
-    MatsubaraPositiveOnlyBosonic(Arc<sparseir_rust::matsubara_sampling::MatsubaraSamplingPositiveOnly<Bosonic>>),
+    MatsubaraPositiveOnlyFermionic(
+        Arc<sparseir_rust::matsubara_sampling::MatsubaraSamplingPositiveOnly<Fermionic>>,
+    ),
+    MatsubaraPositiveOnlyBosonic(
+        Arc<sparseir_rust::matsubara_sampling::MatsubaraSamplingPositiveOnly<Bosonic>>,
+    ),
 }
 
 #[cfg(test)]
 mod sampling_tests {
-    use super::*;
-    use sparseir_rust::basis::FiniteTempBasis;
-    use sparseir_rust::kernel::LogisticKernel;
-    use sparseir_rust::traits::{Fermionic, Bosonic};
-    
+
     #[test]
     fn test_sampling_creation() {
         // Basic test that sampling types can be created
@@ -937,9 +974,7 @@ mod sampling_tests {
 /// Spir error codes (compatible with libsparseir)
 pub type StatusCode = i32;
 
-/// Success code (0)
-pub const SPIR_SUCCESS: StatusCode = 0;
-/// Computation completed successfully (0, alias for SUCCESS)
+/// Computation completed successfully (0)
 pub const SPIR_COMPUTATION_SUCCESS: StatusCode = 0;
 /// Invalid argument error (-6)
 pub const SPIR_INVALID_ARGUMENT: StatusCode = -6;
@@ -947,4 +982,3 @@ pub const SPIR_INVALID_ARGUMENT: StatusCode = -6;
 pub const SPIR_INTERNAL_ERROR: StatusCode = -7;
 /// Not supported error (-5)
 pub const SPIR_NOT_SUPPORTED: StatusCode = -5;
-

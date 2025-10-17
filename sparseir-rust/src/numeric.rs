@@ -44,7 +44,7 @@ pub trait CustomNumeric:
 
     /// Get machine epsilon
     fn epsilon() -> Self;
-    
+
     /// Get zero value
     fn zero() -> Self;
 
@@ -95,8 +95,8 @@ impl CustomNumeric for f64 {
             // For f64 to f64, this is just a copy (no conversion needed)
             id if id == std::any::TypeId::of::<f64>() => {
                 // Safe: f64 to f64 conversion
-                let f64_value = value.to_f64(); // This is a no-op for f64
-                f64_value
+                // This is a no-op for f64
+                value.to_f64()
             }
             // For TwoFloat to f64, use the conversion method
             id if id == std::any::TypeId::of::<TwoFloat>() => {
@@ -124,7 +124,7 @@ impl CustomNumeric for f64 {
     fn epsilon() -> Self {
         f64::EPSILON
     }
-    
+
     fn zero() -> Self {
         0.0
     }
@@ -226,7 +226,7 @@ impl CustomNumeric for TwoFloat {
     fn epsilon() -> Self {
         TwoFloat::from(9.63e-35) // real 128bit epsilon
     }
-    
+
     fn zero() -> Self {
         TwoFloat::from(0.0)
     }
@@ -268,11 +268,7 @@ impl CustomNumeric for TwoFloat {
     }
 
     fn max(self, other: Self) -> Self {
-        if self > other {
-            self
-        } else {
-            other
-        }
+        if self > other { self } else { other }
     }
 
     fn is_valid(&self) -> bool {

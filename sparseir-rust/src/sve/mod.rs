@@ -13,18 +13,17 @@
 //!    via even/odd decomposition
 //! 4. **Composability**: Modular design allowing easy extension and testing
 
-mod types;
-mod result;
-pub mod utils;  // Public for testing
-mod strategy;
 mod compute;
+mod result;
+mod strategy;
+mod types;
+pub mod utils; // Public for testing
 
 // Re-export public API
-pub use types::{TworkType, SVDStrategy, safe_epsilon};
+pub use compute::{compute_svd, compute_sve, truncate};
 pub use result::SVEResult;
-pub use strategy::{SVEStrategy, SamplingSVE, CentrosymmSVE};
-pub use compute::{compute_sve, compute_svd, truncate};
-
+pub use strategy::{CentrosymmSVE, SVEStrategy, SamplingSVE};
+pub use types::{SVDStrategy, TworkType, safe_epsilon};
 
 #[cfg(test)]
 #[path = "../sve_extend_tests.rs"]

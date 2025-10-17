@@ -1,48 +1,48 @@
 //! Type definitions for SVE computation
 
 /// Working precision type for SVE computations
-/// 
+///
 /// Values match the C-API constants defined in sparseir.h
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TworkType {
     /// Use double precision (64-bit)
-    Float64 = 0,      // SPIR_TWORK_FLOAT64
+    Float64 = 0, // SPIR_TWORK_FLOAT64
     /// Use extended precision (128-bit double-double)
-    Float64X2 = 1,    // SPIR_TWORK_FLOAT64X2
+    Float64X2 = 1, // SPIR_TWORK_FLOAT64X2
     /// Automatically choose precision based on epsilon
-    Auto = -1,        // SPIR_TWORK_AUTO
+    Auto = -1, // SPIR_TWORK_AUTO
 }
 
 /// SVD computation strategy
-/// 
+///
 /// Values match the C-API constants defined in sparseir.h
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SVDStrategy {
     /// Fast computation
-    Fast = 0,         // SPIR_SVDSTRAT_FAST
+    Fast = 0, // SPIR_SVDSTRAT_FAST
     /// Accurate computation
-    Accurate = 1,     // SPIR_SVDSTRAT_ACCURATE
+    Accurate = 1, // SPIR_SVDSTRAT_ACCURATE
     /// Automatically choose strategy
-    Auto = -1,        // SPIR_SVDSTRAT_AUTO
+    Auto = -1, // SPIR_SVDSTRAT_AUTO
 }
 
 /// Determine safe epsilon and working precision
-/// 
+///
 /// This function determines the safe epsilon value based on the working precision,
 /// and automatically selects the working precision if TworkType::Auto is specified.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `epsilon` - Required accuracy (must be non-negative)
 /// * `twork` - Working precision type (Auto for automatic selection)
 /// * `svd_strategy` - SVD computation strategy (Auto for automatic selection)
-/// 
+///
 /// # Returns
-/// 
+///
 /// Tuple of (safe_epsilon, actual_twork, actual_svd_strategy)
-/// 
+///
 /// # Panics
-/// 
+///
 /// Panics if epsilon is negative
 pub fn safe_epsilon(
     epsilon: f64,
@@ -53,19 +53,19 @@ pub fn safe_epsilon(
     if epsilon < 0.0 {
         panic!("eps_required must be non-negative");
     }
-    
+
     // First, choose the working dtype based on the eps required
     let twork_actual = match twork {
         TworkType::Auto => {
             if epsilon.is_nan() || epsilon < 1e-8 {
-                TworkType::Float64X2  // MAX_DTYPE equivalent
+                TworkType::Float64X2 // MAX_DTYPE equivalent
             } else {
                 TworkType::Float64
             }
         }
         other => other,
     };
-    
+
     // Next, work out the actual epsilon
     let safe_eps = match twork_actual {
         TworkType::Float64 => {
@@ -80,7 +80,7 @@ pub fn safe_epsilon(
         }
         _ => 1e-8,
     };
-    
+
     // Work out the SVD strategy to be used
     let svd_strategy_actual = match svd_strategy {
         SVDStrategy::Auto => {
@@ -93,7 +93,7 @@ pub fn safe_epsilon(
         }
         other => other,
     };
-    
+
     (safe_eps, twork_actual, svd_strategy_actual)
 }
 
@@ -143,4 +143,3 @@ mod tests {
         safe_epsilon(-1.0, TworkType::Auto, SVDStrategy::Auto);
     }
 }
-

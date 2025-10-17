@@ -75,7 +75,7 @@ pub trait KernelProperties {
     fn ypower(&self) -> i32;
 
     /// Convergence radius of the Matsubara basis asymptotic model
-    /// 
+    ///
     /// For improved numerical accuracy, IR basis functions on Matsubara axis
     /// can be evaluated from asymptotic expression for |n| > conv_radius.
     fn conv_radius(&self) -> f64;
@@ -174,7 +174,7 @@ impl KernelProperties for LogisticKernel {
     fn ypower(&self) -> i32 {
         0 // No y-power scaling for LogisticKernel
     }
-    
+
     fn conv_radius(&self) -> f64 {
         40.0 * self.lambda
     }
@@ -220,7 +220,7 @@ impl KernelProperties for LogisticKernel {
     where
         T: Copy + Debug + Send + Sync + CustomNumeric + 'static,
     {
-        LogisticSVEHints::new(self.clone(), epsilon)
+        LogisticSVEHints::new(*self, epsilon)
     }
 }
 
@@ -250,11 +250,11 @@ fn compute_logistic_kernel_reduced_odd<T: CustomNumeric>(lambda: f64, x: T, y: T
     let xy_small: bool = (x * v_half).to_f64() < 1.0;
     let cosh_finite: bool = v_half.to_f64() < 85.0;
     if xy_small && cosh_finite {
-        return -(v_half * x).sinh() / v_half.cosh();
+        -(v_half * x).sinh() / v_half.cosh()
     } else {
         let k_plus = compute_logistic_kernel(lambda, x, y);
         let k_minus = compute_logistic_kernel(lambda, x, -y);
-        return k_plus - k_minus;
+        k_plus - k_minus
     }
 }
 
@@ -299,8 +299,6 @@ where
             _phantom: std::marker::PhantomData,
         }
     }
-
-
 }
 
 impl<T> SVEHints<T> for LogisticSVEHints<T>
@@ -339,20 +337,18 @@ where
 
         // Create segments with only non-negative values (x >= 0) including endpoints [0, xmax]
         let mut segments = Vec::with_capacity(nzeros + 1);
-        
+
         // Add 0.0 endpoint
         segments.push(<T as CustomNumeric>::from_f64(0.0));
-        
+
         // Add positive zeros (already in [0, 1] range)
         for i in 0..nzeros {
             segments.push(<T as CustomNumeric>::from_f64(zeros[i]));
         }
 
         // Ensure segments are sorted in ascending order [0, ..., xmax]
-        segments.sort_by(|a, b| {
-            a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
-        });
-        
+        segments.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
         segments
     }
 
@@ -400,10 +396,10 @@ where
         for i in 0..nzeros {
             zeros[i] -= 1.0;
         }
-        
+
         // Generate segments directly from negative zeros
         let mut segments: Vec<T> = Vec::new();
-        
+
         segments.push(<T as CustomNumeric>::from_f64(1.0));
 
         // Add absolute values of negative zeros
@@ -418,7 +414,7 @@ where
 
         // Sort in ascending order
         segments.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        
+
         segments
     }
 
@@ -428,11 +424,7 @@ where
     }
 
     fn ngauss(&self) -> usize {
-        if self.epsilon >= 1e-8 {
-            10
-        } else {
-            16
-        }
+        if self.epsilon >= 1e-8 { 10 } else { 16 }
     }
 }
 
@@ -485,7 +477,7 @@ impl RegularizedBoseKernel {
         }
         Self { lambda }
     }
-    
+
     /// Compute kernel value with numerical stability
     ///
     /// Evaluates K(x, y) = y * exp(-Λy(x+1)/2) / (1 - exp(-Λy))
@@ -508,10 +500,10 @@ impl RegularizedBoseKernel {
         let u_minus = x_minus
             .map(|xm| T::from_f64(0.5) * xm)
             .unwrap_or_else(|| T::from_f64(0.5) * (T::from_f64(1.0) - x));
-        
+
         let v = T::from_f64(self.lambda) * y;
         let absv = v.abs();
-        
+
         // Handle y ≈ 0 using Taylor expansion
         // K(x,y) = 1/Λ - xy/2 + (1/24)Λ(3x² - 1)y² + O(y³)
         // For |Λy| < 2e-14, use first-order approximation
@@ -521,20 +513,20 @@ impl RegularizedBoseKernel {
             let term1 = T::from_f64(0.5) * x * y;
             return term0 - term1;
         }
-        
+
         // enum_val = exp(-|v| * (v >= 0 ? u_plus : u_minus))
         let enum_val = if v >= T::from_f64(0.0) {
             (-absv * u_plus).exp()
         } else {
             (-absv * u_minus).exp()
         };
-        
+
         // Handle v / (exp(v) - 1) with numerical stability
         // Follows C++ implementation using expm1 pattern
         // denom = absv / expm1(-absv) = absv / (exp(-absv) - 1)
         let exp_neg_absv = (-absv).exp();
         let denom = absv / (exp_neg_absv - T::from_f64(1.0));
-        
+
         // K(x, y) = -1/Λ * enum_val * denom
         // Since denom is negative (exp(-absv) < 1), final result is positive
         T::from_f64(-1.0 / self.lambda) * enum_val * denom
@@ -542,26 +534,27 @@ impl RegularizedBoseKernel {
 }
 
 impl KernelProperties for RegularizedBoseKernel {
-    type SVEHintsType<T> = RegularizedBoseSVEHints<T>
+    type SVEHintsType<T>
+        = RegularizedBoseSVEHints<T>
     where
         T: Copy + Debug + Send + Sync + CustomNumeric + 'static;
-    
+
     fn ypower(&self) -> i32 {
-        1  // Spectral function transforms as ρ'(y) = y * ρ(y)
+        1 // Spectral function transforms as ρ'(y) = y * ρ(y)
     }
-    
+
     fn conv_radius(&self) -> f64 {
         40.0 * self.lambda
     }
-    
+
     fn xmax(&self) -> f64 {
         1.0
     }
-    
+
     fn ymax(&self) -> f64 {
         1.0
     }
-    
+
     fn weight<S: StatisticsType + 'static>(&self, _beta: f64, omega: f64) -> f64 {
         match S::STATISTICS {
             Statistics::Fermionic => {
@@ -576,7 +569,7 @@ impl KernelProperties for RegularizedBoseKernel {
             }
         }
     }
-    
+
     fn inv_weight<S: StatisticsType + 'static>(&self, _beta: f64, omega: f64) -> f64 {
         match S::STATISTICS {
             Statistics::Fermionic => {
@@ -593,7 +586,7 @@ impl KernelProperties for RegularizedBoseKernel {
     where
         T: Copy + Debug + Send + Sync + CustomNumeric + 'static,
     {
-        RegularizedBoseSVEHints::new(self.clone(), epsilon)
+        RegularizedBoseSVEHints::new(*self, epsilon)
     }
 }
 
@@ -619,7 +612,7 @@ impl CentrosymmKernel for RegularizedBoseKernel {
                 let xv_half = x * v_half;
                 let xy_small = xv_half.to_f64().abs() < 1.0;
                 let sinh_finite = v_half.to_f64().abs() < 85.0 && v_half.to_f64().abs() > 1e-200;
-                
+
                 if xy_small && sinh_finite {
                     // Use sinh formulation for numerical stability
                     // NOTE: Minus sign is critical! (matches Julia/C++ implementation)
@@ -666,44 +659,42 @@ where
         // Returns segments for x >= 0 domain only
         // C++/Julia: nzeros = max(round(15 * log10(lambda)), 15)
         let nzeros = ((15.0 * self.kernel.lambda.log10()).round() as usize).max(15);
-        
+
         // temp[i] = 0.18 * i
         let mut temp = vec![0.0; nzeros];
         for i in 0..nzeros {
             temp[i] = 0.18 * i as f64;
         }
-        
+
         // diffs[i] = 1.0 / cosh(temp[i])
         let mut diffs = vec![0.0; nzeros];
         for i in 0..nzeros {
             diffs[i] = 1.0 / temp[i].cosh();
         }
-        
+
         // Cumulative sum
         let mut zeros = vec![0.0; nzeros];
         zeros[0] = diffs[0];
         for i in 1..nzeros {
             zeros[i] = zeros[i - 1] + diffs[i];
         }
-        
+
         // Normalize
         let last_zero = zeros[nzeros - 1];
         for i in 0..nzeros {
             zeros[i] /= last_zero;
         }
-        
+
         // Create segments with only non-negative values: [0, zeros[0], zeros[1], ...]
         let mut segments = Vec::with_capacity(nzeros + 1);
         segments.push(T::from_f64(0.0));
         for i in 0..nzeros {
             segments.push(T::from_f64(zeros[i]));
         }
-        
+
         // Ensure sorted (should already be sorted, but verify)
-        segments.sort_by(|a, b| {
-            a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
-        });
-        
+        segments.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
         segments
     }
 
@@ -711,7 +702,7 @@ where
         // Returns segments for y >= 0 domain only
         // C++/Julia: nzeros = max(round(20 * log10(lambda)), 20)
         let nzeros = ((20.0 * self.kernel.lambda.log10()).round() as usize).max(20);
-        
+
         // diffs[j] = 0.12 / exp(0.0337 * j * log(j + 1))
         let mut diffs = vec![0.0; nzeros];
         for j in 0..nzeros {
@@ -719,21 +710,21 @@ where
             let exponent = 0.0337 * j_f64 * (j_f64 + 1.0).ln();
             diffs[j] = 0.12 / exponent.exp();
         }
-        
+
         // Cumulative sum
         let mut zeros = vec![0.0; nzeros];
         zeros[0] = diffs[0];
         for i in 1..nzeros {
             zeros[i] = zeros[i - 1] + diffs[i];
         }
-        
+
         // Normalize by last value, then remove it
         let last_zero = zeros[nzeros - 1];
         for i in 0..nzeros {
             zeros[i] /= last_zero;
         }
         zeros.pop();
-        
+
         // After normalization and pop, zeros are in [0, 1) range
         // Create segments: [0, zeros[0], zeros[1], ..., 1]
         let mut segments = Vec::with_capacity(zeros.len() + 2);
@@ -742,12 +733,10 @@ where
             segments.push(T::from_f64(z));
         }
         segments.push(T::from_f64(1.0));
-        
+
         // Ensure sorted (should already be sorted, but verify)
-        segments.sort_by(|a, b| {
-            a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
-        });
-        
+        segments.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
         segments
     }
 
@@ -758,14 +747,9 @@ where
     }
 
     fn ngauss(&self) -> usize {
-        if self.epsilon >= 1e-8 {
-            10
-        } else {
-            16
-        }
+        if self.epsilon >= 1e-8 { 10 } else { 16 }
     }
 }
-
 
 #[cfg(test)]
 #[path = "kernel_tests.rs"]

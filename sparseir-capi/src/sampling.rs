@@ -10,14 +10,14 @@
 //! - Fitting: fit_dd, fit_zz, fit_zd (sampling points → coefficients)
 //! - Memory: release, clone, is_assigned (via macro)
 
+use num_complex::Complex64;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
-use num_complex::Complex64;
 
-use crate::types::{spir_basis, spir_sampling, SamplingType, BasisType};
-use crate::utils::{copy_tensor_to_c_array, convert_dims_for_row_major, MemoryOrder};
+use crate::types::{spir_basis, spir_sampling, BasisType, SamplingType};
+use crate::utils::{convert_dims_for_row_major, copy_tensor_to_c_array, MemoryOrder};
 use crate::{StatusCode, SPIR_COMPUTATION_SUCCESS, SPIR_INVALID_ARGUMENT, SPIR_NOT_SUPPORTED};
-use sparseir_rust::{Bosonic, Fermionic, Tensor, DynRank};
+use sparseir_rust::{Bosonic, Fermionic, Tensor};
 
 // Generate common opaque type functions: release, clone, is_assigned, get_raw_ptr
 impl_opaque_type_common!(sampling);
@@ -181,7 +181,7 @@ pub unsafe extern "C" fn spir_matsu_sampling_new(
 
         // Convert i64 indices to MatsubaraFreq
         use sparseir_rust::freq::MatsubaraFreq;
-        
+
         // Helper macro to reduce duplication
         macro_rules! create_matsu_sampling {
             ($basis:expr, Fermionic) => {
@@ -333,30 +333,31 @@ pub unsafe extern "C" fn spir_tau_sampling_new_with_matrix(
         let matrix_size = (num_points as usize) * (basis_size as usize);
         let matrix_slice = std::slice::from_raw_parts(matrix, matrix_size);
         let matrix_vec: Vec<f64> = matrix_slice.to_vec();
-        
+
         // Convert dims based on order
         let orig_dims = vec![num_points as usize, basis_size as usize];
         let (dims, _) = convert_dims_for_row_major(&orig_dims, 0, mem_order);
-        
+
         // Create tensor (mdarray is row-major)
         let flat_tensor = Tensor::<f64, (usize,)>::from(matrix_vec);
         let dyn_tensor = flat_tensor.into_dyn().reshape(&dims[..]).to_tensor();
-        
+
         // Convert DynRank to fixed 2D shape
-        let matrix_tensor: sparseir_rust::DTensor<f64, 2> = unsafe {
-            std::mem::transmute(dyn_tensor)
-        };
+        let matrix_tensor: sparseir_rust::DTensor<f64, 2> =
+            unsafe { std::mem::transmute(dyn_tensor) };
 
         // Create sampling based on statistics
         let sampling_type = match statistics {
-            0 => {  // SPIR_STATISTICS_FERMIONIC
+            0 => {
+                // SPIR_STATISTICS_FERMIONIC
                 let tau_sampling = sparseir_rust::sampling::TauSampling::<Fermionic>::from_matrix(
                     tau_points,
                     matrix_tensor,
                 );
                 SamplingType::TauFermionic(Arc::new(tau_sampling))
             }
-            1 => {  // SPIR_STATISTICS_BOSONIC
+            1 => {
+                // SPIR_STATISTICS_BOSONIC
                 let tau_sampling = sparseir_rust::sampling::TauSampling::<Bosonic>::from_matrix(
                     tau_points,
                     matrix_tensor,
@@ -435,71 +436,78 @@ pub unsafe extern "C" fn spir_matsu_sampling_new_with_matrix(
         // Convert points to Vec<MatsubaraFreq>
         let points_slice = std::slice::from_raw_parts(points, num_points as usize);
         let matsu_points: Vec<i64> = points_slice.to_vec();
-        
+
         use sparseir_rust::freq::MatsubaraFreq;
 
         // Convert matrix to Tensor
         let matrix_size = (num_points as usize) * (basis_size as usize);
         let matrix_slice = std::slice::from_raw_parts(matrix, matrix_size);
         let matrix_vec: Vec<Complex64> = matrix_slice.to_vec();
-        
+
         // Convert dims based on order
         let orig_dims = vec![num_points as usize, basis_size as usize];
         let (dims, _) = convert_dims_for_row_major(&orig_dims, 0, mem_order);
-        
+
         // Create tensor (mdarray is row-major)
         let flat_tensor = Tensor::<Complex64, (usize,)>::from(matrix_vec);
         let dyn_tensor = flat_tensor.into_dyn().reshape(&dims[..]).to_tensor();
-        
+
         // Convert DynRank to fixed 2D shape
-        let matrix_tensor: sparseir_rust::DTensor<Complex64, 2> = unsafe {
-            std::mem::transmute(dyn_tensor)
-        };
+        let matrix_tensor: sparseir_rust::DTensor<Complex64, 2> =
+            unsafe { std::mem::transmute(dyn_tensor) };
 
         // Create sampling based on statistics and positive_only
         let sampling_type = match (statistics, positive_only) {
-            (0, true) => {  // Fermionic, positive-only
+            (0, true) => {
+                // Fermionic, positive-only
                 let matsu_freqs: Vec<MatsubaraFreq<Fermionic>> = matsu_points
                     .iter()
                     .map(|&n| MatsubaraFreq::new(n).expect("Invalid Matsubara frequency"))
                     .collect();
-                let matsu_sampling = sparseir_rust::matsubara_sampling::MatsubaraSamplingPositiveOnly::from_matrix(
-                    matsu_freqs,
-                    matrix_tensor.clone(),
-                );
+                let matsu_sampling =
+                    sparseir_rust::matsubara_sampling::MatsubaraSamplingPositiveOnly::from_matrix(
+                        matsu_freqs,
+                        matrix_tensor.clone(),
+                    );
                 SamplingType::MatsubaraPositiveOnlyFermionic(Arc::new(matsu_sampling))
             }
-            (0, false) => {  // Fermionic, full range
+            (0, false) => {
+                // Fermionic, full range
                 let matsu_freqs: Vec<MatsubaraFreq<Fermionic>> = matsu_points
                     .iter()
                     .map(|&n| MatsubaraFreq::new(n).expect("Invalid Matsubara frequency"))
                     .collect();
-                let matsu_sampling = sparseir_rust::matsubara_sampling::MatsubaraSampling::from_matrix(
-                    matsu_freqs,
-                    matrix_tensor.clone(),
-                );
+                let matsu_sampling =
+                    sparseir_rust::matsubara_sampling::MatsubaraSampling::from_matrix(
+                        matsu_freqs,
+                        matrix_tensor.clone(),
+                    );
                 SamplingType::MatsubaraFermionic(Arc::new(matsu_sampling))
             }
-            (1, true) => {  // Bosonic, positive-only
+            (1, true) => {
+                // Bosonic, positive-only
                 let matsu_freqs: Vec<MatsubaraFreq<Bosonic>> = matsu_points
                     .iter()
                     .map(|&n| MatsubaraFreq::new(n).expect("Invalid Matsubara frequency"))
                     .collect();
-                let matsu_sampling = sparseir_rust::matsubara_sampling::MatsubaraSamplingPositiveOnly::from_matrix(
-                    matsu_freqs,
-                    matrix_tensor.clone(),
-                );
+                let matsu_sampling =
+                    sparseir_rust::matsubara_sampling::MatsubaraSamplingPositiveOnly::from_matrix(
+                        matsu_freqs,
+                        matrix_tensor.clone(),
+                    );
                 SamplingType::MatsubaraPositiveOnlyBosonic(Arc::new(matsu_sampling))
             }
-            (1, false) => {  // Bosonic, full range
+            (1, false) => {
+                // Bosonic, full range
                 let matsu_freqs: Vec<MatsubaraFreq<Bosonic>> = matsu_points
                     .iter()
                     .map(|&n| MatsubaraFreq::new(n).expect("Invalid Matsubara frequency"))
                     .collect();
-                let matsu_sampling = sparseir_rust::matsubara_sampling::MatsubaraSampling::from_matrix(
-                    matsu_freqs,
-                    matrix_tensor.clone(),
-                );
+                let matsu_sampling =
+                    sparseir_rust::matsubara_sampling::MatsubaraSampling::from_matrix(
+                        matsu_freqs,
+                        matrix_tensor.clone(),
+                    );
                 SamplingType::MatsubaraBosonic(Arc::new(matsu_sampling))
             }
             _ => return (std::ptr::null_mut(), SPIR_INVALID_ARGUMENT),
@@ -699,7 +707,7 @@ pub unsafe extern "C" fn spir_sampling_eval_dd(
         if ndim <= 0 || target_dim < 0 || target_dim >= ndim {
             return SPIR_INVALID_ARGUMENT;
         }
-        
+
         // Parse order
         let mem_order = match MemoryOrder::from_c_int(order) {
             Ok(o) => o,
@@ -709,48 +717,41 @@ pub unsafe extern "C" fn spir_sampling_eval_dd(
         let sampling_ref = &*s;
         let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
-        
+
         // Convert dims and target_dim for row-major mdarray
-        let (dims, mdarray_target_dim) = convert_dims_for_row_major(
-            &orig_dims,
-            target_dim as usize,
-            mem_order,
-        );
-        
+        let (dims, mdarray_target_dim) =
+            convert_dims_for_row_major(&orig_dims, target_dim as usize, mem_order);
+
         // Calculate total input size
         let total_input: usize = dims.iter().product();
         let input_slice = std::slice::from_raw_parts(input, total_input);
-        
+
         // Create input tensor (mdarray is row-major)
         let input_vec: Vec<f64> = input_slice.to_vec();
         let flat_tensor = Tensor::<f64, (usize,)>::from(input_vec);
         let input_tensor = flat_tensor.into_dyn().reshape(&dims[..]).to_tensor();
-        
+
         // Validate that input dimension matches basis size
         let expected_basis_size = match &sampling_ref.inner {
             SamplingType::TauFermionic(tau) => tau.basis_size(),
             SamplingType::TauBosonic(tau) => tau.basis_size(),
             _ => return SPIR_NOT_SUPPORTED,
         };
-        
+
         if dims[mdarray_target_dim] != expected_basis_size {
             return crate::SPIR_INPUT_DIMENSION_MISMATCH;
         }
-        
+
         // Evaluate based on sampling type (only tau sampling supports dd)
         let result_tensor = match &sampling_ref.inner {
-            SamplingType::TauFermionic(tau) => {
-                tau.evaluate_nd(&input_tensor, mdarray_target_dim)
-            }
-            SamplingType::TauBosonic(tau) => {
-                tau.evaluate_nd(&input_tensor, mdarray_target_dim)
-            }
+            SamplingType::TauFermionic(tau) => tau.evaluate_nd(&input_tensor, mdarray_target_dim),
+            SamplingType::TauBosonic(tau) => tau.evaluate_nd(&input_tensor, mdarray_target_dim),
             _ => return SPIR_NOT_SUPPORTED,
         };
-        
+
         // Copy result to output (order-independent: flat copy)
         copy_tensor_to_c_array(result_tensor, out);
-        
+
         SPIR_COMPUTATION_SUCCESS
     }));
 
@@ -778,7 +779,7 @@ pub unsafe extern "C" fn spir_sampling_eval_dz(
         if ndim <= 0 || target_dim < 0 || target_dim >= ndim {
             return SPIR_INVALID_ARGUMENT;
         }
-        
+
         // Parse order
         let mem_order = match MemoryOrder::from_c_int(order) {
             Ok(o) => o,
@@ -788,21 +789,18 @@ pub unsafe extern "C" fn spir_sampling_eval_dz(
         let sampling_ref = &*s;
         let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
-        
+
         // Convert dims and target_dim for row-major mdarray
-        let (dims, mdarray_target_dim) = convert_dims_for_row_major(
-            &orig_dims,
-            target_dim as usize,
-            mem_order,
-        );
-        
+        let (dims, mdarray_target_dim) =
+            convert_dims_for_row_major(&orig_dims, target_dim as usize, mem_order);
+
         let total_input: usize = dims.iter().product();
         let input_slice = std::slice::from_raw_parts(input, total_input);
-        
+
         let input_vec: Vec<f64> = input_slice.to_vec();
         let flat_tensor = Tensor::<f64, (usize,)>::from(input_vec);
         let input_tensor = flat_tensor.into_dyn().reshape(&dims[..]).to_tensor();
-        
+
         // Evaluate based on sampling type (Matsubara, both full and positive-only)
         let result_tensor = match &sampling_ref.inner {
             // Full range Matsubara: use evaluate_nd_real
@@ -821,10 +819,10 @@ pub unsafe extern "C" fn spir_sampling_eval_dz(
             }
             _ => return SPIR_NOT_SUPPORTED,
         };
-        
+
         // Copy result to output (order-independent: flat copy)
         copy_tensor_to_c_array(result_tensor, out);
-        
+
         SPIR_COMPUTATION_SUCCESS
     }));
 
@@ -851,7 +849,7 @@ pub unsafe extern "C" fn spir_sampling_eval_zz(
         if ndim <= 0 || target_dim < 0 || target_dim >= ndim {
             return SPIR_INVALID_ARGUMENT;
         }
-        
+
         // Parse order
         let mem_order = match MemoryOrder::from_c_int(order) {
             Ok(o) => o,
@@ -861,21 +859,18 @@ pub unsafe extern "C" fn spir_sampling_eval_zz(
         let sampling_ref = &*s;
         let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
-        
+
         // Convert dims and target_dim for row-major mdarray
-        let (dims, mdarray_target_dim) = convert_dims_for_row_major(
-            &orig_dims,
-            target_dim as usize,
-            mem_order,
-        );
-        
+        let (dims, mdarray_target_dim) =
+            convert_dims_for_row_major(&orig_dims, target_dim as usize, mem_order);
+
         let total_input: usize = dims.iter().product();
         let input_slice = std::slice::from_raw_parts(input, total_input);
-        
+
         let input_vec: Vec<Complex64> = input_slice.to_vec();
         let flat_tensor = Tensor::<Complex64, (usize,)>::from(input_vec);
         let input_tensor = flat_tensor.into_dyn().reshape(&dims[..]).to_tensor();
-        
+
         // Evaluate (full Matsubara sampling)
         let result_tensor = match &sampling_ref.inner {
             SamplingType::MatsubaraFermionic(matsu) => {
@@ -886,10 +881,10 @@ pub unsafe extern "C" fn spir_sampling_eval_zz(
             }
             _ => return SPIR_NOT_SUPPORTED,
         };
-        
+
         // Copy result to output (order-independent: flat copy)
         copy_tensor_to_c_array(result_tensor, out);
-        
+
         SPIR_COMPUTATION_SUCCESS
     }));
 
@@ -918,7 +913,7 @@ pub unsafe extern "C" fn spir_sampling_fit_dd(
         if ndim <= 0 || target_dim < 0 || target_dim >= ndim {
             return SPIR_INVALID_ARGUMENT;
         }
-        
+
         // Parse order
         let mem_order = match MemoryOrder::from_c_int(order) {
             Ok(o) => o,
@@ -928,35 +923,28 @@ pub unsafe extern "C" fn spir_sampling_fit_dd(
         let sampling_ref = &*s;
         let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
-        
+
         // Convert dims and target_dim for row-major mdarray
-        let (dims, mdarray_target_dim) = convert_dims_for_row_major(
-            &orig_dims,
-            target_dim as usize,
-            mem_order,
-        );
-        
+        let (dims, mdarray_target_dim) =
+            convert_dims_for_row_major(&orig_dims, target_dim as usize, mem_order);
+
         let total_input: usize = dims.iter().product();
         let input_slice = std::slice::from_raw_parts(input, total_input);
-        
+
         let input_vec: Vec<f64> = input_slice.to_vec();
         let flat_tensor = Tensor::<f64, (usize,)>::from(input_vec);
         let input_tensor = flat_tensor.into_dyn().reshape(&dims[..]).to_tensor();
-        
+
         // Fit (tau sampling only)
         let result_tensor = match &sampling_ref.inner {
-            SamplingType::TauFermionic(tau) => {
-                tau.fit_nd(&input_tensor, mdarray_target_dim)
-            }
-            SamplingType::TauBosonic(tau) => {
-                tau.fit_nd(&input_tensor, mdarray_target_dim)
-            }
+            SamplingType::TauFermionic(tau) => tau.fit_nd(&input_tensor, mdarray_target_dim),
+            SamplingType::TauBosonic(tau) => tau.fit_nd(&input_tensor, mdarray_target_dim),
             _ => return SPIR_NOT_SUPPORTED,
         };
-        
+
         // Copy result to output (order-independent: flat copy)
         copy_tensor_to_c_array(result_tensor, out);
-        
+
         SPIR_COMPUTATION_SUCCESS
     }));
 
@@ -981,7 +969,7 @@ pub unsafe extern "C" fn spir_sampling_fit_zz(
         if ndim <= 0 || target_dim < 0 || target_dim >= ndim {
             return SPIR_INVALID_ARGUMENT;
         }
-        
+
         // Parse order
         let mem_order = match MemoryOrder::from_c_int(order) {
             Ok(o) => o,
@@ -991,21 +979,18 @@ pub unsafe extern "C" fn spir_sampling_fit_zz(
         let sampling_ref = &*s;
         let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
-        
+
         // Convert dims and target_dim for row-major mdarray
-        let (dims, mdarray_target_dim) = convert_dims_for_row_major(
-            &orig_dims,
-            target_dim as usize,
-            mem_order,
-        );
-        
+        let (dims, mdarray_target_dim) =
+            convert_dims_for_row_major(&orig_dims, target_dim as usize, mem_order);
+
         let total_input: usize = dims.iter().product();
         let input_slice = std::slice::from_raw_parts(input, total_input);
-        
+
         let input_vec: Vec<Complex64> = input_slice.to_vec();
         let flat_tensor = Tensor::<Complex64, (usize,)>::from(input_vec);
         let input_tensor = flat_tensor.into_dyn().reshape(&dims[..]).to_tensor();
-        
+
         // Fit (full Matsubara sampling)
         let result_tensor = match &sampling_ref.inner {
             SamplingType::MatsubaraFermionic(matsu) => {
@@ -1016,10 +1001,10 @@ pub unsafe extern "C" fn spir_sampling_fit_zz(
             }
             _ => return SPIR_NOT_SUPPORTED,
         };
-        
+
         // Copy result to output (order-independent: flat copy)
         copy_tensor_to_c_array(result_tensor, out);
-        
+
         SPIR_COMPUTATION_SUCCESS
     }));
 
@@ -1044,7 +1029,7 @@ pub unsafe extern "C" fn spir_sampling_fit_zd(
         if ndim <= 0 || target_dim < 0 || target_dim >= ndim {
             return SPIR_INVALID_ARGUMENT;
         }
-        
+
         // Parse order
         let mem_order = match MemoryOrder::from_c_int(order) {
             Ok(o) => o,
@@ -1054,21 +1039,18 @@ pub unsafe extern "C" fn spir_sampling_fit_zd(
         let sampling_ref = &*s;
         let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
-        
+
         // Convert dims and target_dim for row-major mdarray
-        let (dims, mdarray_target_dim) = convert_dims_for_row_major(
-            &orig_dims,
-            target_dim as usize,
-            mem_order,
-        );
-        
+        let (dims, mdarray_target_dim) =
+            convert_dims_for_row_major(&orig_dims, target_dim as usize, mem_order);
+
         let total_input: usize = dims.iter().product();
         let input_slice = std::slice::from_raw_parts(input, total_input);
-        
+
         let input_vec: Vec<Complex64> = input_slice.to_vec();
         let flat_tensor = Tensor::<Complex64, (usize,)>::from(input_vec);
         let input_tensor = flat_tensor.into_dyn().reshape(&dims[..]).to_tensor();
-        
+
         // Fit (Matsubara → real coefficients, both full and positive-only)
         let result_tensor = match &sampling_ref.inner {
             // Full range Matsubara: use fit_nd_real
@@ -1087,10 +1069,10 @@ pub unsafe extern "C" fn spir_sampling_fit_zd(
             }
             _ => return SPIR_NOT_SUPPORTED,
         };
-        
+
         // Copy result to output (order-independent: flat copy)
         copy_tensor_to_c_array(result_tensor, out);
-        
+
         SPIR_COMPUTATION_SUCCESS
     }));
 
@@ -1109,11 +1091,11 @@ mod tests {
             let kernel = crate::spir_logistic_kernel_new(10.0, &mut status);
             assert_eq!(status, SPIR_COMPUTATION_SUCCESS);
 
-            let sve = crate::spir_sve_result_new(kernel,1e-6, -1.0, -1, -1, -1, &mut status);
+            let sve = crate::spir_sve_result_new(kernel, 1e-6, -1.0, -1, -1, -1, &mut status);
             assert_eq!(status, SPIR_COMPUTATION_SUCCESS);
 
             // Limit basis size to 5
-            let basis = crate::spir_basis_new(1, 10.0, 1.0,1e-6, kernel, sve, 5, &mut status);
+            let basis = crate::spir_basis_new(1, 10.0, 1.0, 1e-6, kernel, sve, 5, &mut status);
             assert_eq!(status, SPIR_COMPUTATION_SUCCESS);
 
             // Get actual basis size
@@ -1125,7 +1107,7 @@ mod tests {
             let tau_points: Vec<f64> = (0..actual_basis_size)
                 .map(|i| (i as f64 + 1.0) * 10.0 / (actual_basis_size as f64 + 1.0))
                 .collect();
-            
+
             let sampling = spir_tau_sampling_new(
                 basis,
                 tau_points.len() as i32,
@@ -1145,11 +1127,18 @@ mod tests {
             let mut retrieved_points = vec![0.0; actual_basis_size as usize];
             let ret = spir_sampling_get_taus(sampling, retrieved_points.as_mut_ptr());
             assert_eq!(ret, SPIR_COMPUTATION_SUCCESS);
-            
+
             // Check that retrieved points match
-            for (i, (&retrieved, &original)) in retrieved_points.iter().zip(tau_points.iter()).enumerate() {
-                assert!((retrieved - original).abs() < 1e-10, 
-                    "Point {} mismatch: {} vs {}", i, retrieved, original);
+            for (i, (&retrieved, &original)) in
+                retrieved_points.iter().zip(tau_points.iter()).enumerate()
+            {
+                assert!(
+                    (retrieved - original).abs() < 1e-10,
+                    "Point {} mismatch: {} vs {}",
+                    i,
+                    retrieved,
+                    original
+                );
             }
 
             // Get condition number
@@ -1166,4 +1155,3 @@ mod tests {
         }
     }
 }
-

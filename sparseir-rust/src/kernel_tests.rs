@@ -1,7 +1,7 @@
 use super::*;
-use crate::traits::{Fermionic, Bosonic};
+use crate::traits::{Bosonic, Fermionic};
 use dashu_base::{Abs, Approximation};
-use dashu_float::{round::mode::HalfAway, Context, DBig};
+use dashu_float::{Context, DBig, round::mode::HalfAway};
 use std::str::FromStr;
 use twofloat::TwoFloat;
 
@@ -51,7 +51,7 @@ impl KernelDbigCompute for LogisticKernel {
 impl KernelDbigCompute for RegularizedBoseKernel {
     fn compute_dbig(lambda: DBig, x: DBig, y: DBig, ctx: &Context<HalfAway>) -> DBig {
         // K(x, y) = y * exp(-Λ y (x + 1) / 2) / (1 - exp(-Λ y))
-        
+
         // Special case: y ≈ 0 → K(x, 0) = 1/Λ (independent of x)
         let y_f64 = extract_f64(y.to_f64());
         let lambda_f64 = extract_f64(lambda.to_f64());
@@ -59,10 +59,10 @@ impl KernelDbigCompute for RegularizedBoseKernel {
             // For very small y, use the limit: lim_{y→0} K(x,y) = 1/Λ
             return f64_to_dbig(1.0 / lambda_f64, ctx.precision());
         }
-        
+
         let one = f64_to_dbig(1.0, ctx.precision());
         let two = f64_to_dbig(2.0, ctx.precision());
-        
+
         let exponent = -lambda.clone() * y.clone() * (x + one.clone()) / two;
         let numerator = y.clone() * exponent.exp();
         let denominator = one - (-lambda * y.clone()).exp();
@@ -85,8 +85,7 @@ fn test_kernel_compute_precision_generic<K, T>(
     y: f64,
     tolerance: f64,
     kernel_name: &str,
-)
-where
+) where
     K: CentrosymmKernel + KernelDbigCompute,
     T: CustomNumeric,
 {
@@ -128,8 +127,7 @@ fn test_kernel_precision_different_lambdas<K>(
     kernel_constructor: impl Fn(f64) -> K,
     kernel_name: &str,
     test_points: &[(f64, f64)],
-)
-where
+) where
     K: CentrosymmKernel + KernelDbigCompute,
 {
     let lambdas = [10.0, 1e2, 1e4];
@@ -139,10 +137,20 @@ where
         for &(x, y) in test_points {
             // Test both f64 and TwoFloat implementations
             test_kernel_compute_precision_generic::<K, f64>(
-                &kernel, lambda, x, y, TOLERANCE_F64, kernel_name
+                &kernel,
+                lambda,
+                x,
+                y,
+                TOLERANCE_F64,
+                kernel_name,
             );
             test_kernel_compute_precision_generic::<K, TwoFloat>(
-                &kernel, lambda, x, y, TOLERANCE_TWOFLOAT, kernel_name
+                &kernel,
+                lambda,
+                x,
+                y,
+                TOLERANCE_TWOFLOAT,
+                kernel_name,
             );
         }
     }
@@ -151,15 +159,17 @@ where
 #[test]
 fn test_logistic_kernel_compute_different_lambdas() {
     let test_points = [
-        (-1.0, -1.0), (-1.0, 0.0), (-1.0, 1.0),
-        (0.0, -1.0),  (0.0, 0.0),  (0.0, 1.0),
-        (1.0, -1.0),  (1.0, 0.0),  (1.0, 1.0),
+        (-1.0, -1.0),
+        (-1.0, 0.0),
+        (-1.0, 1.0),
+        (0.0, -1.0),
+        (0.0, 0.0),
+        (0.0, 1.0),
+        (1.0, -1.0),
+        (1.0, 0.0),
+        (1.0, 1.0),
     ];
-    test_kernel_precision_different_lambdas(
-        LogisticKernel::new,
-        "LogisticKernel",
-        &test_points,
-    );
+    test_kernel_precision_different_lambdas(LogisticKernel::new, "LogisticKernel", &test_points);
 }
 
 // Skip old implementation that was moved above
@@ -197,8 +207,7 @@ fn test_kernel_compute_reduced_precision_generic<K, T>(
     symmetry: SymmetryType,
     tolerance: f64,
     kernel_name: &str,
-)
-where
+) where
     K: CentrosymmKernel + KernelDbigCompute,
     T: CustomNumeric,
 {
@@ -212,7 +221,8 @@ where
     let lambda_dbig = f64_to_dbig(lambda, ctx.precision());
     let x_dbig = f64_to_dbig(x, ctx.precision());
     let y_dbig = f64_to_dbig(y, ctx.precision());
-    let result_reduced_dbig = compute_reduced_dbig::<K>(lambda_dbig, x_dbig, y_dbig, symmetry, &ctx);
+    let result_reduced_dbig =
+        compute_reduced_dbig::<K>(lambda_dbig, x_dbig, y_dbig, symmetry, &ctx);
 
     // Convert T result to DBig for high-precision comparison
     let result_reduced_t_dbig = result_reduced_t.to_dbig(ctx.precision());
@@ -223,7 +233,16 @@ where
     assert!(
         error_t_dbig_f64 <= tolerance,
         "{}: lambda={}, x={}, y={}, symmetry={:?}: {}={:.15e}, DBig={:.15e}, error={:.15e} > tolerance={:.15e}",
-        kernel_name, lambda, x, y, symmetry, std::any::type_name::<T>(), result_reduced_t.to_f64(), extract_f64(result_reduced_dbig.to_f64()), error_t_dbig_f64, tolerance
+        kernel_name,
+        lambda,
+        x,
+        y,
+        symmetry,
+        std::any::type_name::<T>(),
+        result_reduced_t.to_f64(),
+        extract_f64(result_reduced_dbig.to_f64()),
+        error_t_dbig_f64,
+        tolerance
     );
 }
 
@@ -233,8 +252,7 @@ fn test_kernel_compute_reduced_different_lambdas_generic<K>(
     kernel_name: &str,
     lambdas: &[f64],
     test_points: &[(f64, f64)],
-)
-where
+) where
     K: CentrosymmKernel + KernelDbigCompute,
 {
     for &lambda in lambdas {
@@ -243,10 +261,22 @@ where
                 // Test both f64 and TwoFloat implementations
                 let kernel = kernel_constructor(lambda);
                 test_kernel_compute_reduced_precision_generic::<K, f64>(
-                    &kernel, lambda, x, y, symmetry, TOLERANCE_F64, kernel_name
+                    &kernel,
+                    lambda,
+                    x,
+                    y,
+                    symmetry,
+                    TOLERANCE_F64,
+                    kernel_name,
                 );
                 test_kernel_compute_reduced_precision_generic::<K, TwoFloat>(
-                    &kernel, lambda, x, y, symmetry, TOLERANCE_TWOFLOAT, kernel_name
+                    &kernel,
+                    lambda,
+                    x,
+                    y,
+                    symmetry,
+                    TOLERANCE_TWOFLOAT,
+                    kernel_name,
                 );
             }
         }
@@ -267,7 +297,7 @@ fn test_logistic_kernel_compute_reduced_different_lambdas() {
         (1.0, 0.5),
         (1.0, 1.0),
     ];
-    
+
     test_kernel_compute_reduced_different_lambdas_generic(
         LogisticKernel::new,
         "LogisticKernel",
@@ -301,11 +331,16 @@ fn test_kernel_centrosymmetry_generic<K: CentrosymmKernel>(kernel: &K) {
     let y = 0.3;
     let k_pos = kernel.compute(x, y);
     let k_neg = kernel.compute(-x, -y);
-    
+
     assert!(
         (k_pos - k_neg).abs() < 1e-14,
         "Centrosymmetry violated: K({}, {}) = {}, K({}, {}) = {}",
-        x, y, k_pos, -x, -y, k_neg
+        x,
+        y,
+        k_pos,
+        -x,
+        -y,
+        k_neg
     );
 }
 
@@ -349,15 +384,15 @@ fn test_regularized_bose_kernel_weight_bosonic() {
     let kernel = RegularizedBoseKernel::new(10.0);
     let beta = 1.0;
     let omega = 5.0;
-    
+
     // weight = 1/ω
     let weight = kernel.weight::<Bosonic>(beta, omega);
     assert!((weight - 1.0 / omega).abs() < 1e-14);
-    
+
     // inv_weight = ω
     let inv_weight = kernel.inv_weight::<Bosonic>(beta, omega);
     assert!((inv_weight - omega).abs() < 1e-14);
-    
+
     // weight * inv_weight = 1
     assert!((weight * inv_weight - 1.0).abs() < 1e-14);
 }
@@ -382,13 +417,13 @@ fn test_regularized_bose_kernel_compute_different_lambdas() {
     // Avoid y = 0 in main tests (tested separately)
     // Include small y values: y = 0.01 tests the near-singularity behavior
     let test_points = [
-        (0.5, 0.5),    // Normal point
-        (0.5, 0.01),   // Small y (tests near y=0 behavior)
-        (-0.5, -0.5),  // Negative quadrant
-        (0.1, -0.8),   // Mixed signs
-        (0.0, 0.5),    // x = 0
+        (0.5, 0.5),   // Normal point
+        (0.5, 0.01),  // Small y (tests near y=0 behavior)
+        (-0.5, -0.5), // Negative quadrant
+        (0.1, -0.8),  // Mixed signs
+        (0.0, 0.5),   // x = 0
     ];
-    
+
     test_kernel_precision_different_lambdas(
         RegularizedBoseKernel::new,
         "RegularizedBoseKernel",
@@ -398,20 +433,20 @@ fn test_regularized_bose_kernel_compute_different_lambdas() {
 
 #[test]
 fn test_regularized_bose_kernel_compute_reduced_different_lambdas() {
-    let lambdas = [10.0, 1e2];  // Smaller range than LogisticKernel
+    let lambdas = [10.0, 1e2]; // Smaller range than LogisticKernel
     // Test points for compute_reduced (x >= 0, y >= 0 for reduced kernel)
     let test_points = [
         (0.0, 0.0),
         (0.0, 0.5),
         (0.0, 1.0),
-        (0.5, 0.01),   // Small y (tests near y=0 behavior)
+        (0.5, 0.01), // Small y (tests near y=0 behavior)
         (0.5, 0.5),
         (0.5, 1.0),
         (1.0, 0.0),
         (1.0, 0.5),
         (1.0, 1.0),
     ];
-    
+
     test_kernel_compute_reduced_different_lambdas_generic(
         RegularizedBoseKernel::new,
         "RegularizedBoseKernel",
@@ -426,17 +461,19 @@ fn test_regularized_bose_kernel_y_zero_limit() {
     let lambda = 10.0;
     let kernel = RegularizedBoseKernel::new(lambda);
     let expected = 1.0 / lambda;
-    
+
     // Test at y = 0 for various x
     for x in [-0.5, 0.0, 0.5, 1.0] {
         let result = kernel.compute(x, 0.0);
         assert!(
             (result - expected).abs() < 1e-14,
             "K({}, 0) should equal 1/Λ = {}, got {}",
-            x, expected, result
+            x,
+            expected,
+            result
         );
     }
-    
+
     // Test approach to y = 0
     // For very small y (< 1e-14), uses exact limit
     for &x in &[0.5, -0.3] {
@@ -445,11 +482,14 @@ fn test_regularized_bose_kernel_y_zero_limit() {
             assert!(
                 (result - expected).abs() < 1e-14,
                 "K({}, {}) should equal 1/Λ = {}, got {}",
-                x, y, expected, result
+                x,
+                y,
+                expected,
+                result
             );
         }
     }
-    
+
     // For small but not tiny y, allow some numerical error
     for &x in &[0.5, -0.3] {
         for &y in &[1e-12, 1e-10, 1e-8] {
@@ -458,7 +498,11 @@ fn test_regularized_bose_kernel_y_zero_limit() {
             assert!(
                 relative_error < 1e-6,
                 "K({}, {}) relative error too large: expected {}, got {}, rel_error={}",
-                x, y, expected, result, relative_error
+                x,
+                y,
+                expected,
+                result,
+                relative_error
             );
         }
     }

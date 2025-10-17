@@ -112,4 +112,3 @@ macro_rules! impl_opaque_type_common {
         }
     };
 }
-

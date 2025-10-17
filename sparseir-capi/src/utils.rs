@@ -2,7 +2,7 @@
 //!
 //! This module provides helper functions for order conversion and dimension handling.
 
-use crate::{SPIR_ORDER_ROW_MAJOR, SPIR_ORDER_COLUMN_MAJOR};
+use crate::{SPIR_ORDER_COLUMN_MAJOR, SPIR_ORDER_ROW_MAJOR};
 
 /// Memory layout order
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,7 +83,7 @@ pub unsafe fn copy_tensor_to_c_array<T: Copy>(
 ) {
     let total = tensor.len();
     let flat = tensor.into_dyn().reshape(&[total]).to_tensor();
-    
+
     for i in 0..total {
         *out.add(i) = flat[i];
     }
@@ -92,12 +92,17 @@ pub unsafe fn copy_tensor_to_c_array<T: Copy>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_memory_order_conversion() {
-        assert_eq!(MemoryOrder::from_c_int(SPIR_ORDER_ROW_MAJOR), Ok(MemoryOrder::RowMajor));
-        assert_eq!(MemoryOrder::from_c_int(SPIR_ORDER_COLUMN_MAJOR), Ok(MemoryOrder::ColumnMajor));
+        assert_eq!(
+            MemoryOrder::from_c_int(SPIR_ORDER_ROW_MAJOR),
+            Ok(MemoryOrder::RowMajor)
+        );
+        assert_eq!(
+            MemoryOrder::from_c_int(SPIR_ORDER_COLUMN_MAJOR),
+            Ok(MemoryOrder::ColumnMajor)
+        );
         assert_eq!(MemoryOrder::from_c_int(99), Err(()));
     }
 }
-

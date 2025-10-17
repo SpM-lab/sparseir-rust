@@ -1,20 +1,20 @@
 //! SVE computation strategies
 
-use mdarray::DTensor;
-use crate::numeric::CustomNumeric;
-use crate::kernel::{CentrosymmKernel, KernelProperties, SVEHints, SymmetryType};
-use crate::poly::{PiecewiseLegendrePolyVector};
 use crate::gauss::{Rule, legendre_generic};
+use crate::kernel::{CentrosymmKernel, KernelProperties, SVEHints, SymmetryType};
 use crate::kernelmatrix::matrix_from_gauss_with_segments;
+use crate::numeric::CustomNumeric;
+use crate::poly::PiecewiseLegendrePolyVector;
+use mdarray::DTensor;
 
 use super::result::SVEResult;
-use super::utils::{remove_weights, svd_to_polynomials, extend_to_full_domain, merge_results};
+use super::utils::{extend_to_full_domain, merge_results, remove_weights, svd_to_polynomials};
 
 /// Trait for SVE computation strategies
 pub trait SVEStrategy<T: CustomNumeric> {
     /// Compute the discretized matrices for SVD
     fn matrices(&self) -> Vec<DTensor<T, 2>>;
-    
+
     /// Post-process SVD results to create SVEResult
     fn postprocess(
         &self,
@@ -25,12 +25,12 @@ pub trait SVEStrategy<T: CustomNumeric> {
 }
 
 /// Sampling-based SVE computation
-/// 
+///
 /// This is the general SVE computation strategy that works with discretized kernels.
 /// It does NOT know about symmetry - it just processes a given discretized kernel matrix.
-/// 
+///
 /// # Responsibility
-/// 
+///
 /// - Remove weights from SVD results
 /// - Convert to polynomials on the domain specified by segments
 /// - Domain extension is caller's responsibility
@@ -52,7 +52,7 @@ where
     T: CustomNumeric + Send + Sync + 'static,
 {
     /// Create a new SamplingSVE
-    /// 
+    ///
     /// This takes only the geometric information needed for polynomial conversion,
     /// not the kernel itself.
     pub fn new(
@@ -72,22 +72,26 @@ where
             n_gauss,
         }
     }
-    
+
     /// Post-process a single SVD result to create polynomials
-    /// 
+    ///
     /// This converts SVD results to piecewise Legendre polynomials
     /// on the domain specified by segments (e.g., [0, xmax] for reduced kernels).
-    pub     fn postprocess_single(
+    pub fn postprocess_single(
         &self,
         u: &DTensor<T, 2>,
         s: &[T],
         v: &DTensor<T, 2>,
-    ) -> (PiecewiseLegendrePolyVector, Vec<f64>, PiecewiseLegendrePolyVector) {
+    ) -> (
+        PiecewiseLegendrePolyVector,
+        Vec<f64>,
+        PiecewiseLegendrePolyVector,
+    ) {
         // 1. Remove weights
         // Both U and V have rows corresponding to Gauss points, so is_row=true for both
         let u_unweighted = remove_weights(u, self.gauss_x.w.as_slice(), true);
         let v_unweighted = remove_weights(v, self.gauss_y.w.as_slice(), true);
-        
+
         // 2. Convert to polynomials
         let gauss_rule_f64 = legendre_generic::<f64>(self.n_gauss);
         let u_polys = svd_to_polynomials(
@@ -102,7 +106,7 @@ where
             &gauss_rule_f64,
             self.n_gauss,
         );
-        
+
         // Note: No domain extension here - that's the caller's responsibility
         (
             PiecewiseLegendrePolyVector::new(u_polys),
@@ -113,7 +117,7 @@ where
 }
 
 /// Centrosymmetric SVE computation
-/// 
+///
 /// Exploits even/odd symmetry for efficient computation.
 /// This manages the symmetry: creating reduced kernels, extending to full domain, and merging.
 pub struct CentrosymmSVE<T, K>
@@ -126,7 +130,7 @@ where
     hints: K::SVEHintsType<T>,
     #[allow(dead_code)]
     n_gauss: usize,
-    
+
     // Geometric information (positive domain [0, xmax])
     #[allow(dead_code)]
     segments_x: Vec<T>,
@@ -134,7 +138,7 @@ where
     segments_y: Vec<T>,
     gauss_x: Rule<T>,
     gauss_y: Rule<T>,
-    
+
     // The general SVE processor (no symmetry knowledge)
     sampling_sve: SamplingSVE<T>,
 }
@@ -148,17 +152,17 @@ where
     /// Create a new CentrosymmSVE
     pub fn new(kernel: K, epsilon: f64) -> Self {
         let hints = kernel.sve_hints::<T>(epsilon);
-        
+
         // Get segments for positive domain [0, xmax]
         let segments_x = hints.segments_x();
         let segments_y = hints.segments_y();
         let n_gauss = hints.ngauss();
-        
+
         // Create composite Gauss rules
         let rule = legendre_generic::<T>(n_gauss);
         let gauss_x = rule.piecewise(&segments_x);
         let gauss_y = rule.piecewise(&segments_y);
-        
+
         // Create the general SVE processor
         let sampling_sve = SamplingSVE::new(
             segments_x.clone(),
@@ -168,7 +172,7 @@ where
             epsilon,
             n_gauss,
         );
-        
+
         Self {
             kernel,
             epsilon,
@@ -181,7 +185,7 @@ where
             sampling_sve,
         }
     }
-    
+
     /// Compute reduced kernel matrix for given symmetry
     fn compute_reduced_matrix(&self, symmetry: SymmetryType) -> DTensor<T, 2> {
         // Compute K_red(x, y) = K(x, y) + sign * K(x, -y)
@@ -193,33 +197,32 @@ where
             symmetry,
             &self.hints,
         );
-        
+
         // Apply weights for SVE
-        let weighted = discretized.apply_weights_for_sve();
-        
-        weighted
+
+        discretized.apply_weights_for_sve()
     }
-    
+
     /// Extend polynomials from [0, xmax] to [-xmax, xmax]
     fn extend_result_to_full_domain(
         &self,
-        result: (PiecewiseLegendrePolyVector, Vec<f64>, PiecewiseLegendrePolyVector),
+        result: (
+            PiecewiseLegendrePolyVector,
+            Vec<f64>,
+            PiecewiseLegendrePolyVector,
+        ),
         symmetry: SymmetryType,
-    ) -> (PiecewiseLegendrePolyVector, Vec<f64>, PiecewiseLegendrePolyVector) {
+    ) -> (
+        PiecewiseLegendrePolyVector,
+        Vec<f64>,
+        PiecewiseLegendrePolyVector,
+    ) {
         let (u, s, v) = result;
-        
+
         // Extend u and v from [0, xmax] to [-xmax, xmax]
-        let u_full = extend_to_full_domain(
-            u.get_polys().to_vec(),
-            symmetry,
-            self.kernel.xmax(),
-        );
-        let v_full = extend_to_full_domain(
-            v.get_polys().to_vec(),
-            symmetry,
-            self.kernel.ymax(),
-        );
-        
+        let u_full = extend_to_full_domain(u.get_polys().to_vec(), symmetry, self.kernel.xmax());
+        let v_full = extend_to_full_domain(v.get_polys().to_vec(), symmetry, self.kernel.ymax());
+
         (
             PiecewiseLegendrePolyVector::new(u_full),
             s,
@@ -238,10 +241,10 @@ where
         // Compute reduced kernels for even and odd symmetries
         let even_matrix = self.compute_reduced_matrix(SymmetryType::Even);
         let odd_matrix = self.compute_reduced_matrix(SymmetryType::Odd);
-        
+
         vec![even_matrix, odd_matrix]
     }
-    
+
     fn postprocess(
         &self,
         u_list: Vec<DTensor<T, 2>>,
@@ -249,19 +252,18 @@ where
         v_list: Vec<DTensor<T, 2>>,
     ) -> SVEResult {
         // Process even and odd results using SamplingSVE (which doesn't know about symmetry)
-        let result_even = self.sampling_sve.postprocess_single(
-            &u_list[0], &s_list[0], &v_list[0]
-        );
-        let result_odd = self.sampling_sve.postprocess_single(
-            &u_list[1], &s_list[1], &v_list[1]
-        );
-        
+        let result_even = self
+            .sampling_sve
+            .postprocess_single(&u_list[0], &s_list[0], &v_list[0]);
+        let result_odd = self
+            .sampling_sve
+            .postprocess_single(&u_list[1], &s_list[1], &v_list[1]);
+
         // Now extend to full domain (this is where symmetry comes in)
         let result_even_full = self.extend_result_to_full_domain(result_even, SymmetryType::Even);
         let result_odd_full = self.extend_result_to_full_domain(result_odd, SymmetryType::Odd);
-        
+
         // Merge the results
         merge_results(result_even_full, result_odd_full, self.epsilon)
     }
 }
-

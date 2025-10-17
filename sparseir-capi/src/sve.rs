@@ -7,7 +7,7 @@ use std::panic::catch_unwind;
 use sparseir_rust::sve::{compute_sve, TworkType};
 
 use crate::types::{spir_kernel, spir_sve_result};
-use crate::{StatusCode, SPIR_SUCCESS, SPIR_INVALID_ARGUMENT, SPIR_INTERNAL_ERROR};
+use crate::{StatusCode, SPIR_COMPUTATION_SUCCESS, SPIR_INTERNAL_ERROR, SPIR_INVALID_ARGUMENT};
 
 // Generate common opaque type functions: release, clone, is_assigned, get_raw_ptr
 impl_opaque_type_common!(sve_result);
@@ -48,12 +48,16 @@ pub extern "C" fn spir_sve_result_new(
     }
 
     if k.is_null() {
-        unsafe { *status = SPIR_INVALID_ARGUMENT; }
+        unsafe {
+            *status = SPIR_INVALID_ARGUMENT;
+        }
         return std::ptr::null_mut();
     }
 
     if epsilon <= 0.0 {
-        unsafe { *status = SPIR_INVALID_ARGUMENT; }
+        unsafe {
+            *status = SPIR_INVALID_ARGUMENT;
+        }
         return std::ptr::null_mut();
     }
 
@@ -63,7 +67,9 @@ pub extern "C" fn spir_sve_result_new(
         1 => TworkType::Float64X2,
         -1 => TworkType::Auto,
         _ => {
-            unsafe { *status = SPIR_INVALID_ARGUMENT; }
+            unsafe {
+                *status = SPIR_INVALID_ARGUMENT;
+            }
             return std::ptr::null_mut();
         }
     };
@@ -74,22 +80,16 @@ pub extern "C" fn spir_sve_result_new(
     // Catch panics to prevent unwinding across FFI boundary
     let result = catch_unwind(|| unsafe {
         let kernel = &*k;
-        
+
         // Dispatch based on kernel type
         let sve_result = if let Some(logistic) = kernel.as_logistic() {
             compute_sve(
-                (**logistic).clone(),
-                epsilon,
-                cutoff_opt,
-                None, // max_num_svals auto-determined
+                **logistic, epsilon, cutoff_opt, None, // max_num_svals auto-determined
                 twork_type,
             )
         } else if let Some(reg_bose) = kernel.as_regularized_bose() {
             compute_sve(
-                (**reg_bose).clone(),
-                epsilon,
-                cutoff_opt,
-                None, // max_num_svals auto-determined
+                **reg_bose, epsilon, cutoff_opt, None, // max_num_svals auto-determined
                 twork_type,
             )
         } else {
@@ -102,11 +102,15 @@ pub extern "C" fn spir_sve_result_new(
 
     match result {
         Ok(Ok(ptr)) => {
-            unsafe { *status = SPIR_SUCCESS; }
+            unsafe {
+                *status = SPIR_COMPUTATION_SUCCESS;
+            }
             ptr
         }
         Ok(Err(_)) | Err(_) => {
-            unsafe { *status = SPIR_INTERNAL_ERROR; }
+            unsafe {
+                *status = SPIR_INTERNAL_ERROR;
+            }
             std::ptr::null_mut()
         }
     }
@@ -119,7 +123,7 @@ pub extern "C" fn spir_sve_result_new(
 /// * `size` - Pointer to store the size
 ///
 /// # Returns
-/// * `SPIR_SUCCESS` (0) on success
+/// * `SPIR_COMPUTATION_SUCCESS` (0) on success
 /// * `SPIR_INVALID_ARGUMENT` (-6) if sve or size is null
 /// * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
 #[no_mangle]
@@ -134,7 +138,7 @@ pub extern "C" fn spir_sve_result_get_size(
     let result = catch_unwind(|| unsafe {
         let s = &*sve;
         *size = s.size() as libc::c_int;
-        SPIR_SUCCESS
+        SPIR_COMPUTATION_SUCCESS
     });
 
     result.unwrap_or(SPIR_INTERNAL_ERROR)
@@ -155,7 +159,7 @@ pub extern "C" fn spir_sve_result_get_size(
 /// # Returns
 /// * Pointer to new truncated SVE result, or NULL on failure
 /// * Status code:
-///   - `SPIR_SUCCESS` (0) on success
+///   - `SPIR_COMPUTATION_SUCCESS` (0) on success
 ///   - `SPIR_INVALID_ARGUMENT` (-6) if sve or status is null, or epsilon is invalid
 ///   - `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
 ///
@@ -166,12 +170,12 @@ pub extern "C" fn spir_sve_result_get_size(
 /// # Example (C)
 /// ```c
 /// spir_sve_result* sve = spir_sve_result_new(kernel, 1e-10, -1.0, 0, 0, -1, &status);
-/// 
+///
 /// // Truncate to keep only singular values > 1e-8 * s[0], max 50 values
 /// spir_sve_result* sve_truncated = spir_sve_result_truncate(sve, 1e-8, 50, &status);
-/// 
+///
 /// // Use truncated result...
-/// 
+///
 /// spir_sve_result_release(sve_truncated);
 /// spir_sve_result_release(sve);
 /// ```
@@ -188,18 +192,22 @@ pub extern "C" fn spir_sve_result_truncate(
     }
 
     if sve.is_null() {
-        unsafe { *status = SPIR_INVALID_ARGUMENT; }
+        unsafe {
+            *status = SPIR_INVALID_ARGUMENT;
+        }
         return std::ptr::null_mut();
     }
 
     if epsilon < 0.0 || !epsilon.is_finite() {
-        unsafe { *status = SPIR_INVALID_ARGUMENT; }
+        unsafe {
+            *status = SPIR_INVALID_ARGUMENT;
+        }
         return std::ptr::null_mut();
     }
 
     let result = catch_unwind(|| unsafe {
         let sve_ref = &*sve;
-        
+
         // Convert max_size (-1 means no limit)
         let max_size_opt = if max_size < 0 {
             None
@@ -212,10 +220,7 @@ pub extern "C" fn spir_sve_result_truncate(
 
         // Create new SVE result with truncated data
         let sve_truncated = sparseir_rust::sve::SVEResult::new(
-            u_part,
-            s_part,
-            v_part,
-            epsilon,  // Use provided epsilon for new result
+            u_part, s_part, v_part, epsilon, // Use provided epsilon for new result
         );
 
         // Wrap in C-API type
@@ -228,11 +233,15 @@ pub extern "C" fn spir_sve_result_truncate(
 
     match result {
         Ok(ptr) => {
-            unsafe { *status = SPIR_SUCCESS; }
+            unsafe {
+                *status = SPIR_COMPUTATION_SUCCESS;
+            }
             ptr
         }
         Err(_) => {
-            unsafe { *status = SPIR_INTERNAL_ERROR; }
+            unsafe {
+                *status = SPIR_INTERNAL_ERROR;
+            }
             std::ptr::null_mut()
         }
     }
@@ -245,7 +254,7 @@ pub extern "C" fn spir_sve_result_truncate(
 /// * `svals` - Pre-allocated array to store singular values (size must be >= result size)
 ///
 /// # Returns
-/// * `SPIR_SUCCESS` (0) on success
+/// * `SPIR_COMPUTATION_SUCCESS` (0) on success
 /// * `SPIR_INVALID_ARGUMENT` (-6) if sve or svals is null
 /// * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
 #[no_mangle]
@@ -261,7 +270,7 @@ pub extern "C" fn spir_sve_result_get_svals(
         let s = &*sve;
         let sval_slice = s.svals();
         std::ptr::copy_nonoverlapping(sval_slice.as_ptr(), svals, sval_slice.len());
-        SPIR_SUCCESS
+        SPIR_COMPUTATION_SUCCESS
     });
 
     result.unwrap_or(SPIR_INTERNAL_ERROR)
@@ -278,39 +287,39 @@ mod tests {
         // Create kernel
         let mut kernel_status = SPIR_INTERNAL_ERROR;
         let kernel = spir_logistic_kernel_new(10.0, &mut kernel_status);
-        assert_eq!(kernel_status, SPIR_SUCCESS);
+        assert_eq!(kernel_status, SPIR_COMPUTATION_SUCCESS);
         assert!(!kernel.is_null());
 
         // Compute SVE
         let mut sve_status = SPIR_INTERNAL_ERROR;
         let sve = spir_sve_result_new(
             kernel,
-            1e-6,  // epsilon
-            -1.0,  // cutoff (default)
-            -1,    // lmax (auto)
-            -1,    // n_gauss (auto)
-            -1,    // Twork (auto)
+            1e-6, // epsilon
+            -1.0, // cutoff (default)
+            -1,   // lmax (auto)
+            -1,   // n_gauss (auto)
+            -1,   // Twork (auto)
             &mut sve_status,
         );
-        assert_eq!(sve_status, SPIR_SUCCESS);
+        assert_eq!(sve_status, SPIR_COMPUTATION_SUCCESS);
         assert!(!sve.is_null());
 
         // Get size
         let mut size = 0;
         let status = spir_sve_result_get_size(sve, &mut size);
-        assert_eq!(status, SPIR_SUCCESS);
+        assert_eq!(status, SPIR_COMPUTATION_SUCCESS);
         assert!(size > 0);
         println!("SVE size: {}", size);
 
         // Get singular values
         let mut svals = vec![0.0; size as usize];
         let status = spir_sve_result_get_svals(sve, svals.as_mut_ptr());
-        assert_eq!(status, SPIR_SUCCESS);
-        
+        assert_eq!(status, SPIR_COMPUTATION_SUCCESS);
+
         // Check singular values are positive and decreasing
         assert!(svals[0] > 0.0);
         for i in 1..svals.len() {
-            assert!(svals[i] <= svals[i-1]);
+            assert!(svals[i] <= svals[i - 1]);
         }
 
         // Cleanup
@@ -322,28 +331,23 @@ mod tests {
     fn test_sve_result_truncate() {
         let mut kernel_status = SPIR_INTERNAL_ERROR;
         let kernel = spir_logistic_kernel_new(10.0, &mut kernel_status);
-        
+
         let mut sve_status = SPIR_INTERNAL_ERROR;
         let sve = spir_sve_result_new(kernel, 1e-6, -1.0, -1, -1, -1, &mut sve_status);
-        
+
         let mut size = 0;
         spir_sve_result_get_size(sve, &mut size);
-        
+
         // Truncate to half size
         let mut truncate_status = SPIR_INTERNAL_ERROR;
-        let sve_truncated = spir_sve_result_truncate(
-            sve,
-            1e-4,
-            size / 2,
-            &mut truncate_status,
-        );
-        assert_eq!(truncate_status, SPIR_SUCCESS);
+        let sve_truncated = spir_sve_result_truncate(sve, 1e-4, size / 2, &mut truncate_status);
+        assert_eq!(truncate_status, SPIR_COMPUTATION_SUCCESS);
         assert!(!sve_truncated.is_null());
-        
+
         let mut new_size = 0;
         spir_sve_result_get_size(sve_truncated, &mut new_size);
         assert!(new_size <= size / 2);
-        
+
         spir_sve_result_release(sve_truncated);
         spir_sve_result_release(sve);
         spir_kernel_release(kernel);
@@ -352,22 +356,21 @@ mod tests {
     #[test]
     fn test_sve_null_pointers() {
         // Null kernel
-        let mut status = SPIR_SUCCESS;
+        let mut status = SPIR_COMPUTATION_SUCCESS;
         let sve = spir_sve_result_new(ptr::null(), 1e-6, -1.0, -1, -1, -1, &mut status);
         assert_eq!(status, SPIR_INVALID_ARGUMENT);
         assert!(sve.is_null());
-        
+
         // Null size pointer
         let mut kernel_status = SPIR_INTERNAL_ERROR;
         let kernel = spir_logistic_kernel_new(10.0, &mut kernel_status);
         let mut sve_status = SPIR_INTERNAL_ERROR;
         let sve = spir_sve_result_new(kernel, 1e-6, -1.0, -1, -1, -1, &mut sve_status);
-        
+
         let status = spir_sve_result_get_size(sve, ptr::null_mut());
         assert_eq!(status, SPIR_INVALID_ARGUMENT);
-        
+
         spir_sve_result_release(sve);
         spir_kernel_release(kernel);
     }
 }
-

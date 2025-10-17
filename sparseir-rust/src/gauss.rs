@@ -89,7 +89,9 @@ where
         let midpoint_new = (b + a) * <T as CustomNumeric>::from_f64(0.5);
 
         // Transform x: scaling * (xi - midpoint_old) + midpoint_new
-        let new_x: Vec<T> = self.x.iter()
+        let new_x: Vec<T> = self
+            .x
+            .iter()
             .map(|&xi| scaling * (xi - midpoint_old) + midpoint_new)
             .collect();
         let new_w: Vec<T> = self.w.iter().map(|&wi| wi * scaling).collect();
@@ -176,8 +178,13 @@ where
 
         for rule in rules {
             // Adjust x_forward and x_backward for global coordinates
-            let x_forward_adj: Vec<T> = rule.x_forward.iter().map(|&xi| xi + (rule.a - a)).collect();
-            let x_backward_adj: Vec<T> = rule.x_backward.iter().map(|&xi| xi + (b - rule.b)).collect();
+            let x_forward_adj: Vec<T> =
+                rule.x_forward.iter().map(|&xi| xi + (rule.a - a)).collect();
+            let x_backward_adj: Vec<T> = rule
+                .x_backward
+                .iter()
+                .map(|&xi| xi + (b - rule.b))
+                .collect();
 
             x_vec.extend(rule.x.iter().cloned());
             w_vec.extend(rule.w.iter().cloned());
@@ -328,7 +335,9 @@ where
         let midpoint_new = (b + a) * <T as CustomNumeric>::from_f64(0.5);
 
         // Transform x: scaling * (xi - midpoint_old) + midpoint_new
-        let new_x: Vec<T> = self.x.iter()
+        let new_x: Vec<T> = self
+            .x
+            .iter()
             .map(|&xi| scaling * (xi - midpoint_old) + midpoint_new)
             .collect();
         let new_w: Vec<T> = self.w.iter().map(|&wi| wi * scaling).collect();
@@ -445,12 +454,16 @@ impl Rule<twofloat::TwoFloat> {
         let midpoint_new = (b + a) * <twofloat::TwoFloat as CustomNumeric>::from_f64(0.5);
 
         // Transform x: scaling * (xi - midpoint_old) + midpoint_new
-        let new_x: Vec<twofloat::TwoFloat> = self.x.iter()
+        let new_x: Vec<twofloat::TwoFloat> = self
+            .x
+            .iter()
             .map(|&xi| scaling * (xi - midpoint_old) + midpoint_new)
             .collect();
         let new_w: Vec<twofloat::TwoFloat> = self.w.iter().map(|&wi| wi * scaling).collect();
-        let new_x_forward: Vec<twofloat::TwoFloat> = self.x_forward.iter().map(|&xi| xi * scaling).collect();
-        let new_x_backward: Vec<twofloat::TwoFloat> = self.x_backward.iter().map(|&xi| xi * scaling).collect();
+        let new_x_forward: Vec<twofloat::TwoFloat> =
+            self.x_forward.iter().map(|&xi| xi * scaling).collect();
+        let new_x_backward: Vec<twofloat::TwoFloat> =
+            self.x_backward.iter().map(|&xi| xi * scaling).collect();
 
         Self {
             x: new_x,
@@ -544,7 +557,7 @@ where
     let mut w = Vec::with_capacity(n);
 
     // Use Newton's method to find roots of Legendre polynomial
-    let m = (n + 1) / 2;
+    let m = n.div_ceil(2);
 
     // Use high-precision constants via CustomNumeric trait
     let pi = T::pi();
@@ -685,7 +698,7 @@ where
     let mut w = Vec::with_capacity(n);
 
     // Use Newton's method to find roots of Legendre polynomial
-    let m = (n + 1) / 2;
+    let m = n.div_ceil(2);
     let pi = <T as CustomNumeric>::from_f64(std::f64::consts::PI);
 
     for i in 0..m {
@@ -826,37 +839,34 @@ pub fn legendre_twofloat(n: usize) -> Rule<twofloat::TwoFloat> {
 /// Matrix V where V[i,j] = P_j(x_i), with P_j being the j-th Legendre polynomial
 pub fn legendre_vandermonde<T: CustomNumeric>(x: &[T], degree: usize) -> mdarray::DTensor<T, 2> {
     use mdarray::DTensor;
-    
+
     let n = x.len();
     let mut v = DTensor::<T, 2>::from_elem([n, degree + 1], T::zero());
-    
+
     // First column is all ones (P_0(x) = 1)
     for i in 0..n {
         v[[i, 0]] = T::from_f64(1.0);
     }
-    
+
     // Second column is x (P_1(x) = x)
     if degree > 0 {
         for i in 0..n {
             v[[i, 1]] = x[i];
         }
     }
-    
+
     // Recurrence relation: P_n(x) = ((2n-1)x*P_{n-1}(x) - (n-1)*P_{n-2}(x)) / n
     for j in 2..=degree {
         for i in 0..n {
             let n_f64 = j as f64;
-            let term1 = T::from_f64(2.0 * n_f64 - 1.0) * x[i] * v[[i, j-1]];
-            let term2 = T::from_f64(n_f64 - 1.0) * v[[i, j-2]];
+            let term1 = T::from_f64(2.0 * n_f64 - 1.0) * x[i] * v[[i, j - 1]];
+            let term2 = T::from_f64(n_f64 - 1.0) * v[[i, j - 2]];
             v[[i, j]] = (term1 - term2) / T::from_f64(n_f64);
         }
     }
-    
+
     v
 }
-
-
-
 
 /// Generic Legendre Gauss quadrature rule for CustomNumeric types
 pub fn legendre_generic<T: CustomNumeric + 'static>(n: usize) -> Rule<T> {
@@ -880,7 +890,6 @@ pub fn legendre_generic<T: CustomNumeric + 'static>(n: usize) -> Rule<T> {
         )
     }
 }
-
 
 #[cfg(test)]
 #[path = "gauss_tests.rs"]

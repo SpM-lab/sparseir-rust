@@ -3,9 +3,9 @@
 //! This module provides `TauSampling` for transforming between IR basis coefficients
 //! and values at sparse sampling points in imaginary time.
 
-use crate::traits::StatisticsType;
 use crate::gemm::matmul_par;
-use mdarray::{DTensor, Tensor, DynRank, Shape};
+use crate::traits::StatisticsType;
+use mdarray::{DTensor, DynRank, Shape, Tensor};
 
 /// Move axis from position `src` to position `dst`
 ///
@@ -30,11 +30,21 @@ pub fn movedim<T: Clone>(arr: &Tensor<T, DynRank>, src: usize, dst: usize) -> Te
     if src == dst {
         return arr.clone();
     }
-    
+
     let rank = arr.rank();
-    assert!(src < rank, "src axis {} out of bounds for rank {}", src, rank);
-    assert!(dst < rank, "dst axis {} out of bounds for rank {}", dst, rank);
-    
+    assert!(
+        src < rank,
+        "src axis {} out of bounds for rank {}",
+        src,
+        rank
+    );
+    assert!(
+        dst < rank,
+        "dst axis {} out of bounds for rank {}",
+        dst,
+        rank
+    );
+
     // Generate permutation: move src to dst position
     let mut perm = Vec::with_capacity(rank);
     let mut pos = 0;
@@ -50,7 +60,7 @@ pub fn movedim<T: Clone>(arr: &Tensor<T, DynRank>, src: usize, dst: usize) -> Te
             pos += 1;
         }
     }
-    
+
     arr.permute(&perm[..]).to_tensor()
 }
 
@@ -64,10 +74,10 @@ where
 {
     /// Sampling points in imaginary time τ ∈ [0, β]
     sampling_points: Vec<f64>,
-    
+
     /// Real matrix fitter for least-squares fitting
     fitter: crate::fitter::RealMatrixFitter,
-    
+
     /// Marker for statistics type
     _phantom: std::marker::PhantomData<S>,
 }
@@ -94,7 +104,7 @@ where
         let sampling_points = basis.default_tau_sampling_points();
         Self::with_sampling_points(basis, sampling_points)
     }
-    
+
     /// Create a new TauSampling with custom sampling points
     ///
     /// SVD is computed lazily on first call to `fit` or `fit_nd`.
@@ -116,8 +126,11 @@ where
         S: 'static,
     {
         assert!(!sampling_points.is_empty(), "No sampling points given");
-        assert!(basis.size() <= sampling_points.len(), "The number of sampling points must be greater than or equal to the basis size");
-        
+        assert!(
+            basis.size() <= sampling_points.len(),
+            "The number of sampling points must be greater than or equal to the basis size"
+        );
+
         let beta = basis.beta();
         for &tau in &sampling_points {
             assert!(
@@ -126,21 +139,21 @@ where
                 tau
             );
         }
-        
+
         // Compute sampling matrix: A[i, l] = u_l(τ_i)
         // Use Basis trait's evaluate_tau method
         let matrix = basis.evaluate_tau(&sampling_points);
-        
+
         // Create fitter
         let fitter = crate::fitter::RealMatrixFitter::new(matrix);
-        
+
         Self {
             sampling_points,
             fitter,
             _phantom: std::marker::PhantomData,
         }
     }
-    
+
     /// Create a new TauSampling with custom sampling points and pre-computed matrix
     ///
     /// This constructor is useful when the sampling matrix is already computed
@@ -155,44 +168,45 @@ where
     ///
     /// # Panics
     /// Panics if `sampling_points` is empty or if matrix dimensions don't match
-    pub fn from_matrix(
-        sampling_points: Vec<f64>,
-        matrix: DTensor<f64, 2>,
-    ) -> Self {
+    pub fn from_matrix(sampling_points: Vec<f64>, matrix: DTensor<f64, 2>) -> Self {
         assert!(!sampling_points.is_empty(), "No sampling points given");
-        assert_eq!(matrix.shape().0, sampling_points.len(), 
-            "Matrix rows ({}) must match number of sampling points ({})", 
-            matrix.shape().0, sampling_points.len());
-        
+        assert_eq!(
+            matrix.shape().0,
+            sampling_points.len(),
+            "Matrix rows ({}) must match number of sampling points ({})",
+            matrix.shape().0,
+            sampling_points.len()
+        );
+
         let fitter = crate::fitter::RealMatrixFitter::new(matrix);
-        
+
         Self {
             sampling_points,
             fitter,
             _phantom: std::marker::PhantomData,
         }
     }
-    
+
     /// Get the sampling points
     pub fn sampling_points(&self) -> &[f64] {
         &self.sampling_points
     }
-    
+
     /// Get the number of sampling points
     pub fn n_sampling_points(&self) -> usize {
         self.fitter.n_points()
     }
-    
+
     /// Get the basis size
     pub fn basis_size(&self) -> usize {
         self.fitter.basis_size()
     }
-    
+
     /// Get the sampling matrix
     pub fn matrix(&self) -> &DTensor<f64, 2> {
         &self.fitter.matrix
     }
-    
+
     /// Evaluate basis coefficients at sampling points
     ///
     /// Computes g(τ_i) = Σ_l a_l * u_l(τ_i) for all sampling points
@@ -208,44 +222,39 @@ where
     pub fn evaluate(&self, coeffs: &[f64]) -> Vec<f64> {
         self.fitter.evaluate(coeffs)
     }
-    
+
     /// Internal generic evaluate_nd implementation
-    fn evaluate_nd_impl<T>(
-        &self,
-        coeffs: &Tensor<T, DynRank>,
-        dim: usize,
-    ) -> Tensor<T, DynRank>
+    fn evaluate_nd_impl<T>(&self, coeffs: &Tensor<T, DynRank>, dim: usize) -> Tensor<T, DynRank>
     where
         T: num_complex::ComplexFloat + faer_traits::ComplexField + 'static + From<f64> + Copy,
     {
         let rank = coeffs.rank();
         assert!(dim < rank, "dim={} must be < rank={}", dim, rank);
-        
+
         let basis_size = self.basis_size();
         let target_dim_size = coeffs.shape().dim(dim);
-        
+
         // Check that the target dimension matches basis_size
         assert_eq!(
-            target_dim_size,
-            basis_size,
+            target_dim_size, basis_size,
             "coeffs.shape().dim({}) = {} must equal basis_size = {}",
-            dim,
-            target_dim_size,
-            basis_size
+            dim, target_dim_size, basis_size
         );
-        
+
         // 1. Move target dimension to position 0
         let coeffs_dim0 = movedim(coeffs, dim, 0);
-        
+
         // 2. Reshape to 2D: (basis_size, extra_size)
         let extra_size: usize = coeffs_dim0.len() / basis_size;
-        
+
         // Convert DynRank to fixed Rank<2> for matmul_par
-        let coeffs_2d_dyn = coeffs_dim0.reshape(&[basis_size, extra_size][..]).to_tensor();
+        let coeffs_2d_dyn = coeffs_dim0
+            .reshape(&[basis_size, extra_size][..])
+            .to_tensor();
         let coeffs_2d = DTensor::<T, 2>::from_fn([basis_size, extra_size], |idx| {
             coeffs_2d_dyn[&[idx[0], idx[1]][..]]
         });
-        
+
         // 3. Matrix multiply: result = A * coeffs
         //    A is real, convert to type T
         let n_points = self.n_sampling_points();
@@ -253,7 +262,7 @@ where
             self.fitter.matrix[idx].into()
         });
         let result_2d = matmul_par(&matrix_t, &coeffs_2d);
-        
+
         // 4. Reshape back to N-D with n_points at position 0
         let mut result_shape = vec![n_points];
         coeffs_dim0.shape().with_dims(|dims| {
@@ -261,15 +270,15 @@ where
                 result_shape.push(dims[i]);
             }
         });
-        
+
         // Convert DTensor<T, 2> to DynRank using into_dyn()
         let result_2d_dyn = result_2d.into_dyn();
         let result_dim0 = result_2d_dyn.reshape(&result_shape[..]).to_tensor();
-        
+
         // 5. Move dimension back to original position
         movedim(&result_dim0, 0, dim)
     }
-    
+
     /// Evaluate basis coefficients at sampling points (N-dimensional)
     ///
     /// Evaluates along the specified dimension, keeping other dimensions intact.
@@ -292,87 +301,82 @@ where
     /// ```ignore
     /// use num_complex::Complex;
     /// use mdarray::tensor;
-    /// 
+    ///
     /// // Real coefficients
     /// let values_real = sampling.evaluate_nd::<f64>(&coeffs_real, 0);
-    /// 
+    ///
     /// // Complex coefficients
     /// let values_complex = sampling.evaluate_nd::<Complex<f64>>(&coeffs_complex, 0);
     /// ```
-    pub fn evaluate_nd<T>(
-        &self,
-        coeffs: &Tensor<T, DynRank>,
-        dim: usize,
-    ) -> Tensor<T, DynRank>
+    pub fn evaluate_nd<T>(&self, coeffs: &Tensor<T, DynRank>, dim: usize) -> Tensor<T, DynRank>
     where
         T: num_complex::ComplexFloat + faer_traits::ComplexField + 'static + From<f64> + Copy,
     {
         self.evaluate_nd_impl(coeffs, dim)
     }
-    
+
     /// Internal generic fit_nd implementation
     ///
     /// Delegates to fitter for real values, fits real/imaginary parts separately for complex values
-    fn fit_nd_impl<T>(
-        &self,
-        values: &Tensor<T, DynRank>,
-        dim: usize,
-    ) -> Tensor<T, DynRank>
+    fn fit_nd_impl<T>(&self, values: &Tensor<T, DynRank>, dim: usize) -> Tensor<T, DynRank>
     where
-        T: num_complex::ComplexFloat + faer_traits::ComplexField + 'static + From<f64> + Copy + Default,
+        T: num_complex::ComplexFloat
+            + faer_traits::ComplexField
+            + 'static
+            + From<f64>
+            + Copy
+            + Default,
     {
         use num_complex::Complex;
-        
+
         let rank = values.rank();
         assert!(dim < rank, "dim={} must be < rank={}", dim, rank);
-        
+
         let n_points = self.n_sampling_points();
         let basis_size = self.basis_size();
         let target_dim_size = values.shape().dim(dim);
-        
+
         assert_eq!(
-            target_dim_size,
-            n_points,
+            target_dim_size, n_points,
             "values.shape().dim({}) = {} must equal n_sampling_points = {}",
-            dim,
-            target_dim_size,
-            n_points
+            dim, target_dim_size, n_points
         );
-        
+
         // 1. Move target dimension to position 0
         let values_dim0 = movedim(values, dim, 0);
-        
+
         // 2. Reshape to 2D: (n_points, extra_size)
         let extra_size: usize = values_dim0.len() / n_points;
         let values_2d_dyn = values_dim0.reshape(&[n_points, extra_size][..]).to_tensor();
-        
+
         // 3. Convert to DTensor<T, 2> and fit using fitter's 2D methods
         // Use type introspection to dispatch between real and complex
         use std::any::TypeId;
         let is_real = TypeId::of::<T>() == TypeId::of::<f64>();
-        
+
         let coeffs_2d = if is_real {
             // Real case: convert to f64 tensor and fit
-            let values_2d_f64 = DTensor::<f64, 2>::from_fn([n_points, extra_size], |idx| {
-                unsafe { *(&values_2d_dyn[&[idx[0], idx[1]][..]] as *const T as *const f64) }
+            let values_2d_f64 = DTensor::<f64, 2>::from_fn([n_points, extra_size], |idx| unsafe {
+                *(&values_2d_dyn[&[idx[0], idx[1]][..]] as *const T as *const f64)
             });
             let coeffs_2d_f64 = self.fitter.fit_2d(&values_2d_f64);
             // Convert back to T
-            DTensor::<T, 2>::from_fn(*coeffs_2d_f64.shape(), |idx| {
-                unsafe { *(&coeffs_2d_f64[idx] as *const f64 as *const T) }
+            DTensor::<T, 2>::from_fn(*coeffs_2d_f64.shape(), |idx| unsafe {
+                *(&coeffs_2d_f64[idx] as *const f64 as *const T)
             })
         } else {
             // Complex case: convert to Complex<f64> tensor and fit
-            let values_2d_c64 = DTensor::<Complex<f64>, 2>::from_fn([n_points, extra_size], |idx| {
-                unsafe { *(&values_2d_dyn[&[idx[0], idx[1]][..]] as *const T as *const Complex<f64>) }
-            });
+            let values_2d_c64 =
+                DTensor::<Complex<f64>, 2>::from_fn([n_points, extra_size], |idx| unsafe {
+                    *(&values_2d_dyn[&[idx[0], idx[1]][..]] as *const T as *const Complex<f64>)
+                });
             let coeffs_2d_c64 = self.fitter.fit_complex_2d(&values_2d_c64);
             // Convert back to T
-            DTensor::<T, 2>::from_fn(*coeffs_2d_c64.shape(), |idx| {
-                unsafe { *(&coeffs_2d_c64[idx] as *const Complex<f64> as *const T) }
+            DTensor::<T, 2>::from_fn(*coeffs_2d_c64.shape(), |idx| unsafe {
+                *(&coeffs_2d_c64[idx] as *const Complex<f64> as *const T)
             })
         };
-        
+
         // 4. Reshape back to N-D with basis_size at position 0
         let mut coeffs_shape = vec![basis_size];
         values_dim0.shape().with_dims(|dims| {
@@ -380,13 +384,13 @@ where
                 coeffs_shape.push(dims[i]);
             }
         });
-        
+
         let coeffs_dim0 = coeffs_2d.into_dyn().reshape(&coeffs_shape[..]).to_tensor();
-        
+
         // 5. Move dimension 0 back to original position dim
         movedim(&coeffs_dim0, 0, dim)
     }
-    
+
     /// Fit basis coefficients from values at sampling points (N-dimensional)
     ///
     /// Fits along the specified dimension, keeping other dimensions intact.
@@ -409,20 +413,21 @@ where
     /// ```ignore
     /// use num_complex::Complex;
     /// use mdarray::tensor;
-    /// 
+    ///
     /// // Real values
     /// let coeffs_real = sampling.fit_nd::<f64>(&values_real, 0);
-    /// 
+    ///
     /// // Complex values
     /// let coeffs_complex = sampling.fit_nd::<Complex<f64>>(&values_complex, 0);
     /// ```
-    pub fn fit_nd<T>(
-        &self,
-        values: &Tensor<T, DynRank>,
-        dim: usize,
-    ) -> Tensor<T, DynRank>
+    pub fn fit_nd<T>(&self, values: &Tensor<T, DynRank>, dim: usize) -> Tensor<T, DynRank>
     where
-        T: num_complex::ComplexFloat + faer_traits::ComplexField + 'static + From<f64> + Copy + Default,
+        T: num_complex::ComplexFloat
+            + faer_traits::ComplexField
+            + 'static
+            + From<f64>
+            + Copy
+            + Default,
     {
         self.fit_nd_impl(values, dim)
     }

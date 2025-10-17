@@ -11,18 +11,18 @@
 //! # Example (C)
 //! ```c
 //! #include <cblas.h>
-//! 
+//!
 //! // Register OpenBLAS
 //! spir_register_blas_functions(
 //!     (void*)cblas_dgemm,
 //!     (void*)cblas_zgemm
 //! );
-//! 
+//!
 //! // Now all matrix operations use OpenBLAS
 //! ```
 
 use crate::StatusCode;
-use crate::{SPIR_SUCCESS, SPIR_INVALID_ARGUMENT};
+use crate::{SPIR_COMPUTATION_SUCCESS, SPIR_INVALID_ARGUMENT};
 
 /// Register custom BLAS functions (LP64: 32-bit integers)
 ///
@@ -35,7 +35,7 @@ use crate::{SPIR_SUCCESS, SPIR_INVALID_ARGUMENT};
 /// * `cblas_zgemm` - Function pointer to CBLAS zgemm (complex double precision)
 ///
 /// # Returns
-/// * `SPIR_SUCCESS` (0) on success
+/// * `SPIR_COMPUTATION_SUCCESS` (0) on success
 /// * `SPIR_INVALID_ARGUMENT` (-6) if function pointers are null
 ///
 /// # Safety
@@ -48,14 +48,14 @@ use crate::{SPIR_SUCCESS, SPIR_INVALID_ARGUMENT};
 /// # Example (from C)
 /// ```c
 /// #include <cblas.h>
-/// 
+///
 /// // Register OpenBLAS
 /// int status = spir_register_blas_functions(
 ///     (void*)cblas_dgemm,
 ///     (void*)cblas_zgemm
 /// );
-/// 
-/// if (status != SPIR_SUCCESS) {
+///
+/// if (status != SPIR_COMPUTATION_SUCCESS) {
 ///     fprintf(stderr, "Failed to register BLAS functions\n");
 /// }
 /// ```
@@ -74,7 +74,7 @@ use crate::{SPIR_SUCCESS, SPIR_INVALID_ARGUMENT};
 ///     double beta,
 ///     double *c, int ldc
 /// );
-/// 
+///
 /// void cblas_zgemm(
 ///     CblasOrder order,
 ///     CblasTranspose transa,
@@ -104,7 +104,7 @@ pub unsafe extern "C" fn spir_register_blas_functions(
     // Register with the Rust backend
     sparseir_rust::gemm::set_blas_backend(dgemm_fn, zgemm_fn);
 
-    SPIR_SUCCESS
+    SPIR_COMPUTATION_SUCCESS
 }
 
 /// Register ILP64 BLAS functions (64-bit integers)
@@ -118,7 +118,7 @@ pub unsafe extern "C" fn spir_register_blas_functions(
 /// * `cblas_zgemm64` - Function pointer to ILP64 CBLAS zgemm (complex double precision)
 ///
 /// # Returns
-/// * `SPIR_SUCCESS` (0) on success
+/// * `SPIR_COMPUTATION_SUCCESS` (0) on success
 /// * `SPIR_INVALID_ARGUMENT` (-6) if function pointers are null
 ///
 /// # Safety
@@ -132,14 +132,14 @@ pub unsafe extern "C" fn spir_register_blas_functions(
 /// ```c
 /// #define MKL_ILP64
 /// #include <mkl.h>
-/// 
+///
 /// // Register MKL ILP64
 /// int status = spir_register_ilp64_functions(
 ///     (void*)cblas_dgemm,  // MKL's ILP64 version
 ///     (void*)cblas_zgemm   // MKL's ILP64 version
 /// );
-/// 
-/// if (status != SPIR_SUCCESS) {
+///
+/// if (status != SPIR_COMPUTATION_SUCCESS) {
 ///     fprintf(stderr, "Failed to register ILP64 BLAS functions\n");
 /// }
 /// ```
@@ -158,7 +158,7 @@ pub unsafe extern "C" fn spir_register_blas_functions(
 ///     double beta,
 ///     double *c, long long ldc
 /// );
-/// 
+///
 /// void cblas_zgemm(
 ///     CblasOrder order,
 ///     CblasTranspose transa,
@@ -188,7 +188,7 @@ pub unsafe extern "C" fn spir_register_ilp64_functions(
     // Register with the Rust backend
     sparseir_rust::gemm::set_ilp64_backend(dgemm64_fn, zgemm64_fn);
 
-    SPIR_SUCCESS
+    SPIR_COMPUTATION_SUCCESS
 }
 
 #[cfg(test)]
@@ -275,11 +275,9 @@ mod tests {
     #[test]
     fn test_register_blas_functions_success() {
         unsafe {
-            let status = spir_register_blas_functions(
-                mock_dgemm as *const _,
-                mock_zgemm as *const _,
-            );
-            assert_eq!(status, SPIR_SUCCESS);
+            let status =
+                spir_register_blas_functions(mock_dgemm as *const _, mock_zgemm as *const _);
+            assert_eq!(status, SPIR_COMPUTATION_SUCCESS);
 
             // Verify backend was registered
             let (name, is_external, is_ilp64) = sparseir_rust::gemm::get_backend_info();
@@ -295,11 +293,9 @@ mod tests {
     #[test]
     fn test_register_ilp64_functions_success() {
         unsafe {
-            let status = spir_register_ilp64_functions(
-                mock_dgemm64 as *const _,
-                mock_zgemm64 as *const _,
-            );
-            assert_eq!(status, SPIR_SUCCESS);
+            let status =
+                spir_register_ilp64_functions(mock_dgemm64 as *const _, mock_zgemm64 as *const _);
+            assert_eq!(status, SPIR_COMPUTATION_SUCCESS);
 
             // Verify ILP64 backend was registered
             let (name, is_external, is_ilp64) = sparseir_rust::gemm::get_backend_info();
@@ -315,10 +311,7 @@ mod tests {
     #[test]
     fn test_register_blas_functions_null_dgemm() {
         unsafe {
-            let status = spir_register_blas_functions(
-                std::ptr::null(),
-                mock_zgemm as *const _,
-            );
+            let status = spir_register_blas_functions(std::ptr::null(), mock_zgemm as *const _);
             assert_eq!(status, SPIR_INVALID_ARGUMENT);
         }
     }
@@ -326,10 +319,7 @@ mod tests {
     #[test]
     fn test_register_blas_functions_null_zgemm() {
         unsafe {
-            let status = spir_register_blas_functions(
-                mock_dgemm as *const _,
-                std::ptr::null(),
-            );
+            let status = spir_register_blas_functions(mock_dgemm as *const _, std::ptr::null());
             assert_eq!(status, SPIR_INVALID_ARGUMENT);
         }
     }
@@ -337,12 +327,8 @@ mod tests {
     #[test]
     fn test_register_ilp64_functions_null_pointers() {
         unsafe {
-            let status = spir_register_ilp64_functions(
-                std::ptr::null(),
-                std::ptr::null(),
-            );
+            let status = spir_register_ilp64_functions(std::ptr::null(), std::ptr::null());
             assert_eq!(status, SPIR_INVALID_ARGUMENT);
         }
     }
 }
-
