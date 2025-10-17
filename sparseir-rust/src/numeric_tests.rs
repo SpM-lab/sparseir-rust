@@ -1,7 +1,7 @@
 use dashu_base::Abs;
 use dashu_base::Approximation;
 use dashu_float::{round::mode::HalfAway, DBig};
-use sparseir_rust::numeric::CustomNumeric;
+use crate::numeric::CustomNumeric;
 use std::str::FromStr;
 use twofloat::TwoFloat;
 
@@ -324,3 +324,4 @@ fn test_cos_convergence_analysis() {
         );
     }
 }
+

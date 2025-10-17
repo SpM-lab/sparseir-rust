@@ -1,13 +1,13 @@
-use sparseir_rust::basis::FiniteTempBasis;
-use sparseir_rust::kernel::{LogisticKernel, RegularizedBoseKernel};
-use sparseir_rust::sampling::TauSampling;
-use sparseir_rust::traits::{Fermionic, Bosonic, StatisticsType};
-use sparseir_rust::kernel::{KernelProperties, CentrosymmKernel};
+use crate::basis::FiniteTempBasis;
+use crate::kernel::{LogisticKernel, RegularizedBoseKernel};
+use crate::sampling::TauSampling;
+use crate::traits::{Fermionic, Bosonic, StatisticsType};
+use crate::kernel::{KernelProperties, CentrosymmKernel};
 use num_complex::Complex;
 use mdarray::{Tensor, DynRank};
 
-mod common;
-use common::{SimpleRng, RandomGenerate, movedim, ErrorNorm, ConvertFromReal};
+use crate::test_utils::*;
+use crate::test_utils::{SimpleRng, RandomGenerate, movedim, ErrorNorm, ConvertFromReal};
 
 /// Generic test for evaluate_nd/fit_nd roundtrip (generic over element type and statistics)
 fn test_evaluate_nd_roundtrip<T, S>()
@@ -31,7 +31,7 @@ where
     // Test for all dimensions (dim = 0, 1, 2)
     for dim in 0..3 {
         // Generate random test data (dim=0 format: [basis_size, n_k, n_omega])
-        let (coeffs_0, _gtau_0, _giwn_0) = common::generate_nd_test_data::<T, _, _>(
+        let (coeffs_0, _gtau_0, _giwn_0) = crate::test_utils::generate_nd_test_data::<T, _, _>(
             &basis, sampling.sampling_points(), &[], 42 + dim as u64, &[n_k, n_omega]
         );
         
@@ -114,7 +114,7 @@ where
     // Test for all dimensions (dim = 0, 1, 2)
     for dim in 0..3 {
         // Generate random test data (dim=0 format: [basis_size, n_k, n_omega])
-        let (coeffs_0, _gtau_0, _giwn_0) = common::generate_nd_test_data::<T, _, _>(
+        let (coeffs_0, _gtau_0, _giwn_0) = crate::test_utils::generate_nd_test_data::<T, _, _>(
             &basis, sampling.sampling_points(), &[], 42 + dim as u64, &[n_k, n_omega]
         );
         

@@ -57,3 +57,7 @@ pub use matsubara_sampling::{MatsubaraSampling, MatsubaraSamplingPositiveOnly};
 // Re-export external dependencies for convenience
 pub use twofloat::TwoFloat;
 pub use mdarray::{DTensor, Tensor, DynRank};
+
+// Test utilities (only available in test mode)
+#[cfg(test)]
+pub mod test_utils;

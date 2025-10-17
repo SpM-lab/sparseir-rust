@@ -171,3 +171,7 @@ pub trait Basis<S: StatisticsType> {
     fn default_omega_sampling_points(&self) -> Vec<f64>;
 }
 
+#[cfg(test)]
+#[path = "basis_trait_tests.rs"]
+mod tests;
+

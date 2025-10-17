@@ -197,3 +197,7 @@ pub fn evaluate_2d_legendre_polynomial<T: CustomNumeric>(
     
     result
 }
+
+#[cfg(test)]
+#[path = "interpolation2d_tests.rs"]
+mod tests;

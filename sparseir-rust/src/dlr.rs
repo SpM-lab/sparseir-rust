@@ -586,3 +586,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "dlr_basis_tests.rs"]
+mod dlr_basis_tests;

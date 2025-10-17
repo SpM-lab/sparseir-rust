@@ -355,3 +355,8 @@ mod tests {
         assert!((pi_back - pi_f64).abs() < f64::EPSILON);
     }
 }
+
+// Additional tests for numeric precision
+#[cfg(test)]
+#[path = "numeric_tests.rs"]
+mod numeric_tests;

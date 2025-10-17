@@ -1,13 +1,13 @@
 //! Tests for DiscreteLehmannRepresentation
 
-use sparseir_rust::{
+use crate::{
     DiscreteLehmannRepresentation, LogisticKernel, RegularizedBoseKernel, FiniteTempBasis, 
     Fermionic, Bosonic, Basis, TauSampling
 };
 use mdarray::Tensor;
 use num_complex::Complex;
 
-mod common;
+use crate::test_utils::*;
 
 #[test]
 fn test_dlr_construction_fermionic() {
@@ -53,8 +53,8 @@ fn test_dlr_with_custom_poles() {
 fn test_dlr_nd_roundtrip_generic<T, S>()
 where
     T: num_complex::ComplexFloat + faer_traits::ComplexField + From<f64> + Copy + Default + 'static 
-        + common::ErrorNorm + common::ConvertFromReal,
-    S: sparseir_rust::StatisticsType + 'static,
+        + crate::test_utils::ErrorNorm + crate::test_utils::ConvertFromReal,
+    S: crate::StatisticsType + 'static,
 {
     let beta = 10.0;
     let wmax = 10.0;
@@ -85,14 +85,14 @@ where
     // Test transformation along each dimension
     for dim in 0..3 {
         // Move basis dimension from 0 to dim
-        let gl_3d = common::movedim(&gl_ref, 0, dim);
+        let gl_3d = crate::test_utils::movedim(&gl_ref, 0, dim);
         
         // Transform: IR → DLR → IR
         let g_dlr = dlr.from_IR_nd::<T>(&gl_3d, dim);
         let gl_reconst = dlr.to_IR_nd::<T>(&g_dlr, dim);
         
         // Move back to dim=0 for comparison
-        let gl_reconst_dim0 = common::movedim(&gl_reconst, dim, 0);
+        let gl_reconst_dim0 = crate::test_utils::movedim(&gl_reconst, dim, 0);
         
         // Check shape
         assert_eq!(gl_reconst_dim0.rank(), gl_ref.rank());
@@ -165,7 +165,7 @@ fn test_dlr_basis_trait() {
     assert_eq!(*matrix_tau.shape(), (tau_points.len(), dlr.size()));
     
     // Test evaluate_matsubara
-    use sparseir_rust::MatsubaraFreq;
+    use crate::MatsubaraFreq;
     let freqs = vec![
         MatsubaraFreq::<Fermionic>::new(1).unwrap(),
         MatsubaraFreq::<Fermionic>::new(3).unwrap(),
@@ -271,7 +271,7 @@ fn test_dlr_regularized_bose_nd_roundtrip_complex() {
 fn test_dlr_regularized_bose_nd_roundtrip_generic<T>()
 where
     T: num_complex::ComplexFloat + faer_traits::ComplexField + From<f64> + Copy + Default + 'static 
-        + common::ErrorNorm + common::ConvertFromReal,
+        + crate::test_utils::ErrorNorm + crate::test_utils::ConvertFromReal,
 {
     let beta = 10.0;
     let wmax = 10.0;
@@ -302,14 +302,14 @@ where
     // Test transformation along each dimension
     for dim in 0..3 {
         // Move basis dimension from 0 to dim
-        let gl_3d = common::movedim(&gl_ref, 0, dim);
+        let gl_3d = crate::test_utils::movedim(&gl_ref, 0, dim);
         
         // Transform: IR → DLR → IR
         let g_dlr = dlr.from_IR_nd::<T>(&gl_3d, dim);
         let gl_reconst = dlr.to_IR_nd::<T>(&g_dlr, dim);
         
         // Move back to dim=0 for comparison
-        let gl_reconst_dim0 = common::movedim(&gl_reconst, dim, 0);
+        let gl_reconst_dim0 = crate::test_utils::movedim(&gl_reconst, dim, 0);
         
         // Check shape
         assert_eq!(gl_reconst_dim0.rank(), gl_ref.rank());

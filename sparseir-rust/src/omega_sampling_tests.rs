@@ -1,6 +1,6 @@
 //! Tests for default omega sampling points
 
-use sparseir_rust::{LogisticKernel, FiniteTempBasis, Fermionic, Bosonic};
+use crate::{LogisticKernel, FiniteTempBasis, Fermionic, Bosonic};
 
 #[test]
 fn test_default_omega_sampling_points_fermionic() {
@@ -70,3 +70,4 @@ fn test_omega_points_symmetry() {
     println!("Omega points: {:?}", omega_points);
     println!("Number of positive: {}, negative: {}", positive.len(), negative.len());
 }
+

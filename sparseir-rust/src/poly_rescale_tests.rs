@@ -1,6 +1,6 @@
 //! Tests for polynomial domain rescaling and data scaling
 
-use sparseir_rust::poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
+use crate::poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
 use mdarray::DTensor;
 
 #[test]

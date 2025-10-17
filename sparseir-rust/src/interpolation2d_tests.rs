@@ -1,7 +1,7 @@
 use mdarray::DTensor;
-use sparseir_rust::{CustomNumeric, TwoFloat, Interpolate2D};
-use sparseir_rust::gauss::legendre_generic;
-use sparseir_rust::interpolation2d::{interpolate_2d_legendre, evaluate_2d_legendre_polynomial};
+use crate::{CustomNumeric, TwoFloat, Interpolate2D};
+use crate::gauss::legendre_generic;
+use crate::interpolation2d::{interpolate_2d_legendre, evaluate_2d_legendre_polynomial};
 
 #[test]
 fn test_interpolate_2d_legendre_basic() {
@@ -173,3 +173,4 @@ fn test_interpolate2d_struct_generic<T: CustomNumeric + 'static>() {
                 "Interpolation error at ({}, {}): {} > 1e-8", x, y, error);
     }
 }
+

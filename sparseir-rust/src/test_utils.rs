@@ -122,17 +122,17 @@ impl ErrorNorm for Complex<f64> {
 /// # Returns
 /// Tuple of (coefficients, τ values, Matsubara values)
 pub fn generate_test_data_tau_and_matsubara<T, S, K>(
-    basis: &sparseir_rust::FiniteTempBasis<K, S>,
+    basis: &crate::FiniteTempBasis<K, S>,
     tau_points: &[f64],
-    matsubara_freqs: &[sparseir_rust::freq::MatsubaraFreq<S>],
+    matsubara_freqs: &[crate::freq::MatsubaraFreq<S>],
     seed: u64,
 ) -> (Vec<T>, Vec<T>, Vec<Complex<f64>>)
 where
     T: RandomGenerate + ConvertFromReal + Clone + std::ops::Mul<f64, Output = T>,
-    S: sparseir_rust::traits::StatisticsType,
-    K: sparseir_rust::kernel::KernelProperties + sparseir_rust::kernel::CentrosymmKernel + Clone + 'static,
+    S: crate::traits::StatisticsType,
+    K: crate::kernel::KernelProperties + crate::kernel::CentrosymmKernel + Clone + 'static,
 {
-    use sparseir_rust::giwn_single_pole;
+    use crate::giwn_single_pole;
     
     let mut rng = SimpleRng::new(seed);
     let basis_size = basis.size();
@@ -151,7 +151,7 @@ where
     let gtau_values: Vec<T> = tau_points
         .iter()
         .map(|&tau| {
-            let g = sparseir_rust::gtau_single_pole::<S>(tau, omega, beta);
+            let g = crate::gtau_single_pole::<S>(tau, omega, beta);
             T::from_real(g)
         })
         .collect();
@@ -187,19 +187,19 @@ where
 /// - τ values: shape [n_tau, ...extra_dims]
 /// - Matsubara values: shape [n_matsubara, ...extra_dims]
 pub fn generate_nd_test_data<T, S, K>(
-    basis: &sparseir_rust::FiniteTempBasis<K, S>,
+    basis: &crate::FiniteTempBasis<K, S>,
     tau_points: &[f64],
-    matsubara_freqs: &[sparseir_rust::freq::MatsubaraFreq<S>],
+    matsubara_freqs: &[crate::freq::MatsubaraFreq<S>],
     seed: u64,
     extra_dims: &[usize],
 ) -> (Tensor<T, DynRank>, Tensor<T, DynRank>, Tensor<num_complex::Complex<f64>, DynRank>)
 where
     T: RandomGenerate + ConvertFromReal + Clone + std::ops::Mul<f64, Output = T> + Default
         + From<f64> + std::ops::Sub<Output = T> + std::ops::Mul<Output = T>,
-    S: sparseir_rust::traits::StatisticsType,
-    K: sparseir_rust::kernel::KernelProperties + sparseir_rust::kernel::CentrosymmKernel + Clone + 'static,
+    S: crate::traits::StatisticsType,
+    K: crate::kernel::KernelProperties + crate::kernel::CentrosymmKernel + Clone + 'static,
 {
-    use sparseir_rust::{giwn_single_pole, gtau_single_pole};
+    use crate::{giwn_single_pole, gtau_single_pole};
     
     let mut rng = SimpleRng::new(seed);
     let beta = basis.beta;

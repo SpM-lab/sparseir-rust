@@ -1,7 +1,7 @@
 //! Tests for piecewise Legendre polynomial implementations
 
 use mdarray::tensor;
-use sparseir_rust::poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
+use crate::poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
 
 #[test]
 fn test_basic_polynomial_creation() {

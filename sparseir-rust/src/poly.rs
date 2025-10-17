@@ -916,3 +916,11 @@ pub fn default_sampling_points(
 
 // Note: FnOnce implementation removed due to experimental nature
 // Use evaluate_at() and evaluate_at_many() methods directly
+
+#[cfg(test)]
+#[path = "poly_tests.rs"]
+mod poly_tests;
+
+#[cfg(test)]
+#[path = "poly_rescale_tests.rs"]
+mod poly_rescale_tests;

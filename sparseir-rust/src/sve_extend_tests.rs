@@ -1,8 +1,8 @@
 //! Tests for extend_to_full_domain function
 
-use sparseir_rust::kernel::SymmetryType;
-use sparseir_rust::poly::PiecewiseLegendrePoly;
-use sparseir_rust::sve::utils::extend_to_full_domain;
+use crate::kernel::SymmetryType;
+use crate::poly::PiecewiseLegendrePoly;
+use crate::sve::utils::extend_to_full_domain;
 use mdarray::DTensor;
 
 /// Create a simple polynomial on positive domain [0, 1]

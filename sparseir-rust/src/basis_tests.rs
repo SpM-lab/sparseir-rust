@@ -1,8 +1,8 @@
 //! Tests for FiniteTempBasis functionality
 
-use sparseir_rust::basis::{FiniteTempBasis, FermionicBasis};
-use sparseir_rust::kernel::{LogisticKernel, RegularizedBoseKernel};
-use sparseir_rust::traits::{Bosonic, Fermionic};
+use crate::basis::{FiniteTempBasis, FermionicBasis};
+use crate::kernel::{LogisticKernel, RegularizedBoseKernel};
+use crate::traits::{Bosonic, Fermionic};
 
 #[test]
 fn test_basis_construction() {
@@ -74,7 +74,7 @@ fn test_default_tau_sampling_points_conditioning() {
     
     // Evaluate sampling matrix: matrix[i,l] = u_l(tau_i)
     // Use the Basis trait method which handles tau normalization
-    use sparseir_rust::basis_trait::Basis;
+    use crate::basis_trait::Basis;
     let matrix = basis.evaluate_tau(&tau_points);
     
     let num_points = tau_points.len();

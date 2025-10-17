@@ -1,8 +1,8 @@
 use mdarray::tensor;
-use sparseir_rust::poly::PiecewiseLegendrePoly;
-use sparseir_rust::polyfourier::{FermionicPiecewiseLegendreFT, PiecewiseLegendreFT};
-use sparseir_rust::special_functions::spherical_bessel_j;
-use sparseir_rust::traits::Fermionic;
+use crate::poly::PiecewiseLegendrePoly;
+use crate::polyfourier::{FermionicPiecewiseLegendreFT, PiecewiseLegendreFT};
+use crate::special_functions::spherical_bessel_j;
+use crate::traits::Fermionic;
 
 /// Test to compare get_tnl implementation with expected values
 /// This is a simplified test - in practice we would need reference values from C++
@@ -102,7 +102,7 @@ fn test_constant_polynomial_fourier_transform() {
 
     // Test evaluation at different frequencies
     for n in 0..5 {
-        if let Ok(omega) = sparseir_rust::freq::MatsubaraFreq::new(n) {
+        if let Ok(omega) = crate::freq::MatsubaraFreq::new(n) {
             let result = ft_poly.evaluate(&omega);
             println!("Constant poly at n={}: {}", n, result);
 

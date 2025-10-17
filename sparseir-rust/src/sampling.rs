@@ -427,3 +427,7 @@ where
         self.fit_nd_impl(values, dim)
     }
 }
+
+#[cfg(test)]
+#[path = "tau_sampling_tests.rs"]
+mod tests;

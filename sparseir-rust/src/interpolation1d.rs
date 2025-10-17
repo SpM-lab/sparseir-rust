@@ -193,3 +193,7 @@ pub fn evaluate_legendre_basis<T: CustomNumeric>(x: T, n: usize) -> Vec<T> {
     p
 }
 
+#[cfg(test)]
+#[path = "interpolation1d_tests.rs"]
+mod tests;
+

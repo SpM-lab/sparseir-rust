@@ -1,13 +1,13 @@
 //! Tests for piecewise Legendre polynomial Fourier transform implementations
 
 use mdarray::tensor;
-use sparseir_rust::freq::{BosonicFreq, FermionicFreq};
-use sparseir_rust::poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
-use sparseir_rust::polyfourier::{
+use crate::freq::{BosonicFreq, FermionicFreq};
+use crate::poly::{PiecewiseLegendrePoly, PiecewiseLegendrePolyVector};
+use crate::polyfourier::{
     BosonicPiecewiseLegendreFT, BosonicPiecewiseLegendreFTVector, FermionicPiecewiseLegendreFT,
     FermionicPiecewiseLegendreFTVector, PiecewiseLegendreFT, PiecewiseLegendreFTVector,
 };
-use sparseir_rust::traits::{Bosonic, Fermionic, Statistics};
+use crate::traits::{Bosonic, Fermionic, Statistics};
 
 #[test]
 fn test_fermionic_ft_creation() {

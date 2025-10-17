@@ -1,11 +1,11 @@
-mod common;
+use crate::test_utils::*;
 
-use sparseir_rust::{LogisticKernel, RegularizedBoseKernel, FiniteTempBasis};
-use sparseir_rust::matsubara_sampling::{MatsubaraSampling, MatsubaraSamplingPositiveOnly};
-use sparseir_rust::freq::MatsubaraFreq;
-use sparseir_rust::traits::{Fermionic, Bosonic, StatisticsType};
+use crate::{LogisticKernel, RegularizedBoseKernel, FiniteTempBasis};
+use crate::matsubara_sampling::{MatsubaraSampling, MatsubaraSamplingPositiveOnly};
+use crate::freq::MatsubaraFreq;
+use crate::traits::{Fermionic, Bosonic, StatisticsType};
 use num_complex::Complex;
-use common::{generate_test_data_tau_and_matsubara, ErrorNorm};
+use crate::test_utils::{generate_test_data_tau_and_matsubara, ErrorNorm};
 
 /// Test MatsubaraSampling (symmetric mode, complex coefficients) roundtrip
 #[test]
@@ -142,7 +142,7 @@ fn test_matsubara_sampling_nd_roundtrip_bosonic() {
 fn test_matsubara_sampling_nd_roundtrip_generic<S: StatisticsType + 'static>() {
     use mdarray::Tensor;
     use num_complex::Complex;
-    use common::generate_nd_test_data;
+    use crate::test_utils::generate_nd_test_data;
     
     let beta = 10.0;
     let wmax = 10.0;
@@ -166,14 +166,14 @@ fn test_matsubara_sampling_nd_roundtrip_generic<S: StatisticsType + 'static>() {
         );
         
         // Move to target dimension
-        let coeffs_dim = common::movedim(&coeffs_0, 0, dim);
+        let coeffs_dim = crate::test_utils::movedim(&coeffs_0, 0, dim);
         
         // Evaluate and fit along target dimension
         let values_dim = sampling.evaluate_nd(&coeffs_dim, dim);
         let coeffs_fitted_dim = sampling.fit_nd(&values_dim, dim);
         
         // Move back to dim=0 for comparison
-        let coeffs_fitted_0 = common::movedim(&coeffs_fitted_dim, dim, 0);
+        let coeffs_fitted_0 = crate::test_utils::movedim(&coeffs_fitted_dim, dim, 0);
         
         // Check roundtrip
         let max_error = coeffs_0.iter().zip(coeffs_fitted_0.iter())
@@ -198,7 +198,7 @@ fn test_matsubara_sampling_positive_only_nd_roundtrip_bosonic() {
 
 fn test_matsubara_sampling_positive_only_nd_roundtrip_generic<S: StatisticsType + 'static>() {
     use mdarray::Tensor;
-    use common::generate_nd_test_data;
+    use crate::test_utils::generate_nd_test_data;
     
     let beta = 10.0;
     let wmax = 10.0;
@@ -223,14 +223,14 @@ fn test_matsubara_sampling_positive_only_nd_roundtrip_generic<S: StatisticsType 
         );
         
         // Move to target dimension
-        let coeffs_dim = common::movedim(&coeffs_0, 0, dim);
+        let coeffs_dim = crate::test_utils::movedim(&coeffs_0, 0, dim);
         
         // Evaluate and fit along target dimension
         let values_dim = sampling.evaluate_nd(&coeffs_dim, dim);
         let coeffs_fitted_dim = sampling.fit_nd(&values_dim, dim);
         
         // Move back to dim=0 for comparison
-        let coeffs_fitted_0 = common::movedim(&coeffs_fitted_dim, dim, 0);
+        let coeffs_fitted_0 = crate::test_utils::movedim(&coeffs_fitted_dim, dim, 0);
         
         // Check roundtrip
         let max_error = coeffs_0.iter().zip(coeffs_fitted_0.iter())

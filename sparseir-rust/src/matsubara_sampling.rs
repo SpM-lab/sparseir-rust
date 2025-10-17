@@ -629,3 +629,7 @@ impl<S: StatisticsType> MatsubaraSamplingPositiveOnly<S> {
 }
 
 
+
+#[cfg(test)]
+#[path = "matsubara_sampling_tests.rs"]
+mod tests;

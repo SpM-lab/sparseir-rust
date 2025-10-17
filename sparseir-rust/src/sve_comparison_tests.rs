@@ -1,6 +1,6 @@
 //! Comparison tests between Rust and Julia SVE implementations
 
-use sparseir_rust::{compute_sve, LogisticKernel, TworkType};
+use crate::{compute_sve, LogisticKernel, TworkType};
 // No ndarray imports needed
 
 // ============================================================================

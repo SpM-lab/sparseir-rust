@@ -1,6 +1,6 @@
 //! Tests for Basis trait
 
-use sparseir_rust::{LogisticKernel, FiniteTempBasis, Fermionic, Bosonic, Basis};
+use crate::{LogisticKernel, FiniteTempBasis, Fermionic, Bosonic, Basis};
 
 #[test]
 fn test_basis_trait_fermionic() {
@@ -58,7 +58,7 @@ fn test_basis_trait_omega_sampling() {
 #[test]
 fn test_basis_trait_generic() {
     // Test that Basis trait works with generic code
-    fn check_basis<S: sparseir_rust::StatisticsType + 'static>(
+    fn check_basis<S: crate::StatisticsType + 'static>(
         basis: &impl Basis<S>
     ) {
         assert!(basis.beta() > 0.0);
@@ -106,7 +106,7 @@ fn test_basis_trait_evaluate_tau() {
 
 #[test]
 fn test_basis_trait_evaluate_matsubara() {
-    use sparseir_rust::MatsubaraFreq;
+    use crate::MatsubaraFreq;
     
     let beta = 100.0;
     let wmax = 1.0;
@@ -138,3 +138,4 @@ fn test_basis_trait_evaluate_matsubara() {
         }
     }
 }
+

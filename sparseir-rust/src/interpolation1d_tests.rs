@@ -1,7 +1,7 @@
 use mdarray::DTensor;
-use sparseir_rust::{legendre, legendre_custom, legendre_twofloat, CustomNumeric, Rule, TwoFloat, Interpolate1D};
-use sparseir_rust::gauss::{legendre_vandermonde, legendre_generic};
-use sparseir_rust::interpolation1d::{legendre_collocation_matrix, interpolate_1d_legendre, evaluate_interpolated_polynomial};
+use crate::{legendre, legendre_custom, legendre_twofloat, CustomNumeric, Rule, TwoFloat, Interpolate1D};
+use crate::gauss::{legendre_vandermonde, legendre_generic};
+use crate::interpolation1d::{legendre_collocation_matrix, interpolate_1d_legendre, evaluate_interpolated_polynomial};
 
 /// Test that the collocation matrix is approximately the inverse of the Vandermonde matrix
 #[test]
@@ -193,3 +193,4 @@ fn test_interpolate1d_sin_generic<T: CustomNumeric + 'static>(
                 x, expected, computed, error, tolerance);
     }
 }
+

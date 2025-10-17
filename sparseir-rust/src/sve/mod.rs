@@ -25,3 +25,11 @@ pub use result::SVEResult;
 pub use strategy::{SVEStrategy, SamplingSVE, CentrosymmSVE};
 pub use compute::{compute_sve, compute_svd, truncate};
 
+
+#[cfg(test)]
+#[path = "../sve_comparison_tests.rs"]
+mod sve_comparison_tests;
+
+#[cfg(test)]
+#[path = "../sve_extend_tests.rs"]
+mod sve_extend_tests;
