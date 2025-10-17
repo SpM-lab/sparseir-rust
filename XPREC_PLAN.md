@@ -710,6 +710,263 @@ impl<const N: usize> DDouble {
 
 **Rationale**: Matches Rust's `f64` behavior, familiar to users
 
+## Testing Strategy and Reference Data Generation
+
+### libxprec's Testing Approach
+
+libxprec uses a **two-tier testing strategy** combining unit tests with high-precision reference comparisons.
+
+#### 1. MPFR-Based Reference Implementation
+
+**Core Tool**: `MPFloat` class - a C++ wrapper around **MPFR (Multiple Precision Floating-Point Reliable Library)**
+
+**Key Details**:
+- **Precision**: 120 bits mantissa (vs 106 bits for double-double, 53 bits for double)
+- **Rounding**: MPFR_RNDN (round to nearest)
+- **Purpose**: Ground truth for testing DDouble arithmetic
+- **Location**: `libxprec/test/mpfloat.hpp` and `mpfloat.cpp`
+
+**Implementation**:
+```cpp
+class MPFloat {
+    static const mpfr_prec_t precision = 120;
+    static const mpfr_rnd_t round = MPFR_RNDN;
+    // ... wrapper methods for MPFR operations
+};
+```
+
+#### 2. Test Macros for Comparison
+
+**Primary Macros** (defined in `compare-mpfloat.hpp`):
+
+```cpp
+// Relative error comparison
+CMP_UNARY(fn, x, eps)
+// Tests: |fn(DDouble(x)) - fn(MPFloat(x))| / |fn(MPFloat(x))| < eps
+
+// Absolute error comparison  
+CMP_UNARY_ABS(fn, x, eps)
+// Tests: |fn(DDouble(x)) - fn(MPFloat(x))| < eps
+
+// Binary operations
+CMP_BINARY(fn, x, y, eps)
+CMP_BINARY_1(fn, x, y, eps)  // Second arg is double
+CMP_BINARY_EX(fn, x, y, eps) // Uses ExDouble
+```
+
+#### 3. Error Tolerance Standards
+
+**Reference ULP** (Unit in the Last Place for double-double):
+```cpp
+const double ulp = 2.4651903288156619e-32;  // ≈ 2^-105
+```
+
+**Typical Tolerances by Operation**:
+
+| Operation | Tolerance | Source File |
+|-----------|-----------|-------------|
+| Addition/Subtraction (DD+DD) | 1.6 × ulp | `arith.cpp:33-36` |
+| Multiplication (DD×DD) | 2 × ulp | `arith.cpp:37` |
+| Division (DD÷DD) | 3 × ulp | `arith.cpp:38` |
+| `exp()` | 1 × ulp | `exp.cpp:34-43` |
+| `expm1()` | 1 × ulp | `exp.cpp:59-76` |
+| `log()` | 1 × ulp | `exp.cpp:82-93` |
+| `log1p()` | 1.5 × ulp | `exp.cpp:109` |
+| `sin/cos` (small x) | 1 × ulp | `circular.cpp:36` |
+| `sin/cos` (large x) | 1.5 × ulp × \|x\| | `circular.cpp:43` |
+| `sqrt()` | 0.5 × ulp | `sqrt.cpp` |
+| `sinh/cosh/tanh` | 1-2 × ulp | `hyperbolic.cpp` |
+| `pow(x, n)` | 1-1.5 × ulp | `exp.cpp:16-24` |
+
+**Note**: Tolerances depend on:
+- **Input magnitude**: Larger inputs may have relaxed absolute tolerances
+- **Algorithm complexity**: More steps accumulate more error
+- **Proven error bounds**: From Joldeș et al. (2018) and Muller & Rideau (2022)
+
+#### 4. Test Coverage in libxprec
+
+**Complete Test Suite** (`libxprec/test/`):
+
+```
+├── arith.cpp          # Basic arithmetic (±, ×, ÷)
+│   └── Tests: DD+DD, DD+D, ExDouble, mixed arithmetic, small additions
+├── circular.cpp       # Trigonometric functions
+│   └── Tests: sin, cos, tan, asin, acos, atan, atan2, sincos
+├── convert.cpp        # Type conversions
+│   └── Tests: DDouble ↔ double, string parsing, rounding
+├── exp.cpp            # Exponential and logarithmic functions
+│   └── Tests: exp, expm1, log, log1p, pow
+├── gauss.cpp          # Gaussian functions
+│   └── Tests: erf, erfc, Gaussian integrals
+├── hyperbolic.cpp     # Hyperbolic functions
+│   └── Tests: sinh, cosh, tanh, asinh, acosh, atanh
+├── inline.cpp         # Internal utilities (two_sum, two_prod, etc.)
+│   └── Tests: Algorithm correctness at bit level
+├── limits.cpp         # Edge cases and special values
+│   └── Tests: NaN, Infinity, denormals, overflow/underflow
+├── mpfloat.cpp        # MPFR wrapper tests
+│   └── Tests: MPFloat class itself
+├── random.cpp         # Random number generation
+│   └── Tests: Statistical properties, distributions
+├── round.cpp          # Rounding modes
+│   └── Tests: floor, ceil, trunc, round
+├── sqrt.cpp           # Square root
+│   └── Tests: sqrt accuracy across wide range
+└── eigen.cpp          # Eigen library integration (optional)
+    └── Tests: Linear algebra operations
+```
+
+**Total**: 14 test files, hundreds of test cases covering:
+- Wide input ranges (1e-290 to 1e300)
+- Edge cases (0, ±∞, NaN, denormals)
+- Systematic scanning (e.g., `while ((x *= 0.9) > 1e-290)`)
+
+#### 5. Systematic Test Generation Pattern
+
+**Example from `exp.cpp`**:
+```cpp
+TEST_CASE("exp", "[exp]")
+{
+    const double ulp = 2.4651903288156619e-32;
+    
+    // Small values: very accurate
+    DDouble x = 0.25;
+    while ((x *= 0.947) > 1e-290) {
+        CMP_UNARY(exp, x, 1.0 * ulp);   // Test exp(x)
+        CMP_UNARY(exp, -x, 1.0 * ulp);  // Test exp(-x)
+    }
+    
+    // Large values: still 1 ULP target
+    x = 0.125;
+    while ((x *= 1.0041) < 708.0) {
+        CMP_UNARY(exp, x, 1.0 * ulp);
+        if (x < 670)
+            CMP_UNARY(exp, -x, 1.0 * ulp);
+    }
+}
+```
+
+**Pattern**: Geometric progression through input space ensures comprehensive coverage without hardcoded test vectors.
+
+### Migration to Rust
+
+#### 1. MPFR Bindings for Rust
+
+**Option A**: Use existing crate: [`rug`](https://crates.io/crates/rug)
+```rust
+use rug::{Float, ops::Pow};
+
+// High-precision reference (120 bits)
+let ref_val = Float::with_val(120, x).exp();
+```
+
+**Option B**: Use [`rust-mpfr`](https://crates.io/crates/rust-mpfr)
+```rust
+use mpfr::Mpfr;
+
+let mut ref_val = Mpfr::new(120);
+ref_val.assign(x);
+ref_val.exp_mut();
+```
+
+**Recommendation**: **Option A (`rug`)** - more ergonomic, actively maintained, used in production Rust code.
+
+#### 2. Test Macro Translation
+
+**C++ Macro**:
+```cpp
+CMP_UNARY(exp, 1.0, 1e-32);
+```
+
+**Rust Equivalent**:
+```rust
+fn cmp_unary<F>(op_dd: F, op_mpf: fn(Float) -> Float, 
+                x: f64, tol: f64) 
+where F: Fn(DDouble) -> DDouble
+{
+    let result_dd = op_dd(DDouble::from(x));
+    let result_mpf = op_mpf(Float::with_val(120, x));
+    
+    let rel_error = relative_error(result_dd, result_mpf);
+    assert!(rel_error < tol, 
+            "exp({}) failed: rel_error = {} > {}", x, rel_error, tol);
+}
+
+// Usage:
+cmp_unary(|x| x.exp(), |x| x.exp(), 1.0, 1e-32);
+```
+
+#### 3. Rust Test Structure
+
+**Proposed Organization**:
+```
+xprec/tests/
+├── mpfloat.rs          # MPFloat wrapper (using rug)
+├── compare.rs          # Comparison utilities and macros
+├── arith.rs            # Port of arith.cpp
+├── circular.rs         # Port of circular.cpp
+├── convert.rs          # Port of convert.cpp
+├── exp.rs              # Port of exp.cpp
+├── gauss.rs            # Port of gauss.cpp
+├── hyperbolic.rs       # Port of hyperbolic.cpp
+├── inline.rs           # Port of inline.cpp
+├── limits.rs           # Port of limits.cpp
+├── random.rs           # Port of random.cpp
+├── round.rs            # Port of round.cpp
+└── sqrt.rs             # Port of sqrt.cpp
+```
+
+#### 4. Porting Checklist for Each Test File
+
+For **each** `libxprec/test/*.cpp` file:
+
+1. **Count test cases**: `grep -c "TEST_CASE" <file.cpp>`
+2. **Identify tolerance values**: Extract all `ulp` multipliers
+3. **Port test structure**: Translate C++ `TEST_CASE` to Rust `#[test]`
+4. **Verify test count**: Ensure Rust file has same number of test functions
+5. **Run diff**: Compare outputs for identical inputs
+6. **Document mapping**: Add comment linking to C++ source
+
+**Example Documentation**:
+```rust
+/// Port of libxprec/test/exp.cpp:31-54
+/// Tests exponential function across wide input range
+/// Tolerance: 1 ULP (2.465e-32) for x ∈ [1e-290, 708]
+#[test]
+fn test_exp() {
+    // ... test implementation
+}
+```
+
+#### 5. Continuous Verification
+
+**Strategy**:
+- **CI Integration**: Run MPFR comparison tests on every PR
+- **Benchmark Tracking**: Monitor performance vs C++ libxprec
+- **Coverage Reports**: Ensure 100% of C++ tests are ported
+- **Fuzz Testing**: Random inputs beyond systematic tests (using `cargo fuzz`)
+
+**Acceptance Criteria**:
+- All tests pass with identical or tighter tolerances than C++
+- No test cases omitted from C++ suite
+- Documentation links every test to its C++ source
+- CI fails if any tolerance is relaxed without justification
+
+### Reference Data for Development
+
+**During Development**: 
+- Use `rug` crate to generate on-the-fly reference values
+- No static test vectors needed (tests are generative)
+- Match libxprec's dynamic testing approach
+
+**Optional**: Generate static test vectors for embedded/no-std environments:
+```rust
+// Generate CSV file with (input, output) pairs at 120-bit precision
+// For environments without MPFR
+```
+
+**Rationale**: libxprec doesn't use static test data - neither should we. This ensures tests remain maintainable and comprehensive.
+
 ## References
 
 1. M. Joldeș, et al., "Tight and rigorous error bounds for basic building blocks of double-word arithmetic," ACM Trans. Math. Softw. 44, 1-27 (2018)
@@ -728,7 +985,7 @@ impl<const N: usize> DDouble {
 
 ---
 
-**Document Version**: 4.1
+**Document Version**: 4.2
 **Changes**: 
 - Focused on Option B (Fresh Implementation)
 - Added comprehensive num-traits integration section
@@ -743,6 +1000,13 @@ impl<const N: usize> DDouble {
   - Intel compiler compatibility improvements
   - CI enhancements for Intel C++ compiler
   - Pragmas fixes for better cross-compiler support
+- **Added comprehensive Testing Strategy section**:
+  - Detailed analysis of libxprec's MPFR-based testing approach
+  - MPFloat reference implementation (120-bit precision)
+  - Complete tolerance specifications by operation
+  - Test coverage inventory (14 test files)
+  - Migration strategy for Rust using `rug` crate
+  - Porting checklist and verification procedures
 **Last Updated**: 2025-10-17
 **Status**: Ready for implementation
 
