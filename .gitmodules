@@ -28,3 +28,6 @@
 [submodule "ndarray"]
 	path = ndarray
 	url = git@github.com:rust-ndarray/ndarray.git
+[submodule "dashu"]
+	path = dashu
+	url = git@github.com:cmpute/dashu.git
