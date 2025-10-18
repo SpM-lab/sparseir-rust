@@ -28,3 +28,6 @@
 [submodule "dashu"]
 	path = dashu
 	url = git@github.com:cmpute/dashu.git
+[submodule "eigen"]
+	path = eigen
+	url = https://gitlab.com/libeigen/eigen.git
