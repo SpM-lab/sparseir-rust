@@ -4,9 +4,6 @@
 [submodule "libxprec"]
 	path = libxprec
 	url = git@github.com:tuwien-cms/libxprec.git
-[submodule "eigen"]
-	path = eigen
-	url = git@gitlab.com:libeigen/eigen.git
 [submodule "twofloat"]
 	path = twofloat
 	url = git@github.com:ajtribick/twofloat.git
@@ -31,3 +28,6 @@
 [submodule "dashu"]
 	path = dashu
 	url = git@github.com:cmpute/dashu.git
+[submodule "eigen"]
+	path = eigen
+	url = https://gitlab.com/libeigen/eigen.git
