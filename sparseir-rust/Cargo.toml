@@ -6,6 +6,12 @@ rust-version = "1.85"
 description = "Rust implementation of SparseIR functionality"
 license = "MIT"
 repository = "https://github.com/sparseir-rust/sparseir-rust"
+authors = ["SparseIR Team"]
+
+# Library configuration for shared library
+[lib]
+name = "sparseir_rust"
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Core linear algebra - mdarray with Faer backend (use same version as xprec-svd)
@@ -59,7 +65,5 @@ pkg-config = "0.3"
 
 [features]
 default = []
-# Future: optional BLAS/LAPACK backends for comparison
-# blas-backend = ["mdarray-linalg-blas", "openblas-src"]
-# lapack-backend = ["mdarray-linalg-lapack", "openblas-src"]
-
+# Shared library features
+shared-lib = []
