@@ -31,3 +31,6 @@
 [submodule "eigen"]
 	path = eigen
 	url = https://gitlab.com/libeigen/eigen.git
+[submodule "xprec-rs"]
+	path = xprec-rs
+	url = git@github.com:tuwien-cms/xprec-rs.git
