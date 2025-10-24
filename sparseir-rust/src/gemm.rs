@@ -177,7 +177,8 @@ struct FaerBackend;
 
 impl GemmBackend for FaerBackend {
     fn dgemm(&self, m: usize, n: usize, k: usize, a: &[f64], b: &[f64], c: &mut [f64]) {
-        use mdarray_linalg::{MatMul, MatMulBuilder};
+        use mdarray_linalg::prelude::MatMul;
+        use mdarray_linalg::matmul::MatMulBuilder;
         use mdarray_linalg_faer::Faer;
 
         // Create tensors from slices (row-major order)
@@ -185,7 +186,7 @@ impl GemmBackend for FaerBackend {
         let b_tensor = DTensor::<f64, 2>::from_fn([k, n], |idx| b[idx[0] * n + idx[1]]);
 
         // Perform matrix multiplication
-        let c_tensor = Faer.matmul(&a_tensor, &b_tensor).parallelize().eval();
+        let c_tensor = Faer.matmul(&*a_tensor, &*b_tensor).parallelize().eval();
 
         // Copy result back to slice
         for i in 0..m {
@@ -204,7 +205,8 @@ impl GemmBackend for FaerBackend {
         b: &[num_complex::Complex<f64>],
         c: &mut [num_complex::Complex<f64>],
     ) {
-        use mdarray_linalg::{MatMul, MatMulBuilder};
+        use mdarray_linalg::prelude::MatMul;
+        use mdarray_linalg::matmul::MatMulBuilder;
         use mdarray_linalg_faer::Faer;
 
         // Create tensors from slices (row-major order)
@@ -214,7 +216,7 @@ impl GemmBackend for FaerBackend {
             DTensor::<num_complex::Complex<f64>, 2>::from_fn([k, n], |idx| b[idx[0] * n + idx[1]]);
 
         // Perform matrix multiplication
-        let c_tensor = Faer.matmul(&a_tensor, &b_tensor).parallelize().eval();
+        let c_tensor = Faer.matmul(&*a_tensor, &*b_tensor).parallelize().eval();
 
         // Copy result back to slice
         for i in 0..m {

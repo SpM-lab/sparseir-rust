@@ -15,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Core linear algebra - mdarray with Faer backend (use same version as xprec-svd)
-mdarray = { git = "https://github.com/fre-hu/mdarray.git", rev = "11ce08ae30bae2269c85eab1c4620028d160591a" }
+mdarray = "0.7.1"
 mdarray-linalg = { path = "../mdarray-linalg/mdarray-linalg" }
 mdarray-linalg-faer = { path = "../mdarray-linalg/mdarray-linalg-faer" }
 

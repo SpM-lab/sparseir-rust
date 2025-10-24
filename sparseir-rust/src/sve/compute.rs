@@ -130,14 +130,14 @@ pub fn compute_svd<T: CustomNumeric + 'static>(
 fn compute_svd_f64_xprec<T: CustomNumeric>(
     matrix: &DTensor<T, 2>,
 ) -> (DTensor<T, 2>, Vec<T>, DTensor<T, 2>) {
-    use mdarray_linalg::SVD;
+    use mdarray_linalg::prelude::SVD;
     use mdarray_linalg_faer::Faer;
 
     let matrix_f64 = DTensor::<f64, 2>::from_fn(*matrix.shape(), |idx| matrix[idx].to_f64());
 
     // Clone for SVD (mdarray-linalg requires &mut)
     let mut matrix_copy = matrix_f64.clone();
-    let result = Faer.svd(&mut matrix_copy).expect("SVD computation failed");
+    let result = Faer.svd(&mut *matrix_copy).expect("SVD computation failed");
 
     // Extract singular values from first row (mdarray-linalg stores in s[[0, i]])
     let min_dim = result.s.shape().0.min(result.s.shape().1);

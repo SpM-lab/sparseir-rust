@@ -861,11 +861,12 @@ impl ComplexMatrixFitter {
 
 /// Compute SVD of a real matrix using mdarray-linalg
 fn compute_real_svd(matrix: &DTensor<f64, 2>) -> RealSVD {
-    use mdarray_linalg::{SVD, SVDDecomp};
+    use mdarray_linalg::prelude::SVD;
+    use mdarray_linalg::svd::SVDDecomp;
     use mdarray_linalg_faer::Faer;
 
     let mut a = matrix.clone();
-    let SVDDecomp { u, s, vt } = Faer.svd(&mut a).expect("SVD computation failed");
+    let SVDDecomp { u, s, vt } = Faer.svd(&mut *a).expect("SVD computation failed");
 
     // Extract singular values from first row
     let min_dim = s.shape().0.min(s.shape().1);
@@ -905,7 +906,8 @@ fn solve_real_svd(svd: &RealSVD, values: &[f64]) -> Vec<f64> {
 
 /// Compute SVD of a complex matrix directly
 fn compute_complex_svd(matrix: &DTensor<Complex<f64>, 2>) -> ComplexSVD {
-    use mdarray_linalg::{SVD, SVDDecomp};
+    use mdarray_linalg::prelude::SVD;
+    use mdarray_linalg::svd::SVDDecomp;
     use mdarray_linalg_faer::Faer;
 
     // Convert Complex<f64> to faer's c64 for SVD
@@ -915,7 +917,7 @@ fn compute_complex_svd(matrix: &DTensor<Complex<f64>, 2>) -> ComplexSVD {
 
     // Compute complex SVD directly
     let SVDDecomp { u, s, vt } = Faer
-        .svd(&mut matrix_c64)
+        .svd(&mut *matrix_c64)
         .expect("Complex SVD computation failed");
 
     // Extract singular values from first row (they are real even though stored as Complex)
