@@ -14,9 +14,10 @@ mdarray-linalg = { path = "../mdarray-linalg/mdarray-linalg" }
 mdarray-linalg-faer = { path = "../mdarray-linalg/mdarray-linalg-faer" }
 faer = "0.19"
 nalgebra = "0.32"
+simba = "0.9"
 
 # Extended precision
-twofloat = "0.2"
+xprec = { path = "../xprec-rs" }
 num-traits = "0.2"
 
 # Approximate equality
