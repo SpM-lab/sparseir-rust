@@ -4,7 +4,7 @@ A high-precision truncated SVD (TSVD) library implemented in Rust, based on algo
 
 ## Features
 
-- **High-precision arithmetic**: Support for `f64` and `TwoFloatPrecision` (double-double) precision
+- **High-precision arithmetic**: Support for `f64` and `Df64Precision` (double-double via xprec-rs)
 - **RRQR preconditioning**: Rank-revealing QR with column pivoting for numerical stability
 - **Jacobi SVD**: Two-sided Jacobi iterations for maximum accuracy
 - **Truncated SVD**: Efficient computation of only the significant singular values
@@ -31,8 +31,8 @@ let result = tsvd_f64(&a, 1e-12).unwrap();
 println!("Rank: {}", result.rank);
 println!("Singular values: {:?}", result.s);
 
-// For higher precision, use TwoFloat
-let result_hp = tsvd_twofloat_from_f64(&a, 1e-15).unwrap();
+// For higher precision, use Df64
+let result_hp = tsvd_df64_from_f64(&a, 1e-15).unwrap();
 println!("High-precision rank: {}", result_hp.rank);
 ```
 
@@ -53,15 +53,15 @@ The TSVD algorithm follows this structure:
 // f64 precision
 let result = tsvd_f64(matrix, rtol)?;
 
-// TwoFloat precision (direct input)
+// Df64 precision (direct input)
 let matrix_tf = Array2::from_shape_fn(matrix.dim(), |(i, j)| {
-    TwoFloatPrecision::from_f64(matrix[[i, j]])
+    Df64Precision::from_f64(matrix[[i, j]])
 });
-let rtol_tf = TwoFloatPrecision::from_f64(rtol);
-let result = tsvd_twofloat(&matrix_tf, rtol_tf)?;
+let rtol_tf = Df64Precision::from_f64(rtol);
+let result = tsvd_df64(&matrix_tf, rtol_tf)?;
 
-// TwoFloat precision (from f64) - most convenient
-let result = tsvd_twofloat_from_f64(matrix, rtol)?;
+// Df64 precision (from f64) - most convenient
+let result = tsvd_df64_from_f64(matrix, rtol)?;
 
 // Generic precision with configuration
 let config = TSVDConfig::new(rtol);
@@ -83,22 +83,22 @@ let result = tsvd(matrix, config)?;
 ### Available Functions
 
 - `tsvd_f64()`: Standard f64 precision
-- `tsvd_twofloat()`: Direct TwoFloat precision input
-- `tsvd_twofloat_from_f64()`: Convert f64 to TwoFloat automatically
+- `tsvd_df64()`: Direct Df64 precision input
+- `tsvd_df64_from_f64()`: Convert f64 to Df64 automatically
 - `tsvd()`: Generic function with custom configuration
 
 ## Dependencies
 
 - `ndarray`: Multi-dimensional arrays
 - `nalgebra`: Linear algebra operations
-- `twofloat`: Double-double precision arithmetic
+- `xprec-rs`: Double-double precision arithmetic (`Df64`)
 - `num-traits`: Numeric traits
 - `approx`: Approximate equality comparisons
 - `thiserror`: Error handling
 
 ## Modules
 
-- `precision`: Precision trait and TwoFloatPrecision wrapper
+- `precision`: Precision trait and Df64Precision wrapper
 - `qr`: Rank-revealing QR decomposition with column pivoting
 - `svd`: Jacobi SVD implementation
 - `tsvd`: Main truncated SVD interface

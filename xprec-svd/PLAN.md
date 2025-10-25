@@ -6,7 +6,7 @@
 
 ## Key Features
 
-- **High-precision arithmetic**: Support for `f64`, `f128`, and `TwoFloat` (double-double) precision
+- **High-precision arithmetic**: Support for `f64`, `f128`, and `Df64` (double-double) precision
 - **RRQR preconditioning**: Rank-revealing QR with column pivoting for numerical stability
 - **Jacobi SVD**: Two-sided Jacobi iterations for maximum accuracy
 - **Truncated SVD**: Efficient computation of only the significant singular values
@@ -109,10 +109,7 @@ xprec-svd/
 │   │   └── convergence.rs  # Convergence criteria
 │   ├── tsvd.rs             # Main TSVD algorithm
 │   ├── precision/
-│   │   ├── mod.rs          # Precision type definitions
-│   │   ├── f64.rs          # f64 implementation
-│   │   ├── f128.rs         # f128 implementation (if available)
-│   │   └── twofloat.rs     # TwoFloat implementation
+│   │   └── mod.rs          # Precision trait implementation (f64 + Df64 via xprec-rs)
 │   └── utils/
 │       ├── mod.rs          # Utility functions
 │       ├── norms.rs        # Vector/matrix norm computations
@@ -167,7 +164,7 @@ ndarray = "0.15"              # Multi-dimensional arrays
 nalgebra = "0.32"             # Linear algebra operations
 
 # Extended precision
-twofloat = "0.2"              # Double-double arithmetic
+xprec-rs = { path = "../xprec-rs" }  # Double-double arithmetic (Df64)
 num-traits = "0.2"            # Numeric traits
 
 # Optional high precision
@@ -181,7 +178,7 @@ serde = { version = "1.0", features = ["derive"] }  # Serialization
 ## Implementation Phases
 
 ### Phase 1: Core Infrastructure
-1. **Precision types**: Implement `Precision` trait for `f64`, `TwoFloat`
+1. **Precision types**: Implement `Precision` trait for `f64`, `Df64`
 2. **Basic QR**: Simple QR decomposition without pivoting
 3. **Householder reflections**: Core reflection utilities
 4. **Basic SVD**: Simple 2×2 SVD implementation
@@ -260,7 +257,7 @@ pub fn tsvd_f64(matrix: &Array2<f64>, rtol: f64) -> Result<SVDResult<f64>, TSVDE
     tsvd(matrix, TSVDConfig::new(rtol))
 }
 
-pub fn tsvd_twofloat(matrix: &Array2<TwoFloat>, rtol: TwoFloat) -> Result<SVDResult<TwoFloat>, TSVDError> {
+pub fn tsvd_df64(matrix: &Array2<Df64>, rtol: Df64) -> Result<SVDResult<Df64>, TSVDError> {
     tsvd(matrix, TSVDConfig::new(rtol))
 }
 

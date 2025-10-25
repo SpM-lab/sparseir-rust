@@ -14,7 +14,7 @@
 
 ### 統合テスト（tests/） - 25テスト
 - jacobi_svd_tests.rs: 22テスト ✅
-- simple_twofloat_test.rs: 3テスト ✅
+- simple_df64_test.rs: 3テスト ✅
 
 ## ⏳ 未移行（4ファイル、~950行）
 
@@ -32,9 +32,9 @@
    - Hilbert行列テスト
    - 特殊ケースのテスト
 
-4. **twofloat_rrqr_tests.rs** (166行)
-   - TwoFloat精度のRRQRテスト
-   - simple_twofloat_test.rsでカバー
+4. **df64_rrqr_tests.rs** (166行)
+   - Df64精度のRRQRテスト
+   - simple_df64_test.rsでカバー
 
 ## 戦略
 

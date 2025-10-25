@@ -1,8 +1,7 @@
 //! QR decomposition with column pivoting (RRQR)
 
-
-pub mod rrqr;
 pub mod householder;
+pub mod rrqr;
 pub mod truncate;
 
 pub use rrqr::{QRPivoted, rrqr, rrqr_with_options};
