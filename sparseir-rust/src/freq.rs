@@ -212,6 +212,7 @@ impl<S: StatisticsType> fmt::Display for MatsubaraFreq<S> {
 
 // Utility functions
 /// Get the sign of a Matsubara frequency
+#[allow(dead_code)]
 pub(crate) fn sign<S: StatisticsType>(freq: &MatsubaraFreq<S>) -> i32 {
     if freq.n > 0 {
         1
@@ -223,6 +224,7 @@ pub(crate) fn sign<S: StatisticsType>(freq: &MatsubaraFreq<S>) -> i32 {
 }
 
 /// Get the fermionic sign based on statistics type
+#[allow(dead_code)]
 pub(crate) fn fermionic_sign<S: StatisticsType>() -> i32 {
     match S::STATISTICS {
         Statistics::Fermionic => -1,
@@ -231,11 +233,13 @@ pub(crate) fn fermionic_sign<S: StatisticsType>() -> i32 {
 }
 
 /// Create a zero frequency (bosonic only)
+#[allow(dead_code)]
 pub(crate) fn zero() -> BosonicFreq {
     unsafe { BosonicFreq::new_unchecked(0) }
 }
 
 /// Check if a frequency is zero
+#[allow(dead_code)]
 pub(crate) fn is_zero<S: StatisticsType>(freq: &MatsubaraFreq<S>) -> bool {
     match S::STATISTICS {
         Statistics::Fermionic => false, // Fermionic frequencies are never zero
@@ -244,6 +248,7 @@ pub(crate) fn is_zero<S: StatisticsType>(freq: &MatsubaraFreq<S>) -> bool {
 }
 
 /// Compare two Matsubara frequencies of potentially different statistics types
+#[allow(dead_code)]
 pub(crate) fn is_less<S1: StatisticsType, S2: StatisticsType>(
     a: &MatsubaraFreq<S1>,
     b: &MatsubaraFreq<S2>,
@@ -252,6 +257,7 @@ pub(crate) fn is_less<S1: StatisticsType, S2: StatisticsType>(
 }
 
 /// Factory function to create Statistics from zeta value
+#[allow(dead_code)]
 pub(crate) fn create_statistics(zeta: i64) -> Result<Statistics, String> {
     match zeta {
         1 => Ok(Statistics::Fermionic),

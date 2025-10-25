@@ -301,7 +301,7 @@ where
     ///
     /// # Returns
     /// DLR coefficients as N-D tensor
-    pub fn from_IR_nd<T>(
+    pub fn from_ir_nd<T>(
         &self,
         gl: &mdarray::Tensor<T, mdarray::DynRank>,
         dim: usize,
@@ -368,7 +368,7 @@ where
     ///
     /// # Returns
     /// IR coefficients as N-D tensor
-    pub fn to_IR_nd<T>(
+    pub fn to_ir_nd<T>(
         &self,
         g_dlr: &mdarray::Tensor<T, mdarray::DynRank>,
         dim: usize,

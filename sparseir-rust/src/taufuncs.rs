@@ -20,6 +20,7 @@ use crate::traits::{Statistics, StatisticsType};
 /// # Returns
 /// * `true` if τ < 0 or τ > β (odd period), `false` otherwise
 #[inline]
+#[allow(dead_code)]
 fn is_odd_period(tau: f64, beta: f64) -> bool {
     tau < 0.0 || tau > beta
 }

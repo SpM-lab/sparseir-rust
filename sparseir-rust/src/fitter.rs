@@ -88,6 +88,7 @@ impl RealMatrixFitter {
     /// Fit: values (real) → coeffs (real)
     ///
     /// Solves: min ||A * coeffs - values||^2 using SVD
+    #[allow(dead_code)]
     pub fn fit(&self, values: &[f64]) -> Vec<f64> {
         assert_eq!(
             values.len(),
@@ -117,6 +118,7 @@ impl RealMatrixFitter {
     ///
     /// # Returns
     /// Complex coefficients (length = basis_size)
+    #[allow(dead_code)]
     pub fn fit_complex(&self, values: &[Complex<f64>]) -> Vec<Complex<f64>> {
         use num_complex::Complex;
 
@@ -149,6 +151,7 @@ impl RealMatrixFitter {
     ///
     /// # Returns
     /// Complex values at sampling points (length = n_points)
+    #[allow(dead_code)]
     pub fn evaluate_complex(&self, coeffs: &[Complex<f64>]) -> Vec<Complex<f64>> {
         use num_complex::Complex;
 
@@ -186,7 +189,7 @@ impl RealMatrixFitter {
     pub fn evaluate_2d(&self, coeffs_2d: &mdarray::DTensor<f64, 2>) -> mdarray::DTensor<f64, 2> {
         use crate::gemm::matmul_par;
 
-        let (basis_size, extra_size) = *coeffs_2d.shape();
+        let (basis_size, _extra_size) = *coeffs_2d.shape();
         assert_eq!(
             basis_size,
             self.basis_size(),
@@ -737,7 +740,7 @@ impl ComplexMatrixFitter {
     pub fn evaluate_2d(&self, coeffs_2d: &DTensor<Complex<f64>, 2>) -> DTensor<Complex<f64>, 2> {
         use crate::gemm::matmul_par;
 
-        let (basis_size, extra_size) = *coeffs_2d.shape();
+        let (basis_size, _extra_size) = *coeffs_2d.shape();
         assert_eq!(
             basis_size,
             self.basis_size(),
