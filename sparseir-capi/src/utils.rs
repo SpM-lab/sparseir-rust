@@ -85,7 +85,9 @@ pub unsafe fn copy_tensor_to_c_array<T: Copy>(
     let flat = tensor.into_dyn().reshape(&[total]).to_tensor();
 
     for i in 0..total {
-        *out.add(i) = flat[i];
+        unsafe {
+            *out.add(i) = flat[i];
+        }
     }
 }
 

@@ -21,7 +21,7 @@ impl_opaque_type_common!(funcs);
 /// # Safety
 /// The caller must ensure that `funcs` and `indices` are valid pointers.
 /// The returned pointer must be freed with `spir_funcs_release()`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_funcs_get_slice(
     funcs: *const spir_funcs,
     nslice: i32,
@@ -32,26 +32,26 @@ pub unsafe extern "C" fn spir_funcs_get_slice(
 
     if funcs.is_null() || indices.is_null() || status.is_null() {
         if !status.is_null() {
-            *status = SPIR_INVALID_ARGUMENT;
+            unsafe { *status = SPIR_INVALID_ARGUMENT; }
         }
         return std::ptr::null_mut();
     }
 
     if nslice < 0 {
-        *status = SPIR_INVALID_ARGUMENT;
+        unsafe { *status = SPIR_INVALID_ARGUMENT; }
         return std::ptr::null_mut();
     }
 
     let result = std::panic::catch_unwind(|| {
-        let funcs_ref = &*funcs;
+        let funcs_ref = unsafe { &*funcs };
 
         // Convert C indices to Rust Vec<usize>
-        let indices_slice = std::slice::from_raw_parts(indices, nslice as usize);
+        let indices_slice = unsafe { std::slice::from_raw_parts(indices, nslice as usize) };
         let mut rust_indices = Vec::with_capacity(nslice as usize);
 
         for &i in indices_slice {
             if i < 0 {
-                *status = SPIR_INVALID_ARGUMENT;
+                unsafe { *status = SPIR_INVALID_ARGUMENT; }
                 return std::ptr::null_mut();
             }
             rust_indices.push(i as usize);
@@ -60,18 +60,18 @@ pub unsafe extern "C" fn spir_funcs_get_slice(
         // Get the slice
         match funcs_ref.get_slice(&rust_indices) {
             Some(sliced_funcs) => {
-                *status = SPIR_COMPUTATION_SUCCESS;
+                unsafe { *status = SPIR_COMPUTATION_SUCCESS; }
                 Box::into_raw(Box::new(sliced_funcs))
             }
             None => {
-                *status = SPIR_INVALID_ARGUMENT;
+                unsafe { *status = SPIR_INVALID_ARGUMENT; }
                 std::ptr::null_mut()
             }
         }
     });
 
     result.unwrap_or_else(|_| {
-        *status = SPIR_INTERNAL_ERROR;
+        unsafe { *status = SPIR_INTERNAL_ERROR; }
         std::ptr::null_mut()
     })
 }
@@ -84,7 +84,7 @@ pub unsafe extern "C" fn spir_funcs_get_slice(
 ///
 /// # Returns
 /// Status code (SPIR_COMPUTATION_SUCCESS on success)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_funcs_get_size(
     funcs: *const spir_funcs,
     size: *mut libc::c_int,
@@ -113,7 +113,7 @@ pub extern "C" fn spir_funcs_get_size(
 ///
 /// # Returns
 /// Status code (SPIR_COMPUTATION_SUCCESS on success, SPIR_NOT_SUPPORTED if not continuous)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_funcs_get_n_knots(
     funcs: *const spir_funcs,
     n_knots: *mut libc::c_int,
@@ -152,7 +152,7 @@ pub extern "C" fn spir_funcs_get_n_knots(
 ///
 /// # Safety
 /// The caller must ensure that `knots` has size >= `spir_funcs_get_n_knots(funcs)`
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_funcs_get_knots(
     funcs: *const spir_funcs,
     knots: *mut f64,
@@ -192,7 +192,7 @@ pub extern "C" fn spir_funcs_get_knots(
 ///
 /// # Safety
 /// The caller must ensure that `out` has size >= `spir_funcs_get_size(funcs)`
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_funcs_eval(
     funcs: *const spir_funcs,
     x: f64,
@@ -234,7 +234,7 @@ pub extern "C" fn spir_funcs_eval(
 /// # Safety
 /// The caller must ensure that `out` has size >= `spir_funcs_get_size(funcs)`
 /// Complex numbers are laid out as [real, imag] pairs
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_funcs_eval_matsu(
     funcs: *const spir_funcs,
     n: i64,
@@ -279,7 +279,7 @@ pub extern "C" fn spir_funcs_eval_matsu(
 /// - `xs` must have size >= `num_points`
 /// - `out` must have size >= `num_points * spir_funcs_get_size(funcs)`
 /// - Layout: row-major = out[point][func], column-major = out[func][point]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_funcs_batch_eval(
     funcs: *const spir_funcs,
     order: libc::c_int,
@@ -347,7 +347,7 @@ pub extern "C" fn spir_funcs_batch_eval(
 /// - `out` must have size >= `num_freqs * spir_funcs_get_size(funcs)`
 /// - Complex numbers are laid out as [real, imag] pairs
 /// - Layout: row-major = out[freq][func], column-major = out[func][freq]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_funcs_batch_eval_matsu(
     funcs: *const spir_funcs,
     order: libc::c_int,

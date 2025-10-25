@@ -87,7 +87,7 @@ use crate::{SPIR_COMPUTATION_SUCCESS, SPIR_INVALID_ARGUMENT};
 ///     void *c, int ldc
 /// );
 /// ```
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_register_blas_functions(
     cblas_dgemm: *const libc::c_void,
     cblas_zgemm: *const libc::c_void,
@@ -98,11 +98,11 @@ pub unsafe extern "C" fn spir_register_blas_functions(
     }
 
     // Cast to function pointers
-    let dgemm_fn: sparseir_rust::gemm::DgemmFnPtr = std::mem::transmute(cblas_dgemm);
-    let zgemm_fn: sparseir_rust::gemm::ZgemmFnPtr = std::mem::transmute(cblas_zgemm);
+    let dgemm_fn: sparseir_rust::gemm::DgemmFnPtr = unsafe { std::mem::transmute(cblas_dgemm) };
+    let zgemm_fn: sparseir_rust::gemm::ZgemmFnPtr = unsafe { std::mem::transmute(cblas_zgemm) };
 
     // Register with the Rust backend
-    sparseir_rust::gemm::set_blas_backend(dgemm_fn, zgemm_fn);
+    unsafe { sparseir_rust::gemm::set_blas_backend(dgemm_fn, zgemm_fn); }
 
     SPIR_COMPUTATION_SUCCESS
 }
@@ -171,7 +171,7 @@ pub unsafe extern "C" fn spir_register_blas_functions(
 ///     void *c, long long ldc
 /// );
 /// ```
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_register_ilp64_functions(
     cblas_dgemm64: *const libc::c_void,
     cblas_zgemm64: *const libc::c_void,
@@ -182,11 +182,11 @@ pub unsafe extern "C" fn spir_register_ilp64_functions(
     }
 
     // Cast to function pointers
-    let dgemm64_fn: sparseir_rust::gemm::Dgemm64FnPtr = std::mem::transmute(cblas_dgemm64);
-    let zgemm64_fn: sparseir_rust::gemm::Zgemm64FnPtr = std::mem::transmute(cblas_zgemm64);
+    let dgemm64_fn: sparseir_rust::gemm::Dgemm64FnPtr = unsafe { std::mem::transmute(cblas_dgemm64) };
+    let zgemm64_fn: sparseir_rust::gemm::Zgemm64FnPtr = unsafe { std::mem::transmute(cblas_zgemm64) };
 
     // Register with the Rust backend
-    sparseir_rust::gemm::set_ilp64_backend(dgemm64_fn, zgemm64_fn);
+    unsafe { sparseir_rust::gemm::set_ilp64_backend(dgemm64_fn, zgemm64_fn); }
 
     SPIR_COMPUTATION_SUCCESS
 }

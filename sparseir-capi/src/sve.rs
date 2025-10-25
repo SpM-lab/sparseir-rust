@@ -32,7 +32,7 @@ impl_opaque_type_common!(sve_result);
 /// # Note
 /// Parameters `lmax` and `n_gauss` are accepted for libsparseir compatibility but
 /// currently ignored. The Rust implementation automatically determines optimal values.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_sve_result_new(
     k: *const spir_kernel,
     epsilon: f64,
@@ -126,7 +126,7 @@ pub extern "C" fn spir_sve_result_new(
 /// * `SPIR_COMPUTATION_SUCCESS` (0) on success
 /// * `SPIR_INVALID_ARGUMENT` (-6) if sve or size is null
 /// * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_sve_result_get_size(
     sve: *const spir_sve_result,
     size: *mut libc::c_int,
@@ -179,7 +179,7 @@ pub extern "C" fn spir_sve_result_get_size(
 /// spir_sve_result_release(sve_truncated);
 /// spir_sve_result_release(sve);
 /// ```
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_sve_result_truncate(
     sve: *const spir_sve_result,
     epsilon: f64,
@@ -257,7 +257,7 @@ pub extern "C" fn spir_sve_result_truncate(
 /// * `SPIR_COMPUTATION_SUCCESS` (0) on success
 /// * `SPIR_INVALID_ARGUMENT` (-6) if sve or svals is null
 /// * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_sve_result_get_svals(
     sve: *const spir_sve_result,
     svals: *mut f64,

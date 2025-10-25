@@ -38,7 +38,7 @@ macro_rules! impl_opaque_type_common {
             ///
             /// # Safety
             /// The caller must ensure that the pointer is valid and not used after this call.
-            #[no_mangle]
+            #[unsafe(no_mangle)]
             pub extern "C" fn [<spir_ $type_name _release>](obj: *mut [<spir_ $type_name>]) {
                 if obj.is_null() {
                     return;
@@ -57,7 +57,7 @@ macro_rules! impl_opaque_type_common {
             ///
             /// # Returns
             /// A new pointer to a cloned object, or null if input is null or panic occurs.
-            #[no_mangle]
+            #[unsafe(no_mangle)]
             pub unsafe extern "C" fn [<spir_ $type_name _clone>](
                 src: *const [<spir_ $type_name>]
             ) -> *mut [<spir_ $type_name>] {
@@ -79,7 +79,7 @@ macro_rules! impl_opaque_type_common {
             ///
             /// # Returns
             /// 1 if the object is valid, 0 otherwise
-            #[no_mangle]
+            #[unsafe(no_mangle)]
             pub extern "C" fn [<spir_ $type_name _is_assigned>](
                 obj: *const [<spir_ $type_name>]
             ) -> i32 {
@@ -99,7 +99,7 @@ macro_rules! impl_opaque_type_common {
             ///
             /// # Returns
             /// The raw pointer cast to `void*`, or null if input is null
-            #[no_mangle]
+            #[unsafe(no_mangle)]
             pub extern "C" fn [<_spir_ $type_name _get_raw_ptr>](
                 obj: *const [<spir_ $type_name>]
             ) -> *const std::ffi::c_void {

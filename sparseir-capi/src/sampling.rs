@@ -39,7 +39,7 @@ impl_opaque_type_common!(sampling);
 ///
 /// # Safety
 /// Caller must ensure `b` is valid and `points` has `num_points` elements
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_tau_sampling_new(
     b: *const spir_basis,
     num_points: libc::c_int,
@@ -55,8 +55,8 @@ pub unsafe extern "C" fn spir_tau_sampling_new(
             return (std::ptr::null_mut(), SPIR_INVALID_ARGUMENT);
         }
 
-        let basis_ref = &*b;
-        let points_slice = std::slice::from_raw_parts(points, num_points as usize);
+        let basis_ref = unsafe { &*b };
+        let points_slice = unsafe { std::slice::from_raw_parts(points, num_points as usize) };
 
         // Convert points to Vec
         let tau_points: Vec<f64> = points_slice.to_vec();
@@ -132,13 +132,13 @@ pub unsafe extern "C" fn spir_tau_sampling_new(
     match result {
         Ok((ptr, code)) => {
             if !status.is_null() {
-                *status = code;
+                unsafe { *status = code; }
             }
             ptr
         }
         Err(_) => {
             if !status.is_null() {
-                *status = crate::SPIR_INTERNAL_ERROR;
+                unsafe { *status = crate::SPIR_INTERNAL_ERROR; }
             }
             std::ptr::null_mut()
         }
@@ -156,7 +156,7 @@ pub unsafe extern "C" fn spir_tau_sampling_new(
 ///
 /// # Returns
 /// Pointer to the newly created sampling object, or NULL if creation fails
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_matsu_sampling_new(
     b: *const spir_basis,
     positive_only: bool,
@@ -173,8 +173,8 @@ pub unsafe extern "C" fn spir_matsu_sampling_new(
             return (std::ptr::null_mut(), SPIR_INVALID_ARGUMENT);
         }
 
-        let basis_ref = &*b;
-        let points_slice = std::slice::from_raw_parts(points, num_points as usize);
+        let basis_ref = unsafe { &*b };
+        let points_slice = unsafe { std::slice::from_raw_parts(points, num_points as usize) };
 
         // Convert points to Vec
         let matsu_points: Vec<i64> = points_slice.to_vec();
@@ -271,13 +271,13 @@ pub unsafe extern "C" fn spir_matsu_sampling_new(
     match result {
         Ok((ptr, code)) => {
             if !status.is_null() {
-                *status = code;
+                unsafe { *status = code; }
             }
             ptr
         }
         Err(_) => {
             if !status.is_null() {
-                *status = crate::SPIR_INTERNAL_ERROR;
+                unsafe { *status = crate::SPIR_INTERNAL_ERROR; }
             }
             std::ptr::null_mut()
         }
@@ -300,7 +300,7 @@ pub unsafe extern "C" fn spir_matsu_sampling_new(
 ///
 /// # Safety
 /// Caller must ensure `points` and `matrix` have correct sizes
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_tau_sampling_new_with_matrix(
     order: libc::c_int,
     statistics: libc::c_int,
@@ -326,12 +326,12 @@ pub unsafe extern "C" fn spir_tau_sampling_new_with_matrix(
         };
 
         // Convert points to Vec
-        let points_slice = std::slice::from_raw_parts(points, num_points as usize);
+        let points_slice = unsafe { std::slice::from_raw_parts(points, num_points as usize) };
         let tau_points: Vec<f64> = points_slice.to_vec();
 
         // Convert matrix to Tensor
         let matrix_size = (num_points as usize) * (basis_size as usize);
-        let matrix_slice = std::slice::from_raw_parts(matrix, matrix_size);
+        let matrix_slice = unsafe { std::slice::from_raw_parts(matrix, matrix_size) };
         let matrix_vec: Vec<f64> = matrix_slice.to_vec();
 
         // Convert dims based on order
@@ -377,13 +377,13 @@ pub unsafe extern "C" fn spir_tau_sampling_new_with_matrix(
     match result {
         Ok((ptr, code)) => {
             if !status.is_null() {
-                *status = code;
+                unsafe { *status = code; }
             }
             ptr
         }
         Err(_) => {
             if !status.is_null() {
-                *status = crate::SPIR_INTERNAL_ERROR;
+                unsafe { *status = crate::SPIR_INTERNAL_ERROR; }
             }
             std::ptr::null_mut()
         }
@@ -407,7 +407,7 @@ pub unsafe extern "C" fn spir_tau_sampling_new_with_matrix(
 ///
 /// # Safety
 /// Caller must ensure `points` and `matrix` have correct sizes
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_matsu_sampling_new_with_matrix(
     order: libc::c_int,
     statistics: libc::c_int,
@@ -434,14 +434,14 @@ pub unsafe extern "C" fn spir_matsu_sampling_new_with_matrix(
         };
 
         // Convert points to Vec<MatsubaraFreq>
-        let points_slice = std::slice::from_raw_parts(points, num_points as usize);
+        let points_slice = unsafe { std::slice::from_raw_parts(points, num_points as usize) };
         let matsu_points: Vec<i64> = points_slice.to_vec();
 
         use sparseir_rust::freq::MatsubaraFreq;
 
         // Convert matrix to Tensor
         let matrix_size = (num_points as usize) * (basis_size as usize);
-        let matrix_slice = std::slice::from_raw_parts(matrix, matrix_size);
+        let matrix_slice = unsafe { std::slice::from_raw_parts(matrix, matrix_size) };
         let matrix_vec: Vec<Complex64> = matrix_slice.to_vec();
 
         // Convert dims based on order
@@ -523,13 +523,13 @@ pub unsafe extern "C" fn spir_matsu_sampling_new_with_matrix(
     match result {
         Ok((ptr, code)) => {
             if !status.is_null() {
-                *status = code;
+                unsafe { *status = code; }
             }
             ptr
         }
         Err(_) => {
             if !status.is_null() {
-                *status = crate::SPIR_INTERNAL_ERROR;
+                unsafe { *status = crate::SPIR_INTERNAL_ERROR; }
             }
             std::ptr::null_mut()
         }
@@ -541,7 +541,7 @@ pub unsafe extern "C" fn spir_matsu_sampling_new_with_matrix(
 // ============================================================================
 
 /// Gets the number of sampling points in a sampling object
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_sampling_get_npoints(
     s: *const spir_sampling,
     num_points: *mut libc::c_int,
@@ -551,7 +551,7 @@ pub unsafe extern "C" fn spir_sampling_get_npoints(
             return SPIR_INVALID_ARGUMENT;
         }
 
-        let sampling_ref = &*s;
+        let sampling_ref = unsafe { &*s };
 
         let n_points = match &sampling_ref.inner {
             SamplingType::TauFermionic(tau) => tau.n_sampling_points(),
@@ -562,7 +562,7 @@ pub unsafe extern "C" fn spir_sampling_get_npoints(
             SamplingType::MatsubaraPositiveOnlyBosonic(matsu) => matsu.n_sampling_points(),
         };
 
-        *num_points = n_points as libc::c_int;
+        unsafe { *num_points = n_points as libc::c_int; }
         SPIR_COMPUTATION_SUCCESS
     }));
 
@@ -570,7 +570,7 @@ pub unsafe extern "C" fn spir_sampling_get_npoints(
 }
 
 /// Gets the imaginary time sampling points
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_sampling_get_taus(
     s: *const spir_sampling,
     points: *mut f64,
@@ -580,18 +580,18 @@ pub unsafe extern "C" fn spir_sampling_get_taus(
             return SPIR_INVALID_ARGUMENT;
         }
 
-        let sampling_ref = &*s;
+        let sampling_ref = unsafe { &*s };
 
         match &sampling_ref.inner {
             SamplingType::TauFermionic(tau) => {
                 let tau_points = tau.sampling_points();
-                let out_slice = std::slice::from_raw_parts_mut(points, tau_points.len());
+                let out_slice = unsafe { std::slice::from_raw_parts_mut(points, tau_points.len()) };
                 out_slice.copy_from_slice(tau_points);
                 SPIR_COMPUTATION_SUCCESS
             }
             SamplingType::TauBosonic(tau) => {
                 let tau_points = tau.sampling_points();
-                let out_slice = std::slice::from_raw_parts_mut(points, tau_points.len());
+                let out_slice = unsafe { std::slice::from_raw_parts_mut(points, tau_points.len()) };
                 out_slice.copy_from_slice(tau_points);
                 SPIR_COMPUTATION_SUCCESS
             }
@@ -603,7 +603,7 @@ pub unsafe extern "C" fn spir_sampling_get_taus(
 }
 
 /// Gets the Matsubara frequency sampling points
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_sampling_get_matsus(
     s: *const spir_sampling,
     points: *mut i64,
@@ -613,12 +613,12 @@ pub unsafe extern "C" fn spir_sampling_get_matsus(
             return SPIR_INVALID_ARGUMENT;
         }
 
-        let sampling_ref = &*s;
+        let sampling_ref = unsafe { &*s };
 
         match &sampling_ref.inner {
             SamplingType::MatsubaraFermionic(matsu) => {
                 let matsu_freqs = matsu.sampling_points();
-                let out_slice = std::slice::from_raw_parts_mut(points, matsu_freqs.len());
+                let out_slice = unsafe { std::slice::from_raw_parts_mut(points, matsu_freqs.len()) };
                 for (i, freq) in matsu_freqs.iter().enumerate() {
                     out_slice[i] = freq.n();
                 }
@@ -626,7 +626,7 @@ pub unsafe extern "C" fn spir_sampling_get_matsus(
             }
             SamplingType::MatsubaraBosonic(matsu) => {
                 let matsu_freqs = matsu.sampling_points();
-                let out_slice = std::slice::from_raw_parts_mut(points, matsu_freqs.len());
+                let out_slice = unsafe { std::slice::from_raw_parts_mut(points, matsu_freqs.len()) };
                 for (i, freq) in matsu_freqs.iter().enumerate() {
                     out_slice[i] = freq.n();
                 }
@@ -634,7 +634,7 @@ pub unsafe extern "C" fn spir_sampling_get_matsus(
             }
             SamplingType::MatsubaraPositiveOnlyFermionic(matsu) => {
                 let matsu_freqs = matsu.sampling_points();
-                let out_slice = std::slice::from_raw_parts_mut(points, matsu_freqs.len());
+                let out_slice = unsafe { std::slice::from_raw_parts_mut(points, matsu_freqs.len()) };
                 for (i, freq) in matsu_freqs.iter().enumerate() {
                     out_slice[i] = freq.n();
                 }
@@ -642,7 +642,7 @@ pub unsafe extern "C" fn spir_sampling_get_matsus(
             }
             SamplingType::MatsubaraPositiveOnlyBosonic(matsu) => {
                 let matsu_freqs = matsu.sampling_points();
-                let out_slice = std::slice::from_raw_parts_mut(points, matsu_freqs.len());
+                let out_slice = unsafe { std::slice::from_raw_parts_mut(points, matsu_freqs.len()) };
                 for (i, freq) in matsu_freqs.iter().enumerate() {
                     out_slice[i] = freq.n();
                 }
@@ -659,7 +659,7 @@ pub unsafe extern "C" fn spir_sampling_get_matsus(
 ///
 /// Note: Currently returns a placeholder value.
 /// TODO: Implement proper condition number calculation from SVD
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_sampling_get_cond_num(
     s: *const spir_sampling,
     cond_num: *mut f64,
@@ -671,7 +671,7 @@ pub unsafe extern "C" fn spir_sampling_get_cond_num(
 
         // TODO: Calculate actual condition number from SVD
         // For now, return a reasonable placeholder
-        *cond_num = 1.0;
+        unsafe { *cond_num = 1.0; }
         SPIR_COMPUTATION_SUCCESS
     }));
 
@@ -689,7 +689,7 @@ pub unsafe extern "C" fn spir_sampling_get_cond_num(
 /// # Note
 /// Currently only supports column-major order (SPIR_ORDER_COLUMN_MAJOR = 1).
 /// Row-major support will be added in a future update.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_sampling_eval_dd(
     s: *const spir_sampling,
     order: libc::c_int,
@@ -714,8 +714,8 @@ pub unsafe extern "C" fn spir_sampling_eval_dd(
             Err(_) => return SPIR_INVALID_ARGUMENT,
         };
 
-        let sampling_ref = &*s;
-        let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
+        let sampling_ref = unsafe { &*s };
+        let dims_slice = unsafe { std::slice::from_raw_parts(input_dims, ndim as usize) };
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
 
         // Convert dims and target_dim for row-major mdarray
@@ -724,7 +724,7 @@ pub unsafe extern "C" fn spir_sampling_eval_dd(
 
         // Calculate total input size
         let total_input: usize = dims.iter().product();
-        let input_slice = std::slice::from_raw_parts(input, total_input);
+        let input_slice = unsafe { std::slice::from_raw_parts(input, total_input) };
 
         // Create input tensor (mdarray is row-major)
         let input_vec: Vec<f64> = input_slice.to_vec();
@@ -750,7 +750,7 @@ pub unsafe extern "C" fn spir_sampling_eval_dd(
         };
 
         // Copy result to output (order-independent: flat copy)
-        copy_tensor_to_c_array(result_tensor, out);
+        unsafe { copy_tensor_to_c_array(result_tensor, out); }
 
         SPIR_COMPUTATION_SUCCESS
     }));
@@ -761,7 +761,7 @@ pub unsafe extern "C" fn spir_sampling_eval_dd(
 /// Evaluate basis coefficients at sampling points (double → complex)
 ///
 /// For Matsubara sampling: transforms real IR coefficients to complex values.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_sampling_eval_dz(
     s: *const spir_sampling,
     order: libc::c_int,
@@ -786,8 +786,8 @@ pub unsafe extern "C" fn spir_sampling_eval_dz(
             Err(_) => return SPIR_INVALID_ARGUMENT,
         };
 
-        let sampling_ref = &*s;
-        let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
+        let sampling_ref = unsafe { &*s };
+        let dims_slice = unsafe { std::slice::from_raw_parts(input_dims, ndim as usize) };
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
 
         // Convert dims and target_dim for row-major mdarray
@@ -795,7 +795,7 @@ pub unsafe extern "C" fn spir_sampling_eval_dz(
             convert_dims_for_row_major(&orig_dims, target_dim as usize, mem_order);
 
         let total_input: usize = dims.iter().product();
-        let input_slice = std::slice::from_raw_parts(input, total_input);
+        let input_slice = unsafe { std::slice::from_raw_parts(input, total_input) };
 
         let input_vec: Vec<f64> = input_slice.to_vec();
         let flat_tensor = Tensor::<f64, (usize,)>::from(input_vec);
@@ -821,7 +821,7 @@ pub unsafe extern "C" fn spir_sampling_eval_dz(
         };
 
         // Copy result to output (order-independent: flat copy)
-        copy_tensor_to_c_array(result_tensor, out);
+        unsafe { copy_tensor_to_c_array(result_tensor, out); }
 
         SPIR_COMPUTATION_SUCCESS
     }));
@@ -832,7 +832,7 @@ pub unsafe extern "C" fn spir_sampling_eval_dz(
 /// Evaluate basis coefficients at sampling points (complex → complex)
 ///
 /// For Matsubara sampling: transforms complex coefficients to complex values.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_sampling_eval_zz(
     s: *const spir_sampling,
     order: libc::c_int,
@@ -856,8 +856,8 @@ pub unsafe extern "C" fn spir_sampling_eval_zz(
             Err(_) => return SPIR_INVALID_ARGUMENT,
         };
 
-        let sampling_ref = &*s;
-        let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
+        let sampling_ref = unsafe { &*s };
+        let dims_slice = unsafe { std::slice::from_raw_parts(input_dims, ndim as usize) };
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
 
         // Convert dims and target_dim for row-major mdarray
@@ -865,7 +865,7 @@ pub unsafe extern "C" fn spir_sampling_eval_zz(
             convert_dims_for_row_major(&orig_dims, target_dim as usize, mem_order);
 
         let total_input: usize = dims.iter().product();
-        let input_slice = std::slice::from_raw_parts(input, total_input);
+        let input_slice = unsafe { std::slice::from_raw_parts(input, total_input) };
 
         let input_vec: Vec<Complex64> = input_slice.to_vec();
         let flat_tensor = Tensor::<Complex64, (usize,)>::from(input_vec);
@@ -883,7 +883,7 @@ pub unsafe extern "C" fn spir_sampling_eval_zz(
         };
 
         // Copy result to output (order-independent: flat copy)
-        copy_tensor_to_c_array(result_tensor, out);
+        unsafe { copy_tensor_to_c_array(result_tensor, out); }
 
         SPIR_COMPUTATION_SUCCESS
     }));
@@ -896,7 +896,7 @@ pub unsafe extern "C" fn spir_sampling_eval_zz(
 // ============================================================================
 
 /// Fit basis coefficients from sampling point values (double → double)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_sampling_fit_dd(
     s: *const spir_sampling,
     order: libc::c_int,
@@ -920,8 +920,8 @@ pub unsafe extern "C" fn spir_sampling_fit_dd(
             Err(_) => return SPIR_INVALID_ARGUMENT,
         };
 
-        let sampling_ref = &*s;
-        let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
+        let sampling_ref = unsafe { &*s };
+        let dims_slice = unsafe { std::slice::from_raw_parts(input_dims, ndim as usize) };
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
 
         // Convert dims and target_dim for row-major mdarray
@@ -929,7 +929,7 @@ pub unsafe extern "C" fn spir_sampling_fit_dd(
             convert_dims_for_row_major(&orig_dims, target_dim as usize, mem_order);
 
         let total_input: usize = dims.iter().product();
-        let input_slice = std::slice::from_raw_parts(input, total_input);
+        let input_slice = unsafe { std::slice::from_raw_parts(input, total_input) };
 
         let input_vec: Vec<f64> = input_slice.to_vec();
         let flat_tensor = Tensor::<f64, (usize,)>::from(input_vec);
@@ -943,7 +943,7 @@ pub unsafe extern "C" fn spir_sampling_fit_dd(
         };
 
         // Copy result to output (order-independent: flat copy)
-        copy_tensor_to_c_array(result_tensor, out);
+        unsafe { copy_tensor_to_c_array(result_tensor, out); }
 
         SPIR_COMPUTATION_SUCCESS
     }));
@@ -952,7 +952,7 @@ pub unsafe extern "C" fn spir_sampling_fit_dd(
 }
 
 /// Fit basis coefficients from sampling point values (complex → complex)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_sampling_fit_zz(
     s: *const spir_sampling,
     order: libc::c_int,
@@ -976,8 +976,8 @@ pub unsafe extern "C" fn spir_sampling_fit_zz(
             Err(_) => return SPIR_INVALID_ARGUMENT,
         };
 
-        let sampling_ref = &*s;
-        let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
+        let sampling_ref = unsafe { &*s };
+        let dims_slice = unsafe { std::slice::from_raw_parts(input_dims, ndim as usize) };
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
 
         // Convert dims and target_dim for row-major mdarray
@@ -985,7 +985,7 @@ pub unsafe extern "C" fn spir_sampling_fit_zz(
             convert_dims_for_row_major(&orig_dims, target_dim as usize, mem_order);
 
         let total_input: usize = dims.iter().product();
-        let input_slice = std::slice::from_raw_parts(input, total_input);
+        let input_slice = unsafe { std::slice::from_raw_parts(input, total_input) };
 
         let input_vec: Vec<Complex64> = input_slice.to_vec();
         let flat_tensor = Tensor::<Complex64, (usize,)>::from(input_vec);
@@ -1003,7 +1003,7 @@ pub unsafe extern "C" fn spir_sampling_fit_zz(
         };
 
         // Copy result to output (order-independent: flat copy)
-        copy_tensor_to_c_array(result_tensor, out);
+        unsafe { copy_tensor_to_c_array(result_tensor, out); }
 
         SPIR_COMPUTATION_SUCCESS
     }));
@@ -1012,7 +1012,7 @@ pub unsafe extern "C" fn spir_sampling_fit_zz(
 }
 
 /// Fit basis coefficients from Matsubara sampling (complex → double, positive only)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_sampling_fit_zd(
     s: *const spir_sampling,
     order: libc::c_int,
@@ -1036,8 +1036,8 @@ pub unsafe extern "C" fn spir_sampling_fit_zd(
             Err(_) => return SPIR_INVALID_ARGUMENT,
         };
 
-        let sampling_ref = &*s;
-        let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
+        let sampling_ref = unsafe { &*s };
+        let dims_slice = unsafe { std::slice::from_raw_parts(input_dims, ndim as usize) };
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
 
         // Convert dims and target_dim for row-major mdarray
@@ -1045,7 +1045,7 @@ pub unsafe extern "C" fn spir_sampling_fit_zd(
             convert_dims_for_row_major(&orig_dims, target_dim as usize, mem_order);
 
         let total_input: usize = dims.iter().product();
-        let input_slice = std::slice::from_raw_parts(input, total_input);
+        let input_slice = unsafe { std::slice::from_raw_parts(input, total_input) };
 
         let input_vec: Vec<Complex64> = input_slice.to_vec();
         let flat_tensor = Tensor::<Complex64, (usize,)>::from(input_vec);
@@ -1071,7 +1071,7 @@ pub unsafe extern "C" fn spir_sampling_fit_zd(
         };
 
         // Copy result to output (order-independent: flat copy)
-        copy_tensor_to_c_array(result_tensor, out);
+        unsafe { copy_tensor_to_c_array(result_tensor, out); }
 
         SPIR_COMPUTATION_SUCCESS
     }));

@@ -1,10 +1,10 @@
 [package]
 name = "sparseir-capi"
-version = "0.1.0"
-edition = "2021"
-authors = ["SparseIR Contributors"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
 description = "C API for SparseIR Rust implementation"
-license = "MIT"
+license.workspace = true
 
 [lib]
 name = "sparseir_capi"
@@ -16,13 +16,13 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 sparseir-rust = { path = "../sparseir-rust" }
 
 # Array library (for Shape trait)
-mdarray = { git = "https://github.com/fre-hu/mdarray.git", rev = "11ce08ae30bae2269c85eab1c4620028d160591a" }
+mdarray.workspace = true
 
 # Error code type
-libc = "0.2"
+libc.workspace = true
 
 # Complex numbers
-num-complex = "0.4"
+num-complex.workspace = true
 
 # Macro utilities for identifier concatenation
 paste = "1.0"

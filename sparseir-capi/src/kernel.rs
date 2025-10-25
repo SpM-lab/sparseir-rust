@@ -31,7 +31,7 @@ impl_opaque_type_common!(kernel);
 ///     spir_kernel_release(kernel);
 /// }
 /// ```
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_logistic_kernel_new(
     lambda: f64,
     status: *mut StatusCode,
@@ -78,7 +78,7 @@ pub extern "C" fn spir_logistic_kernel_new(
 ///
 /// # Returns
 /// * Pointer to the newly created kernel object, or NULL if creation fails
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_reg_bose_kernel_new(
     lambda: f64,
     status: *mut StatusCode,
@@ -125,7 +125,7 @@ pub extern "C" fn spir_reg_bose_kernel_new(
 /// * `SPIR_COMPUTATION_SUCCESS` on success
 /// * `SPIR_INVALID_ARGUMENT` if kernel or lambda_out is null
 /// * `SPIR_INTERNAL_ERROR` if internal panic occurs
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_kernel_lambda(
     kernel: *const spir_kernel,
     lambda_out: *mut f64,
@@ -155,7 +155,7 @@ pub extern "C" fn spir_kernel_lambda(
 /// * `SPIR_COMPUTATION_SUCCESS` on success
 /// * `SPIR_INVALID_ARGUMENT` if kernel or out is null
 /// * `SPIR_INTERNAL_ERROR` if internal panic occurs
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_kernel_compute(
     kernel: *const spir_kernel,
     x: f64,

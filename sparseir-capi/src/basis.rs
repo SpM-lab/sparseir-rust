@@ -29,7 +29,7 @@ impl_opaque_type_common!(basis);
 ///
 /// # Safety
 /// The caller must ensure `status` is a valid pointer.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_basis_new(
     statistics: libc::c_int,
     beta: f64,
@@ -192,7 +192,7 @@ pub extern "C" fn spir_basis_new(
 /// * `SPIR_COMPUTATION_SUCCESS` (0) on success
 /// * `SPIR_INVALID_ARGUMENT` (-6) if b or size is null
 /// * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_basis_get_size(b: *const spir_basis, size: *mut libc::c_int) -> StatusCode {
     if b.is_null() || size.is_null() {
         return SPIR_INVALID_ARGUMENT;
@@ -217,7 +217,7 @@ pub extern "C" fn spir_basis_get_size(b: *const spir_basis, size: *mut libc::c_i
 /// * `SPIR_COMPUTATION_SUCCESS` (0) on success
 /// * `SPIR_INVALID_ARGUMENT` (-6) if b or svals is null
 /// * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_basis_get_svals(b: *const spir_basis, svals: *mut f64) -> StatusCode {
     if b.is_null() || svals.is_null() {
         return SPIR_INVALID_ARGUMENT;
@@ -243,7 +243,7 @@ pub extern "C" fn spir_basis_get_svals(b: *const spir_basis, svals: *mut f64) ->
 /// * `SPIR_COMPUTATION_SUCCESS` (0) on success
 /// * `SPIR_INVALID_ARGUMENT` (-6) if b or statistics is null
 /// * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_basis_get_stats(
     b: *const spir_basis,
     statistics: *mut libc::c_int,
@@ -262,7 +262,7 @@ pub extern "C" fn spir_basis_get_stats(
 }
 
 /// Get singular values (alias for spir_basis_get_svals for libsparseir compatibility)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_basis_get_singular_values(
     b: *const spir_basis,
     svals: *mut f64,
@@ -280,7 +280,7 @@ pub extern "C" fn spir_basis_get_singular_values(
 /// * `SPIR_COMPUTATION_SUCCESS` (0) on success
 /// * `SPIR_INVALID_ARGUMENT` (-6) if b or num_points is null
 /// * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_basis_get_n_default_taus(
     b: *const spir_basis,
     num_points: *mut libc::c_int,
@@ -309,7 +309,7 @@ pub extern "C" fn spir_basis_get_n_default_taus(
 /// * `SPIR_COMPUTATION_SUCCESS` (0) on success
 /// * `SPIR_INVALID_ARGUMENT` (-6) if b or points is null
 /// * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_basis_get_default_taus(
     b: *const spir_basis,
     points: *mut f64,
@@ -339,7 +339,7 @@ pub extern "C" fn spir_basis_get_default_taus(
 /// * `SPIR_COMPUTATION_SUCCESS` (0) on success
 /// * `SPIR_INVALID_ARGUMENT` (-6) if b or num_points is null
 /// * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_basis_get_n_default_matsus(
     b: *const spir_basis,
     positive_only: bool,
@@ -370,7 +370,7 @@ pub extern "C" fn spir_basis_get_n_default_matsus(
 /// * `SPIR_COMPUTATION_SUCCESS` (0) on success
 /// * `SPIR_INVALID_ARGUMENT` (-6) if b or points is null
 /// * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_basis_get_default_matsus(
     b: *const spir_basis,
     positive_only: bool,
@@ -402,7 +402,7 @@ pub extern "C" fn spir_basis_get_default_matsus(
 /// # Safety
 /// The caller must ensure that `b` is a valid pointer, and must call
 /// `spir_funcs_release()` on the returned pointer when done.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_basis_get_u(
     b: *const spir_basis,
     status: *mut StatusCode,
@@ -490,7 +490,7 @@ pub unsafe extern "C" fn spir_basis_get_u(
 /// # Safety
 /// The caller must ensure that `b` is a valid pointer, and must call
 /// `spir_funcs_release()` on the returned pointer when done.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_basis_get_v(
     b: *const spir_basis,
     status: *mut StatusCode,
@@ -566,7 +566,7 @@ pub unsafe extern "C" fn spir_basis_get_v(
 ///
 /// # Safety
 /// The caller must ensure that `b` and `num_points` are valid pointers
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_basis_get_n_default_ws(
     b: *const spir_basis,
     num_points: *mut libc::c_int,
@@ -596,7 +596,7 @@ pub extern "C" fn spir_basis_get_n_default_ws(
 ///
 /// # Safety
 /// The caller must ensure that `points` has size >= `spir_basis_get_n_default_ws(b)`
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_basis_get_default_ws(b: *const spir_basis, points: *mut f64) -> StatusCode {
     if b.is_null() || points.is_null() {
         return SPIR_INVALID_ARGUMENT;
@@ -624,7 +624,7 @@ pub extern "C" fn spir_basis_get_default_ws(b: *const spir_basis, points: *mut f
 /// # Safety
 /// The caller must ensure that `b` is a valid pointer, and must call
 /// `spir_funcs_release()` on the returned pointer when done.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_basis_get_uhat(
     b: *const spir_basis,
     status: *mut StatusCode,
@@ -724,7 +724,7 @@ pub unsafe extern "C" fn spir_basis_get_uhat(
 ///
 /// # Note
 /// Returns min(n_points, actual_default_points) sampling points
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_basis_get_default_taus_ext(
     b: *const spir_basis,
     n_points: libc::c_int,
@@ -769,7 +769,7 @@ pub extern "C" fn spir_basis_get_default_taus_ext(
 ///
 /// # Note
 /// Returns min(L, actual_default_points) sampling points
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_basis_get_n_default_matsus_ext(
     b: *const spir_basis,
     positive_only: bool,
@@ -814,7 +814,7 @@ pub extern "C" fn spir_basis_get_n_default_matsus_ext(
 ///
 /// # Note
 /// Returns min(n_points, actual_default_points) sampling points
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn spir_basis_get_default_matsus_ext(
     b: *const spir_basis,
     positive_only: bool,

@@ -1,0 +1,51 @@
+[workspace]
+members = [
+    "sparseir-rust",
+    "sparseir-capi",
+]
+resolver = "2"
+
+[workspace.dependencies]
+# Common dependencies
+mdarray = "0.7.1"
+mdarray-linalg = { version = "0.1.1", path = "mdarray-linalg/mdarray-linalg" }
+mdarray-linalg-faer = { version = "0.1.1", path = "mdarray-linalg/mdarray-linalg-faer" }
+
+# Internal dependencies
+sparseir-rust = { path = "sparseir-rust" }
+xprec-svd = { path = "xprec-svd" }
+faer = "0.23"
+faer-traits = "0.23"
+num-complex = "0.4"
+num-traits = "0.2"
+dashu-float = "0.4"
+dashu-base = "0.4"
+special = "0.2"
+statrs = "0.16"
+thiserror = "1.0"
+rayon = "1.7"
+once_cell = "1.19"
+libc = "0.2"
+
+
+# Development dependencies
+approx = "0.5"
+proptest = "1.0"
+libm = "0.2"
+blas-sys = "0.7"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/sparseir-rust/sparseir-rust"
+authors = ["SparseIR Team"]
+description = "Rust implementation of SparseIR functionality"
+
+[workspace.lints.rust]
+unused_variables = "warn"
+unused_imports = "warn"
+dead_code = "warn"
+non_snake_case = "warn"
+unused_mut = "warn"

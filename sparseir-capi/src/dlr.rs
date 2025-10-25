@@ -34,7 +34,7 @@ use sparseir_rust::Tensor;
 ///
 /// # Safety
 /// Caller must ensure `b` is a valid IR basis pointer
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_dlr_new(
     b: *const spir_basis,
     status: *mut StatusCode,
@@ -45,7 +45,7 @@ pub unsafe extern "C" fn spir_dlr_new(
             return (std::ptr::null_mut(), SPIR_INVALID_ARGUMENT);
         }
 
-        let basis_ref = &*b;
+        let basis_ref = unsafe { &*b };
 
         // Create DLR based on basis type
         let dlr_type = match &basis_ref.inner {
@@ -79,13 +79,13 @@ pub unsafe extern "C" fn spir_dlr_new(
     match result {
         Ok((ptr, code)) => {
             if !status.is_null() {
-                *status = code;
+                unsafe { *status = code; }
             }
             ptr
         }
         Err(_) => {
             if !status.is_null() {
-                *status = crate::SPIR_INTERNAL_ERROR;
+                unsafe { *status = crate::SPIR_INTERNAL_ERROR; }
             }
             std::ptr::null_mut()
         }
@@ -105,7 +105,7 @@ pub unsafe extern "C" fn spir_dlr_new(
 ///
 /// # Safety
 /// Caller must ensure `b` is valid and `poles` has `npoles` elements
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_dlr_new_with_poles(
     b: *const spir_basis,
     npoles: libc::c_int,
@@ -121,8 +121,8 @@ pub unsafe extern "C" fn spir_dlr_new_with_poles(
             return (std::ptr::null_mut(), SPIR_INVALID_ARGUMENT);
         }
 
-        let basis_ref = &*b;
-        let poles_slice = std::slice::from_raw_parts(poles, npoles as usize);
+        let basis_ref = unsafe { &*b };
+        let poles_slice = unsafe { std::slice::from_raw_parts(poles, npoles as usize) };
         let pole_vec: Vec<f64> = poles_slice.to_vec();
 
         // Create DLR based on basis type
@@ -157,13 +157,13 @@ pub unsafe extern "C" fn spir_dlr_new_with_poles(
     match result {
         Ok((ptr, code)) => {
             if !status.is_null() {
-                *status = code;
+                unsafe { *status = code; }
             }
             ptr
         }
         Err(_) => {
             if !status.is_null() {
-                *status = crate::SPIR_INTERNAL_ERROR;
+                unsafe { *status = crate::SPIR_INTERNAL_ERROR; }
             }
             std::ptr::null_mut()
         }
@@ -185,7 +185,7 @@ pub unsafe extern "C" fn spir_dlr_new_with_poles(
 ///
 /// # Safety
 /// Caller must ensure `dlr` is a valid DLR basis pointer
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_dlr_get_npoles(
     dlr: *const spir_basis,
     num_poles: *mut libc::c_int,
@@ -195,7 +195,7 @@ pub unsafe extern "C" fn spir_dlr_get_npoles(
     }
 
     let result = catch_unwind(AssertUnwindSafe(|| {
-        let dlr_ref = &*dlr;
+        let dlr_ref = unsafe { &*dlr };
 
         // Get number of poles based on DLR type
         let npoles = match &dlr_ref.inner {
@@ -206,7 +206,7 @@ pub unsafe extern "C" fn spir_dlr_get_npoles(
             _ => return SPIR_INVALID_ARGUMENT, // Not a DLR
         };
 
-        *num_poles = npoles as libc::c_int;
+        unsafe { *num_poles = npoles as libc::c_int; }
         SPIR_COMPUTATION_SUCCESS
     }));
 
@@ -224,14 +224,14 @@ pub unsafe extern "C" fn spir_dlr_get_npoles(
 ///
 /// # Safety
 /// Caller must ensure `dlr` is valid and `poles` has sufficient size
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_dlr_get_poles(dlr: *const spir_basis, poles: *mut f64) -> StatusCode {
     if dlr.is_null() || poles.is_null() {
         return SPIR_INVALID_ARGUMENT;
     }
 
     let result = catch_unwind(AssertUnwindSafe(|| {
-        let dlr_ref = &*dlr;
+        let dlr_ref = unsafe { &*dlr };
 
         // Get poles based on DLR type
         let pole_vec = match &dlr_ref.inner {
@@ -244,7 +244,7 @@ pub unsafe extern "C" fn spir_dlr_get_poles(dlr: *const spir_basis, poles: *mut 
 
         // Copy poles to output array
         for (i, &pole) in pole_vec.iter().enumerate() {
-            *poles.add(i) = pole;
+            unsafe { *poles.add(i) = pole; }
         }
 
         SPIR_COMPUTATION_SUCCESS
@@ -273,7 +273,7 @@ pub unsafe extern "C" fn spir_dlr_get_poles(dlr: *const spir_basis, poles: *mut 
 ///
 /// # Safety
 /// Caller must ensure pointers are valid and arrays have correct sizes
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_ir2dlr_dd(
     dlr: *const spir_basis,
     order: libc::c_int,
@@ -297,8 +297,8 @@ pub unsafe extern "C" fn spir_ir2dlr_dd(
             Err(_) => return SPIR_INVALID_ARGUMENT,
         };
 
-        let dlr_ref = &*dlr;
-        let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
+        let dlr_ref = unsafe { &*dlr };
+        let dims_slice = unsafe { std::slice::from_raw_parts(input_dims, ndim as usize) };
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
 
         // Convert dims and target_dim for row-major mdarray
@@ -307,7 +307,7 @@ pub unsafe extern "C" fn spir_ir2dlr_dd(
 
         // Calculate total input size
         let total_input: usize = dims.iter().product();
-        let input_slice = std::slice::from_raw_parts(input, total_input);
+        let input_slice = unsafe { std::slice::from_raw_parts(input, total_input) };
 
         // Create input tensor
         let input_vec: Vec<f64> = input_slice.to_vec();
@@ -324,7 +324,7 @@ pub unsafe extern "C" fn spir_ir2dlr_dd(
         };
 
         // Copy result to output
-        copy_tensor_to_c_array(result_tensor, out);
+        unsafe { copy_tensor_to_c_array(result_tensor, out); }
 
         SPIR_COMPUTATION_SUCCESS
     }));
@@ -348,7 +348,7 @@ pub unsafe extern "C" fn spir_ir2dlr_dd(
 ///
 /// # Safety
 /// Caller must ensure pointers are valid and arrays have correct sizes
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_ir2dlr_zz(
     dlr: *const spir_basis,
     order: libc::c_int,
@@ -372,8 +372,8 @@ pub unsafe extern "C" fn spir_ir2dlr_zz(
             Err(_) => return SPIR_INVALID_ARGUMENT,
         };
 
-        let dlr_ref = &*dlr;
-        let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
+        let dlr_ref = unsafe { &*dlr };
+        let dims_slice = unsafe { std::slice::from_raw_parts(input_dims, ndim as usize) };
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
 
         // Convert dims and target_dim for row-major mdarray
@@ -382,7 +382,7 @@ pub unsafe extern "C" fn spir_ir2dlr_zz(
 
         // Calculate total input size
         let total_input: usize = dims.iter().product();
-        let input_slice = std::slice::from_raw_parts(input, total_input);
+        let input_slice = unsafe { std::slice::from_raw_parts(input, total_input) };
 
         // Create input tensor
         let input_vec: Vec<Complex64> = input_slice.to_vec();
@@ -399,7 +399,7 @@ pub unsafe extern "C" fn spir_ir2dlr_zz(
         };
 
         // Copy result to output
-        copy_tensor_to_c_array(result_tensor, out);
+        unsafe { copy_tensor_to_c_array(result_tensor, out); }
 
         SPIR_COMPUTATION_SUCCESS
     }));
@@ -423,7 +423,7 @@ pub unsafe extern "C" fn spir_ir2dlr_zz(
 ///
 /// # Safety
 /// Caller must ensure pointers are valid and arrays have correct sizes
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_dlr2ir_dd(
     dlr: *const spir_basis,
     order: libc::c_int,
@@ -447,8 +447,8 @@ pub unsafe extern "C" fn spir_dlr2ir_dd(
             Err(_) => return SPIR_INVALID_ARGUMENT,
         };
 
-        let dlr_ref = &*dlr;
-        let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
+        let dlr_ref = unsafe { &*dlr };
+        let dims_slice = unsafe { std::slice::from_raw_parts(input_dims, ndim as usize) };
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
 
         // Convert dims and target_dim for row-major mdarray
@@ -457,7 +457,7 @@ pub unsafe extern "C" fn spir_dlr2ir_dd(
 
         // Calculate total input size
         let total_input: usize = dims.iter().product();
-        let input_slice = std::slice::from_raw_parts(input, total_input);
+        let input_slice = unsafe { std::slice::from_raw_parts(input, total_input) };
 
         // Create input tensor
         let input_vec: Vec<f64> = input_slice.to_vec();
@@ -474,7 +474,7 @@ pub unsafe extern "C" fn spir_dlr2ir_dd(
         };
 
         // Copy result to output
-        copy_tensor_to_c_array(result_tensor, out);
+        unsafe { copy_tensor_to_c_array(result_tensor, out); }
 
         SPIR_COMPUTATION_SUCCESS
     }));
@@ -498,7 +498,7 @@ pub unsafe extern "C" fn spir_dlr2ir_dd(
 ///
 /// # Safety
 /// Caller must ensure pointers are valid and arrays have correct sizes
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn spir_dlr2ir_zz(
     dlr: *const spir_basis,
     order: libc::c_int,
@@ -522,8 +522,8 @@ pub unsafe extern "C" fn spir_dlr2ir_zz(
             Err(_) => return SPIR_INVALID_ARGUMENT,
         };
 
-        let dlr_ref = &*dlr;
-        let dims_slice = std::slice::from_raw_parts(input_dims, ndim as usize);
+        let dlr_ref = unsafe { &*dlr };
+        let dims_slice = unsafe { std::slice::from_raw_parts(input_dims, ndim as usize) };
         let orig_dims: Vec<usize> = dims_slice.iter().map(|&d| d as usize).collect();
 
         // Convert dims and target_dim for row-major mdarray
@@ -532,7 +532,7 @@ pub unsafe extern "C" fn spir_dlr2ir_zz(
 
         // Calculate total input size
         let total_input: usize = dims.iter().product();
-        let input_slice = std::slice::from_raw_parts(input, total_input);
+        let input_slice = unsafe { std::slice::from_raw_parts(input, total_input) };
 
         // Create input tensor
         let input_vec: Vec<Complex64> = input_slice.to_vec();
@@ -549,7 +549,7 @@ pub unsafe extern "C" fn spir_dlr2ir_zz(
         };
 
         // Copy result to output
-        copy_tensor_to_c_array(result_tensor, out);
+        unsafe { copy_tensor_to_c_array(result_tensor, out); }
 
         SPIR_COMPUTATION_SUCCESS
     }));
