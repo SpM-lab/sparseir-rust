@@ -220,9 +220,9 @@ fn test_legendre_custom_f64() {
 
 #[test]
 fn test_legendre_twofloat() {
-    // Test legendre_twofloat function with TwoFloat
+    // Test legendre_twofloat function with Df64
     for n in 1..=3 {
-        // Smaller range for TwoFloat due to complexity
+        // Smaller range for Df64 due to complexity
         let rule = legendre_twofloat(n);
         assert_eq!(rule.x.len(), n);
         assert_eq!(rule.w.len(), n);
@@ -257,7 +257,7 @@ fn test_rule_custom_methods() {
 
 #[test]
 fn test_rule_twofloat_methods() {
-    // Test with TwoFloat
+    // Test with Df64
     let x_tf = vec![TwoFloat::from(0.0), TwoFloat::from(1.0)];
     let w_tf = vec![TwoFloat::from(0.5), TwoFloat::from(0.5)];
 
@@ -265,7 +265,7 @@ fn test_rule_twofloat_methods() {
     assert!(rule_tf.validate_twofloat());
 }
 
-// ===== TwoFloat Gauss Integration Precision Tests =====
+// ===== Df64 Gauss Integration Precision Tests =====
 
 /// Test function: f(x) = {cos((π/2) * x)}²
 /// Integral over [-1, 1] should be exactly 1.0
@@ -283,7 +283,7 @@ fn analytical_integral() -> TwoFloat {
 
 #[test]
 fn test_twofloat_gauss_rule_validation() {
-    println!("TwoFloat Gauss Rule Validation Test");
+    println!("Df64 Gauss Rule Validation Test");
     println!("===================================");
 
     let test_points = vec![5, 10, 20, 50];
@@ -333,7 +333,7 @@ fn test_twofloat_gauss_rule_validation() {
 
 #[test]
 fn test_twofloat_integration_convergence_analysis() {
-    println!("TwoFloat Integration Convergence Analysis");
+    println!("Df64 Integration Convergence Analysis");
     println!("========================================");
 
     let analytical = analytical_integral();
@@ -474,7 +474,7 @@ fn _test_interpolate_1d_legendre_sin_f64_high_precision() {
 #[test]
 #[ignore] // MOVED TO interpolation1d_tests.rs
 fn _test_interpolate_1d_legendre_sin_twofloat_ultra_high_precision() {
-    // Test ultra high-precision interpolation of sin(x) with TwoFloat
+    // Test ultra high-precision interpolation of sin(x) with Df64
     test_interpolate_1d_legendre_sin_generic::<TwoFloat>(
         200,                       // n_points (higher for better precision)
         TwoFloat::from_f64(1e-19), // tolerance: 1e-19 (achieved maximum precision)
@@ -625,7 +625,7 @@ fn legendre_polynomial(n: usize, x: f64) -> f64 {
     }
 }
 
-/// Helper function to compute Legendre polynomial with TwoFloat
+/// Helper function to compute Legendre polynomial with Df64
 fn legendre_polynomial_twofloat(n: usize, x: TwoFloat) -> TwoFloat {
     match n {
         0 => TwoFloat::from(1.0),
@@ -741,11 +741,11 @@ fn test_high_precision_legendre_f64() {
     }
 }
 
-/// Test high-precision Gauss-Legendre rule with TwoFloat
-/// Similar to C++ DDouble test but using TwoFloat
+/// Test high-precision Gauss-Legendre rule with Df64
+/// Similar to C++ DDouble test but using Df64
 #[test]
 fn test_high_precision_legendre_twofloat() {
-    let n = 6; // Smaller n for TwoFloat due to complexity
+    let n = 6; // Smaller n for Df64 due to complexity
     let rule = legendre_twofloat(n);
 
     // Check that the rule is valid
@@ -761,8 +761,8 @@ fn test_high_precision_legendre_twofloat() {
         assert!(rule.x[i] >= rule.x[i - 1]);
     }
 
-    // Check x_forward and x_backward consistency with TwoFloat precision
-    let tolerance = TwoFloat::from(1e-15); // Higher precision for TwoFloat
+    // Check x_forward and x_backward consistency with Df64 precision
+    let tolerance = TwoFloat::from(1e-15); // Higher precision for Df64
     for i in 0..rule.x.len() {
         let expected_forward = rule.x[i] - rule.a;
         let expected_backward = rule.b - rule.x[i];
@@ -826,10 +826,10 @@ fn test_legendre_polynomial_at_nodes() {
     }
 }
 
-/// Test Legendre polynomial evaluation with TwoFloat
+/// Test Legendre polynomial evaluation with Df64
 #[test]
 fn test_legendre_polynomial_twofloat_at_nodes() {
-    let n = 4; // Smaller n for TwoFloat
+    let n = 4; // Smaller n for Df64
     let rule = legendre_twofloat(n);
 
     // Test that P_0(x) = 1 at all nodes

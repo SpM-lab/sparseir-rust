@@ -1,12 +1,12 @@
 [package]
 name = "sparseir-rust"
-version = "0.1.0"
-edition = "2024"
-rust-version = "1.85"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
 description = "Rust implementation of SparseIR functionality"
-license = "MIT"
-repository = "https://github.com/sparseir-rust/sparseir-rust"
-authors = ["SparseIR Team"]
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
 
 # Library configuration for shared library
 [lib]
@@ -14,51 +14,52 @@ name = "sparseir_rust"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# Core linear algebra - mdarray with Faer backend (use same version as xprec-svd)
-mdarray = "0.7.1"
-mdarray-linalg = "0.1.1"
-mdarray-linalg-faer = "0.1.1"
+# Core linear algebra - mdarray with Faer backend
+mdarray.workspace = true
+mdarray-linalg = { path = "../mdarray-linalg/mdarray-linalg" }
+mdarray-linalg-faer = { path = "../mdarray-linalg/mdarray-linalg-faer" }
 
 # Faer - Pure Rust high-performance linear algebra
-faer = "0.23"
-faer-traits = "0.23"
+faer.workspace = true
+faer-traits.workspace = true
 
 # Extended precision
-twofloat = "0.2"
-num-complex = "0.4"
-num-traits = "0.2"
+xprec = { path = "../xprec-rs" }
+simba = "0.9"
+num-complex.workspace = true
+num-traits.workspace = true
 
 # High-precision arithmetic
-dashu-float = "0.4"
-dashu-base = "0.4"
+dashu-float.workspace = true
+dashu-base.workspace = true
 
 # Special functions
-special = "0.2"
-statrs = "0.16"
+special.workspace = true
+statrs.workspace = true
 
 # Error handling
-thiserror = "1.0"
+thiserror.workspace = true
 
-# High-precision SVD (internal dependency) - now mdarray-only
+# High-precision SVD (internal dependency)
 xprec-svd = { path = "../xprec-svd" }
 
 # Parallel processing
-rayon = "1.7"
+rayon.workspace = true
 
 # Lazy static initialization for GEMM dispatcher
-once_cell = "1.19"
+once_cell.workspace = true
 
 # C FFI types (for BLAS function pointers)
-libc = "0.2"
+libc.workspace = true
 
 [dev-dependencies]
-approx = "0.5"
-proptest = "1.0"
+approx.workspace = true
+proptest.workspace = true
 # Math functions
-libm = "0.2"
+libm.workspace = true
 
 # System BLAS for tests only (not used in library code)
-blas-sys = "0.7"
+blas-sys.workspace = true
 
 [build-dependencies]
 pkg-config = "0.3"

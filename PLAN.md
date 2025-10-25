@@ -623,6 +623,12 @@ blas = "0.22"             # BLAS bindings (default)
    - ⏳ Performance optimization based on real-world usage
    - ⏳ Additional language bindings if requested
 
+3. **Testing Improvements** ⏳
+   - ⏳ Add comprehensive tests to xprec-rs crate for Df64 precision validation
+   - ⏳ Note: Current numeric_tests.rs was removed as it should be part of xprec-rs
+   - ⏳ TODO: Implement high-precision reference tests using dashu for cos/sqrt functions
+   - ⏳ TODO: Add proper precision validation for xprec::Df64 mathematical functions
+
 **Key Achievements:**
 - **210+ comprehensive tests passing** (16 test suites, 0 failures)
 - **Julia SparseIR.jl validation**: Exact match for all singular values/functions

@@ -5,6 +5,13 @@
 
 use crate::TwoFloat;
 use num_traits::Float;
+use xprec::arith;
+use xprec::checks;
+use xprec::funcs;
+use xprec::circular;
+use xprec::exp;
+use xprec::hyperbolic;
+use xprec::consts;
 use std::fmt::Debug;
 use std::str::FromStr;
 
@@ -131,35 +138,35 @@ impl CustomNumeric for f64 {
     }
 
     fn abs(self) -> Self {
-        <Self as Float>::abs(self)
+        self.abs()
     }
 
     fn sqrt(self) -> Self {
-        <Self as Float>::sqrt(self)
+        self.sqrt()
     }
 
     fn cos(self) -> Self {
-        <Self as Float>::cos(self)
+        self.cos()
     }
 
     fn sin(self) -> Self {
-        <Self as Float>::sin(self)
+        self.sin()
     }
 
     fn exp(self) -> Self {
-        <Self as Float>::exp(self)
+        self.exp()
     }
 
     fn sinh(self) -> Self {
-        <Self as Float>::sinh(self)
+        self.sinh()
     }
 
     fn cosh(self) -> Self {
-        <Self as Float>::cosh(self)
+        self.cosh()
     }
 
     fn is_finite(self) -> bool {
-        <Self as Float>::is_finite(self)
+        self.is_finite()
     }
 
     fn pi() -> Self {
@@ -175,7 +182,7 @@ impl CustomNumeric for f64 {
     }
 }
 
-/// TwoFloat implementation of CustomNumeric
+/// Df64 implementation of CustomNumeric
 impl CustomNumeric for TwoFloat {
     fn from_f64(x: f64) -> Self {
         TwoFloat::from(x)
@@ -185,17 +192,17 @@ impl CustomNumeric for TwoFloat {
         // Use match to optimize conversion based on the source type
         // Note: Using TypeId for compile-time optimization, but falling back to safe conversion
         match std::any::TypeId::of::<U>() {
-            // For f64 to TwoFloat, use the conversion method
+            // For f64 to Df64, use the conversion method
             id if id == std::any::TypeId::of::<f64>() => {
-                // Safe: f64 to TwoFloat conversion
+                // Safe: f64 to Df64 conversion
                 let f64_value = value.to_f64();
                 Self::from_f64(f64_value)
             }
-            // For TwoFloat to TwoFloat, this is just a copy (no conversion needed)
+            // For Df64 to Df64, this is just a copy (no conversion needed)
             id if id == std::any::TypeId::of::<TwoFloat>() => {
-                // Safe: TwoFloat to TwoFloat conversion (copy)
-                let tf_value = value.to_f64(); // Convert to f64 first
-                Self::from_f64(tf_value) // Then back to TwoFloat
+                // Safe: Df64 to Df64 conversion (copy)
+                let df64_value = value.to_f64(); // Convert to f64 first
+                Self::from_f64(df64_value) // Then back to Df64
             }
             // Fallback: convert via f64 for unknown types
             _ => Self::from_f64(value.to_f64()),
@@ -203,11 +210,16 @@ impl CustomNumeric for TwoFloat {
     }
 
     fn to_f64(self) -> f64 {
-        self.to_f64()
+        // Use hi() and lo() methods for better precision
+        let hi = self.hi();
+        let lo = self.lo();
+        hi + lo
     }
 
     fn to_dbig(self, precision: usize) -> dashu_float::DBig {
-        let (hi, lo) = self.components();
+        // Use hi() and lo() methods for better precision
+        let hi = self.hi();
+        let lo = self.lo();
 
         let hi_dbig = dashu_float::DBig::from_str(&format!("{:.17e}", hi))
             .unwrap()
@@ -222,7 +234,7 @@ impl CustomNumeric for TwoFloat {
     }
 
     fn epsilon() -> Self {
-        TwoFloat::epsilon()
+        TwoFloat::from(xprec::Df64::EPSILON)
     }
 
     fn zero() -> Self {
@@ -230,39 +242,39 @@ impl CustomNumeric for TwoFloat {
     }
 
     fn abs(self) -> Self {
-        <Self as Float>::abs(self)
+        TwoFloat::from(funcs::abs(TwoFloat::from(self)))
     }
 
     fn sqrt(self) -> Self {
-        <Self as Float>::sqrt(self)
+        TwoFloat::from(arith::sqrt_q(TwoFloat::from(self)))
     }
 
     fn cos(self) -> Self {
-        <Self as Float>::cos(self)
+        TwoFloat::from(circular::cos(TwoFloat::from(self)))
     }
 
     fn sin(self) -> Self {
-        <Self as Float>::sin(self)
+        TwoFloat::from(circular::sin(TwoFloat::from(self)))
     }
 
     fn exp(self) -> Self {
-        <Self as Float>::exp(self)
+        TwoFloat::from(exp::exp(TwoFloat::from(self)))
     }
 
     fn sinh(self) -> Self {
-        <Self as Float>::sinh(self)
+        TwoFloat::from(hyperbolic::sinh(TwoFloat::from(self)))
     }
 
     fn cosh(self) -> Self {
-        <Self as Float>::cosh(self)
+        TwoFloat::from(hyperbolic::cosh(TwoFloat::from(self)))
     }
 
     fn is_finite(self) -> bool {
-        <Self as Float>::is_finite(self)
+        checks::is_finite(TwoFloat::from(self))
     }
 
     fn pi() -> Self {
-        TwoFloat::pi()
+        TwoFloat::from(consts::PI)
     }
 
     fn max(self, other: Self) -> Self {
@@ -271,7 +283,7 @@ impl CustomNumeric for TwoFloat {
 
     fn is_valid(&self) -> bool {
         let value = *self;
-        <Self as Float>::is_finite(value) && !<Self as Float>::is_nan(value)
+        value.is_finite() && !f64::from(value).is_nan()
     }
 }
 
@@ -351,7 +363,3 @@ mod tests {
     }
 }
 
-// Additional tests for numeric precision
-#[cfg(test)]
-#[path = "numeric_tests.rs"]
-mod numeric_tests;

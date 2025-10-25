@@ -413,9 +413,9 @@ where
     }
 }
 
-/// TwoFloat-specific implementation without ScalarOperand requirement
+/// Df64-specific implementation without ScalarOperand requirement
 impl Rule<crate::TwoFloat> {
-    /// Create a new quadrature rule from points and weights (TwoFloat version).
+    /// Create a new quadrature rule from points and weights (Df64 version).
     pub fn new_twofloat(
         x: Vec<crate::TwoFloat>,
         w: Vec<crate::TwoFloat>,
@@ -437,7 +437,7 @@ impl Rule<crate::TwoFloat> {
         }
     }
 
-    /// Create a new quadrature rule from vectors (TwoFloat version).
+    /// Create a new quadrature rule from vectors (Df64 version).
     pub fn from_vectors_twofloat(
         x: Vec<crate::TwoFloat>,
         w: Vec<crate::TwoFloat>,
@@ -447,7 +447,7 @@ impl Rule<crate::TwoFloat> {
         Self::new_twofloat(x, w, a, b)
     }
 
-    /// Reseat the rule to a new interval [a, b] (TwoFloat version).
+    /// Reseat the rule to a new interval [a, b] (Df64 version).
     pub fn reseat_twofloat(&self, a: crate::TwoFloat, b: crate::TwoFloat) -> Self {
         let scaling = (b - a) / (self.b - self.a);
         let midpoint_old = (self.b + self.a) * <crate::TwoFloat as CustomNumeric>::from_f64(0.5);
@@ -475,7 +475,7 @@ impl Rule<crate::TwoFloat> {
         }
     }
 
-    /// Scale the weights by a factor (TwoFloat version).
+    /// Scale the weights by a factor (Df64 version).
     pub fn scale_twofloat(&self, factor: crate::TwoFloat) -> Self {
         Self {
             x: self.x.clone(),
@@ -487,7 +487,7 @@ impl Rule<crate::TwoFloat> {
         }
     }
 
-    /// Validate the rule for consistency (TwoFloat version).
+    /// Validate the rule for consistency (Df64 version).
     pub fn validate_twofloat(&self) -> bool {
         // Check interval validity
         if self.a >= self.b {
@@ -703,8 +703,8 @@ where
 
     for i in 0..m {
         // Initial guess using Chebyshev nodes
-        // Note: TwoFloat's cos() has only f64-level precision (~15-16 digits), not the full
-        // theoretical 30-digit precision. This limits TwoFloat interpolation accuracy to ~1e-16,
+        // Note: Df64's cos() has only f64-level precision (~15-16 digits), not the full
+        // theoretical 30-digit precision. This limits Df64 interpolation accuracy to ~1e-16,
         // not the 1e-30 that might be theoretically possible with perfect double-double arithmetic.
         let mut z = (pi * <T as CustomNumeric>::from_f64(i as f64 + 0.75)
             / <T as CustomNumeric>::from_f64(n as f64 + 0.5))
@@ -808,7 +808,7 @@ where
     )
 }
 
-/// Create a Gauss-Legendre quadrature rule with n points on [-1, 1] (TwoFloat version).
+/// Create a Gauss-Legendre quadrature rule with n points on [-1, 1] (Df64 version).
 pub fn legendre_twofloat(n: usize) -> Rule<crate::TwoFloat> {
     if n == 0 {
         return Rule::new_twofloat(
@@ -880,7 +880,7 @@ pub fn legendre_generic<T: CustomNumeric + 'static>(n: usize) -> Rule<T> {
             T::from_f64(rule_f64.b),
         )
     } else {
-        // For TwoFloat, use legendre_twofloat
+        // For Df64, use legendre_twofloat
         let rule_tf = legendre_twofloat(n);
         Rule::new(
             rule_tf.x.iter().map(|&x| T::convert_from(x)).collect(),

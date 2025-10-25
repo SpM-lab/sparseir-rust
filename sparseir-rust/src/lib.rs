@@ -59,7 +59,7 @@ pub use traits::{Bosonic, Fermionic, Statistics, StatisticsMarker, StatisticsTyp
 
 // Re-export external dependencies for convenience
 pub use mdarray::{DTensor, DynRank, Tensor};
-pub use xprec_svd::precision::Df64Precision as TwoFloat;
+pub use xprec::Df64 as TwoFloat;
 
 // Test utilities (only available in test mode)
 #[cfg(test)]
