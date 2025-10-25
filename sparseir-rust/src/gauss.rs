@@ -10,6 +10,7 @@
 //! with the number of quadrature points.
 
 use crate::numeric::CustomNumeric;
+use simba::scalar::ComplexField;
 use std::fmt::Debug;
 
 /// Quadrature rule for numerical integration.
@@ -75,8 +76,8 @@ where
             w: vec![],
             x_forward: vec![],
             x_backward: vec![],
-            a: <T as CustomNumeric>::from_f64(-1.0),
-            b: <T as CustomNumeric>::from_f64(1.0),
+            a: <T as CustomNumeric>::from_f64_unchecked(-1.0),
+            b: <T as CustomNumeric>::from_f64_unchecked(1.0),
         }
     }
 
@@ -85,8 +86,8 @@ where
     /// Scales and translates the quadrature points and weights to the new interval.
     pub fn reseat(&self, a: T, b: T) -> Self {
         let scaling = (b - a) / (self.b - self.a);
-        let midpoint_old = (self.b + self.a) * <T as CustomNumeric>::from_f64(0.5);
-        let midpoint_new = (b + a) * <T as CustomNumeric>::from_f64(0.5);
+        let midpoint_old = (self.b + self.a) * <T as CustomNumeric>::from_f64_unchecked(0.5);
+        let midpoint_new = (b + a) * <T as CustomNumeric>::from_f64_unchecked(0.5);
 
         // Transform x: scaling * (xi - midpoint_old) + midpoint_new
         let new_x: Vec<T> = self
@@ -165,7 +166,7 @@ where
 
         // Check that rules are contiguous
         for i in 1..rules.len() {
-            if (rules[i].a - rules[i - 1].b).abs() > T::epsilon() {
+            if (rules[i].a - rules[i - 1].b).abs_as_same_type() > T::epsilon() {
                 panic!("rules must be contiguous");
             }
         }
@@ -221,25 +222,25 @@ where
         let x: Vec<U> = self
             .x
             .iter()
-            .map(|&xi| <U as CustomNumeric>::from_f64(xi.to_f64()))
+            .map(|&xi| <U as CustomNumeric>::from_f64_unchecked(xi.to_f64()))
             .collect();
         let w: Vec<U> = self
             .w
             .iter()
-            .map(|&wi| <U as CustomNumeric>::from_f64(wi.to_f64()))
+            .map(|&wi| <U as CustomNumeric>::from_f64_unchecked(wi.to_f64()))
             .collect();
         let x_forward: Vec<U> = self
             .x_forward
             .iter()
-            .map(|&xi| <U as CustomNumeric>::from_f64(xi.to_f64()))
+            .map(|&xi| <U as CustomNumeric>::from_f64_unchecked(xi.to_f64()))
             .collect();
         let x_backward: Vec<U> = self
             .x_backward
             .iter()
-            .map(|&xi| <U as CustomNumeric>::from_f64(xi.to_f64()))
+            .map(|&xi| <U as CustomNumeric>::from_f64_unchecked(xi.to_f64()))
             .collect();
-        let a = <U as CustomNumeric>::from_f64(self.a.to_f64());
-        let b = <U as CustomNumeric>::from_f64(self.b.to_f64());
+        let a = <U as CustomNumeric>::from_f64_unchecked(self.a.to_f64());
+        let b = <U as CustomNumeric>::from_f64_unchecked(self.b.to_f64());
 
         Rule {
             x,
@@ -289,10 +290,10 @@ where
             let expected_forward = self.x[i] - self.a;
             let expected_backward = self.b - self.x[i];
 
-            if (self.x_forward[i] - expected_forward).abs() > T::epsilon() {
+            if (self.x_forward[i] - expected_forward).abs_as_same_type() > T::epsilon() {
                 return false;
             }
-            if (self.x_backward[i] - expected_backward).abs() > T::epsilon() {
+            if (self.x_backward[i] - expected_backward).abs_as_same_type() > T::epsilon() {
                 return false;
             }
         }
@@ -331,8 +332,8 @@ where
     /// Reseat the rule to a new interval [a, b] (CustomNumeric version).
     pub fn reseat_custom(&self, a: T, b: T) -> Self {
         let scaling = (b - a) / (self.b - self.a);
-        let midpoint_old = (self.b + self.a) * <T as CustomNumeric>::from_f64(0.5);
-        let midpoint_new = (b + a) * <T as CustomNumeric>::from_f64(0.5);
+        let midpoint_old = (self.b + self.a) * <T as CustomNumeric>::from_f64_unchecked(0.5);
+        let midpoint_new = (b + a) * <T as CustomNumeric>::from_f64_unchecked(0.5);
 
         // Transform x: scaling * (xi - midpoint_old) + midpoint_new
         let new_x: Vec<T> = self
@@ -401,10 +402,10 @@ where
             let expected_forward = self.x[i] - self.a;
             let expected_backward = self.b - self.x[i];
 
-            if (self.x_forward[i] - expected_forward).abs() > T::epsilon() {
+            if (self.x_forward[i] - expected_forward).abs_as_same_type() > T::epsilon() {
                 return false;
             }
-            if (self.x_backward[i] - expected_backward).abs() > T::epsilon() {
+            if (self.x_backward[i] - expected_backward).abs_as_same_type() > T::epsilon() {
                 return false;
             }
         }
@@ -450,8 +451,8 @@ impl Rule<crate::TwoFloat> {
     /// Reseat the rule to a new interval [a, b] (Df64 version).
     pub fn reseat_twofloat(&self, a: crate::TwoFloat, b: crate::TwoFloat) -> Self {
         let scaling = (b - a) / (self.b - self.a);
-        let midpoint_old = (self.b + self.a) * <crate::TwoFloat as CustomNumeric>::from_f64(0.5);
-        let midpoint_new = (b + a) * <crate::TwoFloat as CustomNumeric>::from_f64(0.5);
+        let midpoint_old = (self.b + self.a) * <crate::TwoFloat as CustomNumeric>::from_f64_unchecked(0.5);
+        let midpoint_new = (b + a) * <crate::TwoFloat as CustomNumeric>::from_f64_unchecked(0.5);
 
         // Transform x: scaling * (xi - midpoint_old) + midpoint_new
         let new_x: Vec<crate::TwoFloat> = self
@@ -548,8 +549,8 @@ where
 
     if n == 1 {
         return (
-            vec![<T as CustomNumeric>::from_f64(0.0)],
-            vec![<T as CustomNumeric>::from_f64(2.0)],
+            vec![<T as CustomNumeric>::from_f64_unchecked(0.0)],
+            vec![<T as CustomNumeric>::from_f64_unchecked(2.0)],
         );
     }
 
@@ -564,10 +565,10 @@ where
 
     for i in 0..m {
         // Convert integers directly to avoid f64 intermediate
-        let i_val = <T as CustomNumeric>::from_f64(i as f64);
-        let n_val = <T as CustomNumeric>::from_f64(n as f64);
-        let three_quarters = <T as CustomNumeric>::from_f64(0.75);
-        let half = <T as CustomNumeric>::from_f64(0.5);
+        let i_val = <T as CustomNumeric>::from_f64_unchecked(i as f64);
+        let n_val = <T as CustomNumeric>::from_f64_unchecked(n as f64);
+        let three_quarters = <T as CustomNumeric>::from_f64_unchecked(0.75);
+        let half = <T as CustomNumeric>::from_f64_unchecked(0.5);
 
         // Initial guess using Chebyshev nodes
         let mut z = (pi * (i_val + three_quarters) / (n_val + half)).cos();
@@ -575,15 +576,15 @@ where
         // Newton's method to refine the root
         for _ in 0..10 {
             let (p0, p1) = legendre_polynomial_and_derivative(n, z);
-            if p0.abs() < T::epsilon() {
+            if p0.abs_as_same_type() < T::epsilon() {
                 break;
             }
             z = z - p0 / p1;
         }
 
         // Compute weight using high-precision constants
-        let two = <T as CustomNumeric>::from_f64(2.0);
-        let one = <T as CustomNumeric>::from_f64(1.0);
+        let two = <T as CustomNumeric>::from_f64_unchecked(2.0);
+        let one = <T as CustomNumeric>::from_f64_unchecked(1.0);
         let (_, p1) = legendre_polynomial_and_derivative(n, z);
         let weight = two / ((one - z * z) * p1 * p1);
 
@@ -613,33 +614,33 @@ where
 {
     if n == 0 {
         return (
-            <T as CustomNumeric>::from_f64(1.0),
-            <T as CustomNumeric>::from_f64(0.0),
+            <T as CustomNumeric>::from_f64_unchecked(1.0),
+            <T as CustomNumeric>::from_f64_unchecked(0.0),
         );
     }
 
     if n == 1 {
-        return (x, <T as CustomNumeric>::from_f64(1.0));
+        return (x, <T as CustomNumeric>::from_f64_unchecked(1.0));
     }
 
-    let mut p0 = <T as CustomNumeric>::from_f64(1.0);
+    let mut p0 = <T as CustomNumeric>::from_f64_unchecked(1.0);
     let mut p1 = x;
-    let mut dp0 = <T as CustomNumeric>::from_f64(0.0);
-    let mut dp1 = <T as CustomNumeric>::from_f64(1.0);
+    let mut dp0 = <T as CustomNumeric>::from_f64_unchecked(0.0);
+    let mut dp1 = <T as CustomNumeric>::from_f64_unchecked(1.0);
 
     for k in 2..=n {
-        let k_f = <T as CustomNumeric>::from_f64(k as f64);
-        let k1_f = <T as CustomNumeric>::from_f64((k - 1) as f64);
-        let _k2_f = <T as CustomNumeric>::from_f64((k - 2) as f64);
+        let k_f = <T as CustomNumeric>::from_f64_unchecked(k as f64);
+        let k1_f = <T as CustomNumeric>::from_f64_unchecked((k - 1) as f64);
+        let _k2_f = <T as CustomNumeric>::from_f64_unchecked((k - 2) as f64);
 
-        let p2 = ((<T as CustomNumeric>::from_f64(2.0) * k1_f
-            + <T as CustomNumeric>::from_f64(1.0))
+        let p2 = ((<T as CustomNumeric>::from_f64_unchecked(2.0) * k1_f
+            + <T as CustomNumeric>::from_f64_unchecked(1.0))
             * x
             * p1
             - k1_f * p0)
             / k_f;
-        let dp2 = ((<T as CustomNumeric>::from_f64(2.0) * k1_f
-            + <T as CustomNumeric>::from_f64(1.0))
+        let dp2 = ((<T as CustomNumeric>::from_f64_unchecked(2.0) * k1_f
+            + <T as CustomNumeric>::from_f64_unchecked(1.0))
             * (p1 + x * dp1)
             - k1_f * dp0)
             / k_f;
@@ -673,8 +674,8 @@ where
     Rule::from_vectors(
         x,
         w,
-        <T as CustomNumeric>::from_f64(-1.0),
-        <T as CustomNumeric>::from_f64(1.0),
+        <T as CustomNumeric>::from_f64_unchecked(-1.0),
+        <T as CustomNumeric>::from_f64_unchecked(1.0),
     )
 }
 
@@ -689,8 +690,8 @@ where
 
     if n == 1 {
         return (
-            vec![<T as CustomNumeric>::from_f64(0.0)],
-            vec![<T as CustomNumeric>::from_f64(2.0)],
+            vec![<T as CustomNumeric>::from_f64_unchecked(0.0)],
+            vec![<T as CustomNumeric>::from_f64_unchecked(2.0)],
         );
     }
 
@@ -699,21 +700,21 @@ where
 
     // Use Newton's method to find roots of Legendre polynomial
     let m = n.div_ceil(2);
-    let pi = <T as CustomNumeric>::from_f64(std::f64::consts::PI);
+    let pi = <T as CustomNumeric>::from_f64_unchecked(std::f64::consts::PI);
 
     for i in 0..m {
         // Initial guess using Chebyshev nodes
         // Note: Df64's cos() has only f64-level precision (~15-16 digits), not the full
         // theoretical 30-digit precision. This limits Df64 interpolation accuracy to ~1e-16,
         // not the 1e-30 that might be theoretically possible with perfect double-double arithmetic.
-        let mut z = (pi * <T as CustomNumeric>::from_f64(i as f64 + 0.75)
-            / <T as CustomNumeric>::from_f64(n as f64 + 0.5))
+        let mut z = (pi * <T as CustomNumeric>::from_f64_unchecked(i as f64 + 0.75)
+            / <T as CustomNumeric>::from_f64_unchecked(n as f64 + 0.5))
         .cos();
 
         // Newton's method to refine the root
         for _ in 0..10 {
             let (p0, p1) = legendre_polynomial_and_derivative_custom(n, z);
-            if p0.abs() < T::epsilon() {
+            if p0.abs_as_same_type() < T::epsilon() {
                 break;
             }
             z = z - p0 / p1;
@@ -721,8 +722,8 @@ where
 
         // Compute weight
         let (_, p1) = legendre_polynomial_and_derivative_custom(n, z);
-        let weight = <T as CustomNumeric>::from_f64(2.0)
-            / ((<T as CustomNumeric>::from_f64(1.0) - z * z) * p1 * p1);
+        let weight = <T as CustomNumeric>::from_f64_unchecked(2.0)
+            / ((<T as CustomNumeric>::from_f64_unchecked(1.0) - z * z) * p1 * p1);
 
         x.push(-z);
         w.push(weight);
@@ -750,27 +751,27 @@ where
 {
     if n == 0 {
         return (
-            <T as CustomNumeric>::from_f64(1.0),
-            <T as CustomNumeric>::from_f64(0.0),
+            <T as CustomNumeric>::from_f64_unchecked(1.0),
+            <T as CustomNumeric>::from_f64_unchecked(0.0),
         );
     }
 
     if n == 1 {
-        return (x, <T as CustomNumeric>::from_f64(1.0));
+        return (x, <T as CustomNumeric>::from_f64_unchecked(1.0));
     }
 
-    let mut p0 = <T as CustomNumeric>::from_f64(1.0);
+    let mut p0 = <T as CustomNumeric>::from_f64_unchecked(1.0);
     let mut p1 = x;
-    let mut dp0 = <T as CustomNumeric>::from_f64(0.0);
-    let mut dp1 = <T as CustomNumeric>::from_f64(1.0);
+    let mut dp0 = <T as CustomNumeric>::from_f64_unchecked(0.0);
+    let mut dp1 = <T as CustomNumeric>::from_f64_unchecked(1.0);
 
     for k in 2..=n {
-        let k_f = <T as CustomNumeric>::from_f64(k as f64);
-        let k1_f = <T as CustomNumeric>::from_f64((k - 1) as f64);
-        let _k2_f = <T as CustomNumeric>::from_f64((k - 2) as f64);
+        let k_f = <T as CustomNumeric>::from_f64_unchecked(k as f64);
+        let k1_f = <T as CustomNumeric>::from_f64_unchecked((k - 1) as f64);
+        let _k2_f = <T as CustomNumeric>::from_f64_unchecked((k - 2) as f64);
 
-        let two = <T as CustomNumeric>::from_f64(2.0);
-        let one = <T as CustomNumeric>::from_f64(1.0);
+        let two = <T as CustomNumeric>::from_f64_unchecked(2.0);
+        let one = <T as CustomNumeric>::from_f64_unchecked(1.0);
 
         let p2 = ((two * k1_f + one) * x * p1 - k1_f * p0) / k_f;
         let dp2 = ((two * k1_f + one) * (p1 + x * dp1) - k1_f * dp0) / k_f;
@@ -793,8 +794,8 @@ where
         return Rule::new_custom(
             vec![],
             vec![],
-            <T as CustomNumeric>::from_f64(-1.0),
-            <T as CustomNumeric>::from_f64(1.0),
+            <T as CustomNumeric>::from_f64_unchecked(-1.0),
+            <T as CustomNumeric>::from_f64_unchecked(1.0),
         );
     }
 
@@ -803,8 +804,8 @@ where
     Rule::from_vectors_custom(
         x,
         w,
-        <T as CustomNumeric>::from_f64(-1.0),
-        <T as CustomNumeric>::from_f64(1.0),
+        <T as CustomNumeric>::from_f64_unchecked(-1.0),
+        <T as CustomNumeric>::from_f64_unchecked(1.0),
     )
 }
 
@@ -814,8 +815,8 @@ pub fn legendre_twofloat(n: usize) -> Rule<crate::TwoFloat> {
         return Rule::new_twofloat(
             vec![],
             vec![],
-            <crate::TwoFloat as CustomNumeric>::from_f64(-1.0),
-            <crate::TwoFloat as CustomNumeric>::from_f64(1.0),
+            <crate::TwoFloat as CustomNumeric>::from_f64_unchecked(-1.0),
+            <crate::TwoFloat as CustomNumeric>::from_f64_unchecked(1.0),
         );
     }
 
@@ -824,8 +825,8 @@ pub fn legendre_twofloat(n: usize) -> Rule<crate::TwoFloat> {
     Rule::from_vectors_twofloat(
         x,
         w,
-        <crate::TwoFloat as CustomNumeric>::from_f64(-1.0),
-        <crate::TwoFloat as CustomNumeric>::from_f64(1.0),
+        <crate::TwoFloat as CustomNumeric>::from_f64_unchecked(-1.0),
+        <crate::TwoFloat as CustomNumeric>::from_f64_unchecked(1.0),
     )
 }
 
@@ -845,7 +846,7 @@ pub fn legendre_vandermonde<T: CustomNumeric>(x: &[T], degree: usize) -> mdarray
 
     // First column is all ones (P_0(x) = 1)
     for i in 0..n {
-        v[[i, 0]] = T::from_f64(1.0);
+        v[[i, 0]] = T::from_f64_unchecked(1.0);
     }
 
     // Second column is x (P_1(x) = x)
@@ -859,9 +860,9 @@ pub fn legendre_vandermonde<T: CustomNumeric>(x: &[T], degree: usize) -> mdarray
     for j in 2..=degree {
         for i in 0..n {
             let n_f64 = j as f64;
-            let term1 = T::from_f64(2.0 * n_f64 - 1.0) * x[i] * v[[i, j - 1]];
-            let term2 = T::from_f64(n_f64 - 1.0) * v[[i, j - 2]];
-            v[[i, j]] = (term1 - term2) / T::from_f64(n_f64);
+            let term1 = T::from_f64_unchecked(2.0 * n_f64 - 1.0) * x[i] * v[[i, j - 1]];
+            let term2 = T::from_f64_unchecked(n_f64 - 1.0) * v[[i, j - 2]];
+            v[[i, j]] = (term1 - term2) / T::from_f64_unchecked(n_f64);
         }
     }
 
@@ -874,10 +875,10 @@ pub fn legendre_generic<T: CustomNumeric + 'static>(n: usize) -> Rule<T> {
         // For f64, use the existing legendre function
         let rule_f64 = legendre::<f64>(n);
         Rule::new(
-            rule_f64.x.iter().map(|&x| T::from_f64(x)).collect(),
-            rule_f64.w.iter().map(|&w| T::from_f64(w)).collect(),
-            T::from_f64(rule_f64.a),
-            T::from_f64(rule_f64.b),
+            rule_f64.x.iter().map(|&x| T::from_f64_unchecked(x)).collect(),
+            rule_f64.w.iter().map(|&w| T::from_f64_unchecked(w)).collect(),
+            T::from_f64_unchecked(rule_f64.a),
+            T::from_f64_unchecked(rule_f64.b),
         )
     } else {
         // For Df64, use legendre_twofloat
@@ -885,8 +886,8 @@ pub fn legendre_generic<T: CustomNumeric + 'static>(n: usize) -> Rule<T> {
         Rule::new(
             rule_tf.x.iter().map(|&x| T::convert_from(x)).collect(),
             rule_tf.w.iter().map(|&w| T::convert_from(w)).collect(),
-            T::from_f64(rule_tf.a.into()),
-            T::from_f64(rule_tf.b.into()),
+            T::from_f64_unchecked(rule_tf.a.into()),
+            T::from_f64_unchecked(rule_tf.b.into()),
         )
     }
 }

@@ -90,8 +90,8 @@ fn test_kernel_compute_precision_generic<K, T>(
     T: CustomNumeric,
 {
     // Convert inputs to type T
-    let x_t: T = T::from_f64(x);
-    let y_t: T = T::from_f64(y);
+    let x_t: T = T::from_f64_unchecked(x);
+    let y_t: T = T::from_f64_unchecked(y);
     let result_t = kernel.compute(x_t, y_t);
 
     // DBig version (high precision reference)
@@ -212,8 +212,8 @@ fn test_kernel_compute_reduced_precision_generic<K, T>(
     T: CustomNumeric,
 {
     // Convert inputs to type T
-    let x_t: T = T::from_f64(x);
-    let y_t: T = T::from_f64(y);
+    let x_t: T = T::from_f64_unchecked(x);
+    let y_t: T = T::from_f64_unchecked(y);
     let result_reduced_t = kernel.compute_reduced(x_t, y_t, symmetry);
 
     // DBig version (high precision reference)
@@ -316,7 +316,7 @@ fn test_compute_reduced_negative_y_works() {
 
     let result = kernel.compute_reduced(x, y_negative, SymmetryType::Even);
     assert!(
-        result.is_finite(),
+        f64::from(result).is_finite(),
         "compute_reduced should work for negative y"
     );
 }

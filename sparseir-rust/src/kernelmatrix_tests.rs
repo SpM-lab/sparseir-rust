@@ -99,8 +99,8 @@ fn test_kernel_interpolation_precision_generic<T, K>(
     // Test points within each segment (relative coordinates)
     let test_points_relative = vec![(0.1, 0.2), (0.4, 0.3), (0.7, 0.6), (0.9, 0.8)];
 
-    let mut max_error: T = T::from_f64(0.0);
-    let mut max_rel_error: T = T::from_f64(0.0);
+    let mut max_error: T = T::from_f64_unchecked(0.0);
+    let mut max_rel_error: T = T::from_f64_unchecked(0.0);
     let mut total_tests = 0;
 
     // Test each cell
@@ -113,11 +113,11 @@ fn test_kernel_interpolation_precision_generic<T, K>(
 
             // Test points in this cell
             for &(rel_x, rel_y) in &test_points_relative {
-                let x = x_min + T::from_f64(rel_x) * (x_max - x_min);
-                let y = y_min + T::from_f64(rel_y) * (y_max - y_min);
+                let x = x_min + T::from_f64_unchecked(rel_x) * (x_max - x_min);
+                let y = y_min + T::from_f64_unchecked(rel_y) * (y_max - y_min);
 
                 // Skip if point is outside kernel domain
-                if x > T::from_f64(kernel.xmax()) || y > T::from_f64(kernel.ymax()) {
+                if x > T::from_f64_unchecked(kernel.xmax()) || y > T::from_f64_unchecked(kernel.ymax()) {
                     continue;
                 }
 
@@ -127,9 +127,9 @@ fn test_kernel_interpolation_precision_generic<T, K>(
                 // Interpolated value
                 let interpolated_value: T = interpolated.evaluate(x, y);
 
-                let error: T = (direct_value - interpolated_value).abs();
-                let rel_error = if direct_value.abs() > T::from_f64(1e-12) {
-                    error / direct_value.abs()
+                let error: T = (direct_value - interpolated_value).abs_as_same_type();
+                let rel_error = if direct_value.abs_as_same_type() > T::from_f64_unchecked(1e-12) {
+                    error / direct_value.abs_as_same_type()
                 } else {
                     error
                 };
@@ -150,13 +150,13 @@ fn test_kernel_interpolation_precision_generic<T, K>(
     );
 
     assert!(
-        max_error < T::from_f64(tolerance_abs),
+        max_error < T::from_f64_unchecked(tolerance_abs),
         "Max absolute error {:.6e} exceeds tolerance {:.0e}",
         max_error.to_f64(),
         tolerance_abs
     );
     assert!(
-        max_rel_error < T::from_f64(tolerance_rel),
+        max_rel_error < T::from_f64_unchecked(tolerance_rel),
         "Max relative error {:.6e} exceeds tolerance {:.0e}",
         max_rel_error.to_f64(),
         tolerance_rel

@@ -225,20 +225,20 @@ impl KernelProperties for LogisticKernel {
 }
 
 pub fn compute_logistic_kernel<T: CustomNumeric>(lambda: f64, x: T, y: T) -> T {
-    let x_plus: T = T::from_f64(1.0) + x;
-    let x_minus: T = T::from_f64(1.0) - x;
+    let x_plus: T = T::from_f64_unchecked(1.0) + x;
+    let x_minus: T = T::from_f64_unchecked(1.0) - x;
 
-    let u_plus: T = T::from_f64(0.5) * x_plus;
-    let u_minus: T = T::from_f64(0.5) * x_minus;
-    let v: T = T::from_f64(lambda) * y;
+    let u_plus: T = T::from_f64_unchecked(0.5) * x_plus;
+    let u_minus: T = T::from_f64_unchecked(0.5) * x_minus;
+    let v: T = T::from_f64_unchecked(lambda) * y;
 
-    let mabs_v: T = -v.abs();
-    let numerator: T = if v >= T::from_f64(0.0) {
+    let mabs_v: T = -v.abs_as_same_type();
+    let numerator: T = if v >= T::from_f64_unchecked(0.0) {
         (u_plus * mabs_v).exp()
     } else {
         (u_minus * mabs_v).exp()
     };
-    let denominator: T = T::from_f64(1.0) + mabs_v.exp();
+    let denominator: T = T::from_f64_unchecked(1.0) + mabs_v.exp();
     numerator / denominator
 }
 
@@ -246,7 +246,7 @@ fn compute_logistic_kernel_reduced_odd<T: CustomNumeric>(lambda: f64, x: T, y: T
     // For x * y around 0, antisymmetrization introduces cancellation, which
     // reduces the relative precision. To combat this, we replace the
     // values with the explicit form
-    let v_half: T = T::from_f64(lambda * 0.5) * y;
+    let v_half: T = T::from_f64_unchecked(lambda * 0.5) * y;
     let xy_small: bool = (x * v_half).to_f64() < 1.0;
     let cosh_finite: bool = v_half.to_f64() < 85.0;
     if xy_small && cosh_finite {
@@ -339,11 +339,11 @@ where
         let mut segments = Vec::with_capacity(nzeros + 1);
 
         // Add 0.0 endpoint
-        segments.push(<T as CustomNumeric>::from_f64(0.0));
+        segments.push(<T as CustomNumeric>::from_f64_unchecked(0.0));
 
         // Add positive zeros (already in [0, 1] range)
         for i in 0..nzeros {
-            segments.push(<T as CustomNumeric>::from_f64(zeros[i]));
+            segments.push(<T as CustomNumeric>::from_f64_unchecked(zeros[i]));
         }
 
         // Ensure segments are sorted in ascending order [0, ..., xmax]
@@ -400,16 +400,16 @@ where
         // Generate segments directly from negative zeros
         let mut segments: Vec<T> = Vec::new();
 
-        segments.push(<T as CustomNumeric>::from_f64(1.0));
+        segments.push(<T as CustomNumeric>::from_f64_unchecked(1.0));
 
         // Add absolute values of negative zeros
         for i in 0..nzeros {
             let abs_val = -zeros[i];
-            segments.push(<T as CustomNumeric>::from_f64(abs_val));
+            segments.push(<T as CustomNumeric>::from_f64_unchecked(abs_val));
         }
 
-        if segments[segments.len() - 1].abs() > T::epsilon() {
-            segments.push(<T as CustomNumeric>::from_f64(0.0));
+        if segments[segments.len() - 1].abs_as_same_type() > T::epsilon() {
+            segments.push(<T as CustomNumeric>::from_f64_unchecked(0.0));
         }
 
         // Sort in ascending order
@@ -495,27 +495,27 @@ impl RegularizedBoseKernel {
         // u_plus = (x + 1) / 2, u_minus = (1 - x) / 2
         // x_plus and x_minus are (x+1) and (1-x), so we need to multiply by 0.5
         let u_plus = x_plus
-            .map(|xp| T::from_f64(0.5) * xp)
-            .unwrap_or_else(|| T::from_f64(0.5) * (T::from_f64(1.0) + x));
+            .map(|xp| T::from_f64_unchecked(0.5) * xp)
+            .unwrap_or_else(|| T::from_f64_unchecked(0.5) * (T::from_f64_unchecked(1.0) + x));
         let u_minus = x_minus
-            .map(|xm| T::from_f64(0.5) * xm)
-            .unwrap_or_else(|| T::from_f64(0.5) * (T::from_f64(1.0) - x));
+            .map(|xm| T::from_f64_unchecked(0.5) * xm)
+            .unwrap_or_else(|| T::from_f64_unchecked(0.5) * (T::from_f64_unchecked(1.0) - x));
 
-        let v = T::from_f64(self.lambda) * y;
-        let absv = v.abs();
+        let v = T::from_f64_unchecked(self.lambda) * y;
+        let absv = v.abs_as_same_type();
 
         // Handle y ≈ 0 using Taylor expansion
         // K(x,y) = 1/Λ - xy/2 + (1/24)Λ(3x² - 1)y² + O(y³)
         // For |Λy| < 2e-14, use first-order approximation
         // This avoids division by zero when exp(-|Λy|) ≈ 1
         if absv.to_f64() < 2e-14 {
-            let term0 = T::from_f64(1.0 / self.lambda);
-            let term1 = T::from_f64(0.5) * x * y;
+            let term0 = T::from_f64_unchecked(1.0 / self.lambda);
+            let term1 = T::from_f64_unchecked(0.5) * x * y;
             return term0 - term1;
         }
 
         // enum_val = exp(-|v| * (v >= 0 ? u_plus : u_minus))
-        let enum_val = if v >= T::from_f64(0.0) {
+        let enum_val = if v >= T::from_f64_unchecked(0.0) {
             (-absv * u_plus).exp()
         } else {
             (-absv * u_minus).exp()
@@ -525,11 +525,11 @@ impl RegularizedBoseKernel {
         // Follows C++ implementation using expm1 pattern
         // denom = absv / expm1(-absv) = absv / (exp(-absv) - 1)
         let exp_neg_absv = (-absv).exp();
-        let denom = absv / (exp_neg_absv - T::from_f64(1.0));
+        let denom = absv / (exp_neg_absv - T::from_f64_unchecked(1.0));
 
         // K(x, y) = -1/Λ * enum_val * denom
         // Since denom is negative (exp(-absv) < 1), final result is positive
-        T::from_f64(-1.0 / self.lambda) * enum_val * denom
+        T::from_f64_unchecked(-1.0 / self.lambda) * enum_val * denom
     }
 }
 
@@ -592,8 +592,8 @@ impl KernelProperties for RegularizedBoseKernel {
 
 impl CentrosymmKernel for RegularizedBoseKernel {
     fn compute<T: CustomNumeric + Copy + Debug>(&self, x: T, y: T) -> T {
-        let x_plus = Some(T::from_f64(1.0) + x);
-        let x_minus = Some(T::from_f64(1.0) - x);
+        let x_plus = Some(T::from_f64_unchecked(1.0) + x);
+        let x_minus = Some(T::from_f64_unchecked(1.0) - x);
         self.compute_impl(x, y, x_plus, x_minus)
     }
 
@@ -608,7 +608,7 @@ impl CentrosymmKernel for RegularizedBoseKernel {
             SymmetryType::Odd => {
                 // For RegularizedBoseKernel, use sinh formulation for numerical stability
                 // K(x,y) - K(x,-y) = -y * sinh(Λ y x / 2) / sinh(Λ y / 2)
-                let v_half = T::from_f64(self.lambda * 0.5) * y;
+                let v_half = T::from_f64_unchecked(self.lambda * 0.5) * y;
                 let xv_half = x * v_half;
                 let xy_small = xv_half.to_f64().abs() < 1.0;
                 let sinh_finite = v_half.to_f64().abs() < 85.0 && v_half.to_f64().abs() > 1e-200;
@@ -687,9 +687,9 @@ where
 
         // Create segments with only non-negative values: [0, zeros[0], zeros[1], ...]
         let mut segments = Vec::with_capacity(nzeros + 1);
-        segments.push(T::from_f64(0.0));
+        segments.push(T::from_f64_unchecked(0.0));
         for i in 0..nzeros {
-            segments.push(T::from_f64(zeros[i]));
+            segments.push(T::from_f64_unchecked(zeros[i]));
         }
 
         // Ensure sorted (should already be sorted, but verify)
@@ -728,11 +728,11 @@ where
         // After normalization and pop, zeros are in [0, 1) range
         // Create segments: [0, zeros[0], zeros[1], ..., 1]
         let mut segments = Vec::with_capacity(zeros.len() + 2);
-        segments.push(T::from_f64(0.0));
+        segments.push(T::from_f64_unchecked(0.0));
         for z in zeros {
-            segments.push(T::from_f64(z));
+            segments.push(T::from_f64_unchecked(z));
         }
-        segments.push(T::from_f64(1.0));
+        segments.push(T::from_f64_unchecked(1.0));
 
         // Ensure sorted (should already be sorted, but verify)
         segments.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));

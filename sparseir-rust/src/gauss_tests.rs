@@ -270,15 +270,15 @@ fn test_rule_twofloat_methods() {
 /// Test function: f(x) = {cos((π/2) * x)}²
 /// Integral over [-1, 1] should be exactly 1.0
 fn test_function(x: TwoFloat) -> TwoFloat {
-    let pi = TwoFloat::from_f64(std::f64::consts::PI);
-    let cos_val = (pi / TwoFloat::from_f64(2.0) * x).cos();
+    let pi = TwoFloat::from_f64_unchecked(std::f64::consts::PI);
+    let cos_val = (pi / TwoFloat::from_f64_unchecked(2.0) * x).cos();
     cos_val * cos_val
 }
 
 /// Analytical integral of f(x) = {cos((π/2) * x)}² over [-1, 1]
 /// ∫_{-1}^{1} cos²((π/2) * x) dx = 1.0
 fn analytical_integral() -> TwoFloat {
-    TwoFloat::from_f64(1.0)
+    TwoFloat::from_f64_unchecked(1.0)
 }
 
 #[test]
@@ -304,11 +304,11 @@ fn test_twofloat_gauss_rule_validation() {
         );
 
         // Check weight sum (should be 2.0 for [-1, 1])
-        let mut weight_sum = TwoFloat::from_f64(0.0);
+        let mut weight_sum = TwoFloat::from_f64_unchecked(0.0);
         for &w in rule.w.iter() {
             weight_sum += w;
         }
-        let expected_sum = TwoFloat::from_f64(2.0);
+        let expected_sum = TwoFloat::from_f64_unchecked(2.0);
         let weight_error = (weight_sum - expected_sum).abs();
 
         println!(
@@ -343,7 +343,7 @@ fn test_twofloat_integration_convergence_analysis() {
 
     for n in test_points {
         let rule = legendre_twofloat(n);
-        let mut integral = TwoFloat::from_f64(0.0);
+        let mut integral = TwoFloat::from_f64_unchecked(0.0);
 
         for i in 0..rule.x.len() {
             let f_val = test_function(rule.x[i]);
@@ -366,18 +366,18 @@ fn test_twofloat_integration_convergence_analysis() {
 /// Evaluate Legendre polynomial P_n(x) at point x
 fn evaluate_legendre_polynomial<T: CustomNumeric>(x: T, n: usize) -> T {
     if n == 0 {
-        T::from_f64(1.0)
+        T::from_f64_unchecked(1.0)
     } else if n == 1 {
         x
     } else {
-        let mut p_prev2 = T::from_f64(1.0);
+        let mut p_prev2 = T::from_f64_unchecked(1.0);
         let mut p_prev1 = x;
 
         for i in 2..=n {
             let i_f64 = i as f64;
-            let p_curr = ((T::from_f64(2.0 * i_f64 - 1.0) * x * p_prev1)
-                - (T::from_f64(i_f64 - 1.0) * p_prev2))
-                / T::from_f64(i_f64);
+            let p_curr = ((T::from_f64_unchecked(2.0 * i_f64 - 1.0) * x * p_prev1)
+                - (T::from_f64_unchecked(i_f64 - 1.0) * p_prev2))
+                / T::from_f64_unchecked(i_f64);
             p_prev2 = p_prev1;
             p_prev1 = p_curr;
         }
@@ -422,7 +422,7 @@ fn test_interpolate_1d_legendre_sin_generic<T: CustomNumeric + 'static>(
     T: std::fmt::Display,
 {
     // Create Gauss rule using generic function
-    let gauss_rule = legendre_generic::<T>(n_points).reseat(T::from_f64(-1.0), T::from_f64(1.0));
+    let gauss_rule = legendre_generic::<T>(n_points).reseat(T::from_f64_unchecked(-1.0), T::from_f64_unchecked(1.0));
 
     // Sample sin(x) at Gauss points
     let values: Vec<T> = gauss_rule.x.iter().map(|&x| x.sin()).collect();
@@ -435,7 +435,7 @@ fn test_interpolate_1d_legendre_sin_generic<T: CustomNumeric + 'static>(
         let expected = x_grid.sin();
         let interpolated = evaluate_interpolated_polynomial(x_grid, &coeffs);
         assert!(
-            (interpolated - expected).abs() < T::from_f64(1e-12),
+            (interpolated - expected).abs_as_same_type() < T::from_f64_unchecked(1e-12),
             "Interpolation failed at grid point {}: expected {}, got {}",
             x_grid,
             expected,
@@ -447,7 +447,7 @@ fn test_interpolate_1d_legendre_sin_generic<T: CustomNumeric + 'static>(
     for &x_test in &test_points {
         let expected = x_test.sin();
         let interpolated = evaluate_interpolated_polynomial(x_test, &coeffs);
-        let error = (interpolated - expected).abs();
+        let error = (interpolated - expected).abs_as_same_type();
         assert!(
             error < tolerance,
             "High-precision interpolation failed at point {}: expected {}, got {}, error={} > tolerance={}",
@@ -477,15 +477,15 @@ fn _test_interpolate_1d_legendre_sin_twofloat_ultra_high_precision() {
     // Test ultra high-precision interpolation of sin(x) with Df64
     test_interpolate_1d_legendre_sin_generic::<TwoFloat>(
         200,                       // n_points (higher for better precision)
-        TwoFloat::from_f64(1e-19), // tolerance: 1e-19 (achieved maximum precision)
+        TwoFloat::from_f64_unchecked(1e-19), // tolerance: 1e-19 (achieved maximum precision)
         vec![
-            TwoFloat::from_f64(-0.8),
-            TwoFloat::from_f64(-0.5),
-            TwoFloat::from_f64(-0.2),
-            TwoFloat::from_f64(0.1),
-            TwoFloat::from_f64(0.4),
-            TwoFloat::from_f64(0.7),
-            TwoFloat::from_f64(0.9),
+            TwoFloat::from_f64_unchecked(-0.8),
+            TwoFloat::from_f64_unchecked(-0.5),
+            TwoFloat::from_f64_unchecked(-0.2),
+            TwoFloat::from_f64_unchecked(0.1),
+            TwoFloat::from_f64_unchecked(0.4),
+            TwoFloat::from_f64_unchecked(0.7),
+            TwoFloat::from_f64_unchecked(0.9),
         ], // test_points
     );
 }
@@ -561,7 +561,7 @@ fn _test_interpolate_1d_legendre_fast() {
             for (i, &x_grid) in gauss_rule.x.iter().enumerate() {
                 let expected = func(x_grid);
                 let interpolated = evaluate_interpolated_polynomial(x_grid, &coeffs);
-                let error = (interpolated - expected).abs();
+                let error = (interpolated - expected).abs_as_same_type();
 
                 assert!(
                     error < 1e-12,

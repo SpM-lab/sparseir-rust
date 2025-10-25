@@ -86,7 +86,7 @@ where
 
     // 4. Truncate based on cutoff
     let rtol = cutoff.unwrap_or(2.0 * f64::EPSILON);
-    let rtol_t = T::from_f64(rtol);
+    let rtol_t = T::from_f64_unchecked(rtol);
     let (u_trunc, s_trunc, v_trunc) = truncate(u_list, s_list, v_list, rtol_t, max_num_svals);
 
     // 5. Post-process to create SVEResult
@@ -142,15 +142,15 @@ fn compute_svd_f64_xprec<T: CustomNumeric>(
     // Extract singular values from first row (mdarray-linalg stores in s[[0, i]])
     let min_dim = result.s.shape().0.min(result.s.shape().1);
     let s_vec: Vec<T> = (0..min_dim)
-        .map(|i| T::from_f64(result.s[[0, i]])) // First row, not diagonal!
+        .map(|i| T::from_f64_unchecked(result.s[[0, i]])) // First row, not diagonal!
         .collect();
 
     // Convert back to T
-    let u = DTensor::<T, 2>::from_fn(*result.u.shape(), |idx| T::from_f64(result.u[idx]));
+    let u = DTensor::<T, 2>::from_fn(*result.u.shape(), |idx| T::from_f64_unchecked(result.u[idx]));
 
     // mdarray-linalg returns vt (V^T), but we need v (V)
     // First convert vt to type T, then transpose
-    let vt = DTensor::<T, 2>::from_fn(*result.vt.shape(), |idx| T::from_f64(result.vt[idx]));
+    let vt = DTensor::<T, 2>::from_fn(*result.vt.shape(), |idx| T::from_f64_unchecked(result.vt[idx]));
     let v = vt.transpose().to_tensor(); // (V^T)^T = V
 
     (u, s_vec, v)
@@ -168,9 +168,9 @@ fn compute_svd_twofloat_xprec<T: CustomNumeric>(
     let result = xprec_svd::jacobi_svd(&matrix_twofloat);
 
     // Convert back to T (via f64 since TwoFloatPrecision needs to_f64())
-    let u = DTensor::<T, 2>::from_fn(*result.u.shape(), |idx| T::from_f64(result.u[idx].to_f64()));
-    let s: Vec<T> = result.s.iter().map(|x| T::from_f64(x.to_f64())).collect();
-    let v = DTensor::<T, 2>::from_fn(*result.v.shape(), |idx| T::from_f64(result.v[idx].to_f64()));
+    let u = DTensor::<T, 2>::from_fn(*result.u.shape(), |idx| T::from_f64_unchecked(result.u[idx].to_f64()));
+    let s: Vec<T> = result.s.iter().map(|x| T::from_f64_unchecked(x.to_f64())).collect();
+    let v = DTensor::<T, 2>::from_fn(*result.v.shape(), |idx| T::from_f64_unchecked(result.v[idx].to_f64()));
 
     (u, s, v)
 }
@@ -203,7 +203,7 @@ pub fn truncate<T: CustomNumeric>(
             panic!("max_num_svals must be non-negative");
         }
     }
-    if rtol < zero || rtol > T::from_f64(1.0) {
+    if rtol < zero || rtol > T::from_f64_unchecked(1.0) {
         panic!("rtol must be in [0, 1]");
     }
 

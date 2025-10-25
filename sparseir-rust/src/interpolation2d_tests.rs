@@ -2,6 +2,7 @@ use crate::gauss::legendre_generic;
 use crate::interpolation2d::{evaluate_2d_legendre_polynomial, interpolate_2d_legendre};
 use crate::{CustomNumeric, Interpolate2D, TwoFloat};
 use mdarray::DTensor;
+use simba::scalar::ComplexField;
 
 #[test]
 fn test_interpolate_2d_legendre_basic() {
@@ -60,12 +61,12 @@ fn test_interpolate_2d_quadratic_polynomial() {
     // Test with 2D quadratic function: f(x,y) = x^2 + y^2 + x*y
     // degree 3 (4 Gauss points) should exactly interpolate quadratic polynomials
     let gauss_x =
-        legendre_generic::<TwoFloat>(4).reseat(TwoFloat::from_f64(-1.0), TwoFloat::from_f64(1.0));
+        legendre_generic::<TwoFloat>(4).reseat(TwoFloat::from_f64_unchecked(-1.0), TwoFloat::from_f64_unchecked(1.0));
     let gauss_y =
-        legendre_generic::<TwoFloat>(4).reseat(TwoFloat::from_f64(-1.0), TwoFloat::from_f64(1.0));
+        legendre_generic::<TwoFloat>(4).reseat(TwoFloat::from_f64_unchecked(-1.0), TwoFloat::from_f64_unchecked(1.0));
 
     // Create test values for f(x,y) = x^2 + y^2 + x*y
-    let mut values = DTensor::<TwoFloat, 2>::from_elem([4, 4], <TwoFloat as CustomNumeric>::zero());
+    let mut values = DTensor::<TwoFloat, 2>::from_elem([4, 4], num_traits::Zero::zero());
     for i in 0..4 {
         for j in 0..4 {
             let x = gauss_x.x[i];
@@ -84,7 +85,7 @@ fn test_interpolate_2d_quadratic_polynomial() {
             let expected = x * x + y * y + x * y;
             let interpolated = evaluate_2d_legendre_polynomial(x, y, &coeffs, &gauss_x, &gauss_y);
             assert!(
-                (interpolated - expected).abs() < TwoFloat::from_f64(1e-12),
+                (interpolated - expected).abs() < TwoFloat::from_f64_unchecked(1e-12),
                 "Interpolation failed at ({}, {}): expected {}, got {}",
                 x,
                 y,
@@ -96,10 +97,10 @@ fn test_interpolate_2d_quadratic_polynomial() {
 
     // Test interpolation at intermediate points (should also be exact for quadratic)
     let test_points = vec![
-        (TwoFloat::from_f64(-0.5), TwoFloat::from_f64(-0.3)),
-        (TwoFloat::from_f64(0.0), TwoFloat::from_f64(0.0)),
-        (TwoFloat::from_f64(0.3), TwoFloat::from_f64(0.7)),
-        (TwoFloat::from_f64(0.8), TwoFloat::from_f64(-0.4)),
+        (TwoFloat::from_f64_unchecked(-0.5), TwoFloat::from_f64_unchecked(-0.3)),
+        (TwoFloat::from_f64_unchecked(0.0), TwoFloat::from_f64_unchecked(0.0)),
+        (TwoFloat::from_f64_unchecked(0.3), TwoFloat::from_f64_unchecked(0.7)),
+        (TwoFloat::from_f64_unchecked(0.8), TwoFloat::from_f64_unchecked(-0.4)),
     ];
 
     println!("TwoFloat 2D interpolation error analysis:");
@@ -110,7 +111,7 @@ fn test_interpolate_2d_quadratic_polynomial() {
         println!("Point ({}, {}): error = {}", x, y, error);
 
         assert!(
-            error < TwoFloat::from_f64(1e-14),
+            error < TwoFloat::from_f64_unchecked(1e-14),
             "Interpolation failed at ({}, {}): expected {}, got {}, error = {}",
             x,
             y,
@@ -133,11 +134,11 @@ fn test_interpolate2d_struct() {
 /// Generic test for Interpolate2D struct
 fn test_interpolate2d_struct_generic<T: CustomNumeric + 'static>() {
     let n = 3;
-    let gauss_x = legendre_generic::<T>(n).reseat(T::from_f64(-1.0), T::from_f64(1.0));
-    let gauss_y = legendre_generic::<T>(n).reseat(T::from_f64(-1.0), T::from_f64(1.0));
+    let gauss_x = legendre_generic::<T>(n).reseat(T::from_f64_unchecked(-1.0), T::from_f64_unchecked(1.0));
+    let gauss_y = legendre_generic::<T>(n).reseat(T::from_f64_unchecked(-1.0), T::from_f64_unchecked(1.0));
 
     // Create test function values: f(x,y) = x^2 + y^2
-    let mut values = DTensor::<T, 2>::from_elem([n, n], <T as CustomNumeric>::zero());
+    let mut values = DTensor::<T, 2>::from_elem([n, n], T::zero());
     for i in 0..n {
         for j in 0..n {
             let x = gauss_x.x[i];
@@ -151,10 +152,10 @@ fn test_interpolate2d_struct_generic<T: CustomNumeric + 'static>() {
 
     // Test domain
     let (x_min, x_max, y_min, y_max) = interp.domain();
-    assert_eq!(x_min, T::from_f64(-1.0));
-    assert_eq!(x_max, T::from_f64(1.0));
-    assert_eq!(y_min, T::from_f64(-1.0));
-    assert_eq!(y_max, T::from_f64(1.0));
+    assert_eq!(x_min, T::from_f64_unchecked(-1.0));
+    assert_eq!(x_max, T::from_f64_unchecked(1.0));
+    assert_eq!(y_min, T::from_f64_unchecked(-1.0));
+    assert_eq!(y_max, T::from_f64_unchecked(1.0));
     assert_eq!(interp.n_points_x(), n);
     assert_eq!(interp.n_points_y(), n);
 
@@ -165,11 +166,11 @@ fn test_interpolate2d_struct_generic<T: CustomNumeric + 'static>() {
             let y = gauss_y.x[j];
             let expected = x * x + y * y;
             let computed = interp.evaluate(x, y);
-            let error = (computed - expected).abs();
+            let error = (computed - expected).abs_as_same_type();
 
             // Should be very close at Gauss points
             assert!(
-                error < T::from_f64(1e-12),
+                error < T::from_f64_unchecked(1e-12),
                 "Interpolation error at Gauss point ({}, {}): {} > 1e-12",
                 i,
                 j,
@@ -180,20 +181,20 @@ fn test_interpolate2d_struct_generic<T: CustomNumeric + 'static>() {
 
     // Test evaluation at intermediate points
     let test_points = vec![
-        (T::from_f64(-0.5), T::from_f64(-0.3)),
-        (T::from_f64(0.0), T::from_f64(0.0)),
-        (T::from_f64(0.3), T::from_f64(0.7)),
-        (T::from_f64(0.8), T::from_f64(-0.4)),
+        (T::from_f64_unchecked(-0.5), T::from_f64_unchecked(-0.3)),
+        (T::from_f64_unchecked(0.0), T::from_f64_unchecked(0.0)),
+        (T::from_f64_unchecked(0.3), T::from_f64_unchecked(0.7)),
+        (T::from_f64_unchecked(0.8), T::from_f64_unchecked(-0.4)),
     ];
 
     for (x, y) in test_points {
         let expected = x * x + y * y;
         let computed = interp.evaluate(x, y);
-        let error = (computed - expected).abs();
+        let error = (computed - expected).abs_as_same_type();
 
         // Should have reasonable accuracy
         assert!(
-            error < T::from_f64(1e-8),
+            error < T::from_f64_unchecked(1e-8),
             "Interpolation error at ({}, {}): {} > 1e-8",
             x,
             y,

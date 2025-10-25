@@ -1,5 +1,7 @@
 //! Type definitions for SVE computation
 
+use simba::scalar::ComplexField;
+
 /// Working precision type for SVE computations
 ///
 /// Values match the C-API constants defined in sparseir.h

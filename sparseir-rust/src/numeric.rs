@@ -4,14 +4,7 @@
 //! for high-precision numerical computation in gauss quadrature and matrix operations.
 
 use crate::TwoFloat;
-use num_traits::Float;
-use xprec::arith;
-use xprec::checks;
-use xprec::funcs;
-use xprec::circular;
-use xprec::exp;
-use xprec::hyperbolic;
-use xprec::consts;
+use simba::scalar::ComplexField;
 use std::fmt::Debug;
 use std::str::FromStr;
 
@@ -19,6 +12,11 @@ use std::str::FromStr;
 ///
 /// This trait provides the essential numeric operations needed for gauss module
 /// and matrix_from_gauss functions. Supports both f64 and TwoFloat types.
+/// 
+/// Uses standard traits for common operations:
+/// - num_traits::Zero for zero()
+/// - simba::scalar::ComplexField for mathematical functions (abs, sqrt, cos, sin, exp, etc.)
+/// - ComplexField::is_finite() for is_finite()
 pub trait CustomNumeric:
     Copy
     + Debug
@@ -29,11 +27,14 @@ pub trait CustomNumeric:
     + std::ops::Mul<Output = Self>
     + std::ops::Div<Output = Self>
     + std::ops::Neg<Output = Self>
+    + num_traits::Zero                    // zero()
+    + simba::scalar::ComplexField         // abs, cos, sin, exp, sqrt, etc.
 {
     /// Convert from f64 to Self (direct conversion, no Option)
     ///
-    /// This is a static method that can be called as T::from_f64(x)
-    fn from_f64(x: f64) -> Self;
+    /// This is a static method that can be called as T::from_f64_unchecked(x)
+    /// Renamed to avoid conflict with num_traits::FromPrimitive::from_f64
+    fn from_f64_unchecked(x: f64) -> Self;
 
     /// Convert from any CustomNumeric type to Self (generic conversion)
     ///
@@ -53,46 +54,32 @@ pub trait CustomNumeric:
     /// Get machine epsilon
     fn epsilon() -> Self;
 
-    /// Get zero value
-    fn zero() -> Self;
-
-    /// Absolute value
-    fn abs(self) -> Self;
-
-    /// Square root
-    fn sqrt(self) -> Self;
-
-    /// Cosine function
-    fn cos(self) -> Self;
-
-    /// Sine function
-    fn sin(self) -> Self;
-
-    /// Exponential function
-    fn exp(self) -> Self;
-
-    /// Hyperbolic sine function
-    fn sinh(self) -> Self;
-
-    /// Hyperbolic cosine function
-    fn cosh(self) -> Self;
-
-    /// Check if value is finite
-    fn is_finite(self) -> bool;
-
     /// Get high-precision PI constant
     fn pi() -> Self;
 
-    /// Maximum of two values
+    /// Maximum of two values (not provided by ComplexField)
     fn max(self, other: Self) -> Self;
+
+    /// Minimum of two values (not provided by ComplexField)
+    fn min(self, other: Self) -> Self;
 
     /// Check if the value is valid (not NaN/infinite)
     fn is_valid(&self) -> bool;
+
+    /// Check if the value is finite (not NaN or infinite)
+
+    /// Get absolute value as the same type (convenience method)
+    ///
+    /// This method wraps ComplexField::abs() and converts the result back to Self
+    /// to avoid type conversion issues in generic code.
+    /// Note: Only abs() has this problem - other math functions (exp, cos, sin, sqrt) 
+    /// already return Self directly from ComplexField.
+    fn abs_as_same_type(self) -> Self;
 }
 
 /// f64 implementation of CustomNumeric
 impl CustomNumeric for f64 {
-    fn from_f64(x: f64) -> Self {
+    fn from_f64_unchecked(x: f64) -> Self {
         x
     }
 
@@ -133,42 +120,6 @@ impl CustomNumeric for f64 {
         f64::EPSILON
     }
 
-    fn zero() -> Self {
-        0.0
-    }
-
-    fn abs(self) -> Self {
-        self.abs()
-    }
-
-    fn sqrt(self) -> Self {
-        self.sqrt()
-    }
-
-    fn cos(self) -> Self {
-        self.cos()
-    }
-
-    fn sin(self) -> Self {
-        self.sin()
-    }
-
-    fn exp(self) -> Self {
-        self.exp()
-    }
-
-    fn sinh(self) -> Self {
-        self.sinh()
-    }
-
-    fn cosh(self) -> Self {
-        self.cosh()
-    }
-
-    fn is_finite(self) -> bool {
-        self.is_finite()
-    }
-
     fn pi() -> Self {
         std::f64::consts::PI
     }
@@ -177,14 +128,23 @@ impl CustomNumeric for f64 {
         self.max(other)
     }
 
+    fn min(self, other: Self) -> Self {
+        self.min(other)
+    }
+
     fn is_valid(&self) -> bool {
-        self.is_finite()
+        num_traits::Float::is_finite(*self)
+    }
+
+
+    fn abs_as_same_type(self) -> Self {
+        Self::convert_from(self.abs())
     }
 }
 
 /// Df64 implementation of CustomNumeric
 impl CustomNumeric for TwoFloat {
-    fn from_f64(x: f64) -> Self {
+    fn from_f64_unchecked(x: f64) -> Self {
         TwoFloat::from(x)
     }
 
@@ -196,16 +156,16 @@ impl CustomNumeric for TwoFloat {
             id if id == std::any::TypeId::of::<f64>() => {
                 // Safe: f64 to Df64 conversion
                 let f64_value = value.to_f64();
-                Self::from_f64(f64_value)
+                Self::from_f64_unchecked(f64_value)
             }
             // For Df64 to Df64, this is just a copy (no conversion needed)
             id if id == std::any::TypeId::of::<TwoFloat>() => {
                 // Safe: Df64 to Df64 conversion (copy)
                 let df64_value = value.to_f64(); // Convert to f64 first
-                Self::from_f64(df64_value) // Then back to Df64
+                Self::from_f64_unchecked(df64_value) // Then back to Df64
             }
             // Fallback: convert via f64 for unknown types
-            _ => Self::from_f64(value.to_f64()),
+            _ => Self::from_f64_unchecked(value.to_f64()),
         }
     }
 
@@ -234,56 +194,31 @@ impl CustomNumeric for TwoFloat {
     }
 
     fn epsilon() -> Self {
-        TwoFloat::from(xprec::Df64::EPSILON)
-    }
-
-    fn zero() -> Self {
-        TwoFloat::from(0.0)
-    }
-
-    fn abs(self) -> Self {
-        TwoFloat::from(funcs::abs(TwoFloat::from(self)))
-    }
-
-    fn sqrt(self) -> Self {
-        TwoFloat::from(arith::sqrt_q(TwoFloat::from(self)))
-    }
-
-    fn cos(self) -> Self {
-        TwoFloat::from(circular::cos(TwoFloat::from(self)))
-    }
-
-    fn sin(self) -> Self {
-        TwoFloat::from(circular::sin(TwoFloat::from(self)))
-    }
-
-    fn exp(self) -> Self {
-        TwoFloat::from(exp::exp(TwoFloat::from(self)))
-    }
-
-    fn sinh(self) -> Self {
-        TwoFloat::from(hyperbolic::sinh(TwoFloat::from(self)))
-    }
-
-    fn cosh(self) -> Self {
-        TwoFloat::from(hyperbolic::cosh(TwoFloat::from(self)))
-    }
-
-    fn is_finite(self) -> bool {
-        checks::is_finite(TwoFloat::from(self))
+        // Df64::EPSILON = f64::EPSILON * f64::EPSILON / 2.0
+        let epsilon_value = f64::EPSILON * f64::EPSILON / 2.0;
+        TwoFloat::from(epsilon_value)
     }
 
     fn pi() -> Self {
-        TwoFloat::from(consts::PI)
+        TwoFloat::from(std::f64::consts::PI)
     }
 
     fn max(self, other: Self) -> Self {
         if self > other { self } else { other }
     }
 
+    fn min(self, other: Self) -> Self {
+        if self < other { self } else { other }
+    }
+
     fn is_valid(&self) -> bool {
         let value = *self;
-        value.is_finite() && !f64::from(value).is_nan()
+        f64::from(value).is_finite() && !f64::from(value).is_nan()
+    }
+
+
+    fn abs_as_same_type(self) -> Self {
+        Self::convert_from(self.abs())
     }
 }
 
@@ -309,10 +244,10 @@ mod tests {
 
         // Test mathematical functions
         let cos_x = x.cos();
-        assert!(cos_x.is_finite());
+        assert!(f64::from(cos_x).is_finite());
 
         let sqrt_x = x.sqrt();
-        assert!(sqrt_x.is_finite());
+        assert!(f64::from(sqrt_x).is_finite());
 
         // Test conversion
         assert_eq!(x.to_f64(), 1.5);
@@ -321,19 +256,19 @@ mod tests {
 
     #[test]
     fn test_twofloat_custom_numeric() {
-        let x = TwoFloat::from_f64(1.5);
-        let y = TwoFloat::from_f64(-2.0);
+        let x = TwoFloat::from_f64_unchecked(1.5);
+        let y = TwoFloat::from_f64_unchecked(-2.0);
 
         // Test basic operations
-        assert_eq!(<TwoFloat as CustomNumeric>::abs(x), TwoFloat::from_f64(1.5));
-        assert_eq!(<TwoFloat as CustomNumeric>::abs(y), TwoFloat::from_f64(2.0));
+        assert_eq!(x.abs(), TwoFloat::from_f64_unchecked(1.5));
+        assert_eq!(y.abs(), TwoFloat::from_f64_unchecked(2.0));
 
         // Test mathematical functions
-        let cos_x = <TwoFloat as CustomNumeric>::cos(x);
-        assert!(<TwoFloat as CustomNumeric>::is_finite(cos_x));
+        let cos_x = x.cos();
+        assert!(f64::from(cos_x).is_finite());
 
-        let sqrt_x = <TwoFloat as CustomNumeric>::sqrt(x);
-        assert!(<TwoFloat as CustomNumeric>::is_finite(sqrt_x));
+        let sqrt_x = x.sqrt();
+        assert!(f64::from(sqrt_x).is_finite());
 
         // Test conversion
         let x_f64 = x.to_f64();
@@ -341,8 +276,8 @@ mod tests {
 
         // Test epsilon
         let eps = TwoFloat::epsilon();
-        assert!(eps > TwoFloat::from_f64(0.0));
-        assert!(eps < TwoFloat::from_f64(1.0));
+        assert!(eps > TwoFloat::from_f64_unchecked(0.0));
+        assert!(eps < TwoFloat::from_f64_unchecked(1.0));
     }
 
     // Note: TwoFloatArrayOps tests removed after ndarray migration
@@ -351,11 +286,11 @@ mod tests {
     fn test_precision_comparison() {
         // Test that TwoFloat provides higher precision than f64
         let pi_f64 = std::f64::consts::PI;
-        let pi_tf = TwoFloat::from_f64(pi_f64);
+        let pi_tf = TwoFloat::from_f64_unchecked(pi_f64);
 
         // Both should be finite
         assert!(pi_f64.is_finite());
-        assert!(<TwoFloat as CustomNumeric>::is_finite(pi_tf));
+        assert!(f64::from(pi_tf).is_finite());
 
         // TwoFloat should convert back to f64 with minimal loss
         let pi_back = pi_tf.to_f64();

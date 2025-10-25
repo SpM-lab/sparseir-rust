@@ -106,7 +106,7 @@ fn test_interpolate1d_struct() {
 /// Generic test for Interpolate1D struct
 fn test_interpolate1d_struct_generic<T: CustomNumeric + 'static>() {
     let n = 10;
-    let rule = legendre_generic::<T>(n).reseat(T::from_f64(-1.0), T::from_f64(1.0));
+    let rule = legendre_generic::<T>(n).reseat(T::from_f64_unchecked(-1.0), T::from_f64_unchecked(1.0));
 
     // Create test function values (sin(x))
     let values: Vec<T> = rule.x.iter().map(|&x| x.sin()).collect();
@@ -116,8 +116,8 @@ fn test_interpolate1d_struct_generic<T: CustomNumeric + 'static>() {
 
     // Test domain
     let (x_min, x_max) = interp.domain();
-    assert_eq!(x_min, T::from_f64(-1.0));
-    assert_eq!(x_max, T::from_f64(1.0));
+    assert_eq!(x_min, T::from_f64_unchecked(-1.0));
+    assert_eq!(x_max, T::from_f64_unchecked(1.0));
     assert_eq!(interp.n_points(), n);
 
     // Test evaluation at Gauss points (should be exact)
@@ -125,11 +125,11 @@ fn test_interpolate1d_struct_generic<T: CustomNumeric + 'static>() {
         let x = rule.x[i];
         let expected = values[i];
         let computed = interp.evaluate(x);
-        let error = (computed - expected).abs();
+        let error = (computed - expected).abs_as_same_type();
 
         // Should be very close at Gauss points
         assert!(
-            error < T::from_f64(1e-14),
+            error < T::from_f64_unchecked(1e-14),
             "Interpolation error at Gauss point {}: {} > 1e-14",
             i,
             error
@@ -138,20 +138,20 @@ fn test_interpolate1d_struct_generic<T: CustomNumeric + 'static>() {
 
     // Test evaluation at intermediate points
     let test_points = vec![
-        T::from_f64(-0.5),
-        T::from_f64(0.0),
-        T::from_f64(0.3),
-        T::from_f64(0.7),
+        T::from_f64_unchecked(-0.5),
+        T::from_f64_unchecked(0.0),
+        T::from_f64_unchecked(0.3),
+        T::from_f64_unchecked(0.7),
     ];
 
     for &x in &test_points {
         let expected = x.sin();
         let computed = interp.evaluate(x);
-        let error = (computed - expected).abs();
+        let error = (computed - expected).abs_as_same_type();
 
         // Should have reasonable accuracy
         assert!(
-            error < T::from_f64(1e-10),
+            error < T::from_f64_unchecked(1e-10),
             "Interpolation error at {}: {} > 1e-10",
             x,
             error
@@ -178,7 +178,7 @@ fn test_interpolate1d_sin_precision() {
 
 /// Generic test for Interpolate1D with sin(x) function
 fn test_interpolate1d_sin_generic<T: CustomNumeric + 'static>(n_points: usize, tolerance: f64) {
-    let rule = legendre_generic::<T>(n_points).reseat(T::from_f64(-1.0), T::from_f64(1.0));
+    let rule = legendre_generic::<T>(n_points).reseat(T::from_f64_unchecked(-1.0), T::from_f64_unchecked(1.0));
 
     // Create sin(x) values
     let values: Vec<T> = rule.x.iter().map(|&x| x.sin()).collect();
@@ -188,22 +188,22 @@ fn test_interpolate1d_sin_generic<T: CustomNumeric + 'static>(n_points: usize, t
 
     // Test points
     let test_points = vec![
-        T::from_f64(-0.8),
-        T::from_f64(-0.5),
-        T::from_f64(-0.2),
-        T::from_f64(0.1),
-        T::from_f64(0.4),
-        T::from_f64(0.7),
-        T::from_f64(0.9),
+        T::from_f64_unchecked(-0.8),
+        T::from_f64_unchecked(-0.5),
+        T::from_f64_unchecked(-0.2),
+        T::from_f64_unchecked(0.1),
+        T::from_f64_unchecked(0.4),
+        T::from_f64_unchecked(0.7),
+        T::from_f64_unchecked(0.9),
     ];
 
     for &x in &test_points {
         let expected = x.sin();
         let computed = interp.evaluate(x);
-        let error = (computed - expected).abs();
+        let error = (computed - expected).abs_as_same_type();
 
         assert!(
-            error < T::from_f64(tolerance),
+            error < T::from_f64_unchecked(tolerance),
             "High-precision interpolation failed at point {}: expected {}, got {}, error={} > tolerance={}",
             x,
             expected,
