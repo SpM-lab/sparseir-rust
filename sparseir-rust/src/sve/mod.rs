@@ -26,5 +26,4 @@ pub use strategy::{CentrosymmSVE, SVEStrategy, SamplingSVE};
 pub use types::{SVDStrategy, TworkType, safe_epsilon};
 
 #[cfg(test)]
-#[path = "../sve_extend_tests.rs"]
-mod sve_extend_tests;
+mod tests;

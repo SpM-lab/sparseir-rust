@@ -788,6 +788,3 @@ fn symmetrize_matsubara_inplace(xs: &mut Vec<i64>) {
 #[path = "polyfourier_tests.rs"]
 mod polyfourier_tests;
 
-#[cfg(test)]
-#[path = "get_tnl_comparison.rs"]
-mod get_tnl_comparison;

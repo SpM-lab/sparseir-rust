@@ -533,6 +533,3 @@ pub type BosonicBasis = FiniteTempBasis<LogisticKernel, Bosonic>;
 #[path = "basis_tests.rs"]
 mod basis_tests;
 
-#[cfg(test)]
-#[path = "omega_sampling_tests.rs"]
-mod omega_sampling_tests;
