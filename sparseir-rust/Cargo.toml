@@ -40,8 +40,8 @@ statrs.workspace = true
 # Error handling
 thiserror.workspace = true
 
-# High-precision SVD (internal dependency)
-xprec-svd = { path = "../xprec-svd" }
+# Linear algebra
+nalgebra = "0.33"
 
 # Parallel processing
 rayon.workspace = true

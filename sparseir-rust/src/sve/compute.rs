@@ -109,7 +109,7 @@ where
 
 /// Compute SVD of a matrix
 ///
-/// Uses xprec-svd for high-precision SVD computation.
+/// Uses nalgebra-based TSVD for high-precision SVD computation.
 ///
 /// # Returns
 ///
@@ -156,21 +156,35 @@ fn compute_svd_f64_xprec<T: CustomNumeric>(
     (u, s_vec, v)
 }
 
-/// Compute SVD for Df64 using xprec-svd
+/// Compute SVD for Df64 using nalgebra-based TSVD
 fn compute_svd_twofloat_xprec<T: CustomNumeric>(
     matrix: &DTensor<T, 2>,
 ) -> (DTensor<T, 2>, Vec<T>, DTensor<T, 2>) {
-    let matrix_twofloat =
-        DTensor::<xprec_svd::precision::Df64Precision, 2>::from_fn(*matrix.shape(), |idx| {
-            xprec_svd::precision::Df64Precision::from_f64(matrix[idx].to_f64())
-        });
+    use crate::tsvd::{tsvd, TSVDConfig};
+    use nalgebra::DMatrix;
+    use crate::Df64;
 
-    let result = xprec_svd::jacobi_svd(&matrix_twofloat);
+    // Convert to nalgebra DMatrix<Df64>
+    let matrix_df64 = DMatrix::from_fn(matrix.shape().0, matrix.shape().1, |i, j| {
+        Df64::from(matrix[[i, j]].to_f64())
+    });
 
-    // Convert back to T (via f64 since Df64Precision needs to_f64())
-    let u = DTensor::<T, 2>::from_fn(*result.u.shape(), |idx| T::from_f64_unchecked(result.u[idx].to_f64()));
+    // Use TSVD with appropriate tolerance for Df64
+    let rtol = Df64::from(1e-28); // High precision for Df64
+    let result = tsvd(&matrix_df64, TSVDConfig::new(rtol)).expect("TSVD computation failed");
+
+    // Convert back to DTensor<T>
+    let u = DTensor::<T, 2>::from_fn([result.u.nrows(), result.u.ncols()], |idx| {
+        let [i, j] = [idx[0], idx[1]];
+        T::from_f64_unchecked(result.u[(i, j)].to_f64())
+    });
+    
     let s: Vec<T> = result.s.iter().map(|x| T::from_f64_unchecked(x.to_f64())).collect();
-    let v = DTensor::<T, 2>::from_fn(*result.v.shape(), |idx| T::from_f64_unchecked(result.v[idx].to_f64()));
+    
+    let v = DTensor::<T, 2>::from_fn([result.v.nrows(), result.v.ncols()], |idx| {
+        let [i, j] = [idx[0], idx[1]];
+        T::from_f64_unchecked(result.v[(i, j)].to_f64())
+    });
 
     (u, s, v)
 }

@@ -23,6 +23,7 @@ pub mod sampling; // Sparse sampling in imaginary time
 pub mod special_functions;
 pub mod sve;
 pub mod taufuncs;
+pub mod tsvd; // High-precision truncated SVD using nalgebra
 pub mod traits; // Imaginary time τ normalization utilities
 
 // Re-export commonly used types and traits
@@ -54,6 +55,9 @@ pub use sampling::TauSampling;
 pub use sve::{
     CentrosymmSVE, SVDStrategy, SVEResult, SVEStrategy, SamplingSVE, TworkType, compute_svd,
     compute_sve, truncate,
+};
+pub use tsvd::{
+    SVDResult, TSVDConfig, TSVDError, svd_decompose, tsvd, tsvd_df64, tsvd_df64_from_f64, tsvd_f64,
 };
 pub use traits::{Bosonic, Fermionic, Statistics, StatisticsMarker, StatisticsType};
 

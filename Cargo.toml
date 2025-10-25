@@ -13,7 +13,6 @@ mdarray-linalg-faer = { version = "0.1.1", path = "mdarray-linalg/mdarray-linalg
 
 # Internal dependencies
 sparseir-rust = { path = "sparseir-rust" }
-xprec-svd = { path = "xprec-svd" }
 faer = "0.23"
 faer-traits = "0.23"
 num-complex = "0.4"

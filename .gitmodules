@@ -4,9 +4,6 @@
 [submodule "libxprec"]
 	path = libxprec
 	url = git@github.com:tuwien-cms/libxprec.git
-[submodule "twofloat"]
-	path = twofloat
-	url = git@github.com:ajtribick/twofloat.git
 [submodule "SparseIR.jl"]
 	path = SparseIR.jl
 	url = git@github.com:SpM-lab/SparseIR.jl.git
