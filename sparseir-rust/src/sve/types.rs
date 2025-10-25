@@ -74,9 +74,9 @@ pub fn safe_epsilon(
             1e-8
         }
         TworkType::Float64X2 => {
-            // sqrt(TwoFloat::epsilon()) ≈ sqrt(9.63e-35) ≈ 3.1e-18
+            // sqrt(Df64 epsilon) ≈ sqrt(2.465e-32) ≈ 1.57e-16
             use crate::numeric::CustomNumeric;
-            twofloat::TwoFloat::epsilon().sqrt().to_f64()
+            crate::TwoFloat::epsilon().sqrt().to_f64()
         }
         _ => 1e-8,
     };
@@ -112,21 +112,21 @@ mod tests {
     fn test_safe_epsilon_auto_float64x2() {
         let (safe_eps, twork, _) = safe_epsilon(1e-10, TworkType::Auto, SVDStrategy::Auto);
         assert_eq!(twork, TworkType::Float64X2);
-        // sqrt(TwoFloat::epsilon()) ≈ 9.81e-18
-        assert!((safe_eps - 9.813256340277675e-18).abs() < 1e-20);
+        // sqrt(Df64 epsilon) ≈ 1.57e-16
+        assert!((safe_eps - 1.5700924586837752e-16).abs() < 1e-20);
     }
 
     #[test]
     fn test_safe_epsilon_explicit_precision() {
         let (safe_eps, twork, _) = safe_epsilon(1e-7, TworkType::Float64X2, SVDStrategy::Auto);
         assert_eq!(twork, TworkType::Float64X2);
-        // sqrt(TwoFloat::epsilon()) ≈ 9.81e-18
-        assert!((safe_eps - 9.813256340277675e-18).abs() < 1e-20);
+        // sqrt(Df64 epsilon) ≈ 1.57e-16
+        assert!((safe_eps - 1.5700924586837752e-16).abs() < 1e-20);
     }
 
     #[test]
     fn test_svd_strategy_auto_accurate() {
-        // epsilon = 1e-20 < 9.81e-18 (safe_eps for Float64X2) → Accurate
+        // epsilon = 1e-20 < 1.57e-16 (safe_eps for Float64X2) → Accurate
         let (_, _, strategy) = safe_epsilon(1e-20, TworkType::Auto, SVDStrategy::Auto);
         assert_eq!(strategy, SVDStrategy::Accurate);
     }

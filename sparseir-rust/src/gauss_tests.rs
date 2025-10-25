@@ -4,7 +4,7 @@ use crate::interpolation1d::{
 };
 use crate::numeric::CustomNumeric;
 use mdarray::DTensor;
-use twofloat::TwoFloat;
+use crate::TwoFloat;
 
 #[test]
 fn test_rule_constructor() {

@@ -1,11 +1,12 @@
 //! Custom numeric traits for high-precision computation
 //!
-//! This module provides custom numeric traits that work with both f64 and TwoFloat
+//! This module provides custom numeric traits that work with both f64 and the xprec Df64 backend
 //! for high-precision numerical computation in gauss quadrature and matrix operations.
 
+use crate::TwoFloat;
+use num_traits::Float;
 use std::fmt::Debug;
 use std::str::FromStr;
-use twofloat::TwoFloat;
 
 /// Custom numeric trait for high-precision numerical computation
 ///
@@ -130,35 +131,35 @@ impl CustomNumeric for f64 {
     }
 
     fn abs(self) -> Self {
-        self.abs()
+        <Self as Float>::abs(self)
     }
 
     fn sqrt(self) -> Self {
-        self.sqrt()
+        <Self as Float>::sqrt(self)
     }
 
     fn cos(self) -> Self {
-        self.cos()
+        <Self as Float>::cos(self)
     }
 
     fn sin(self) -> Self {
-        self.sin()
+        <Self as Float>::sin(self)
     }
 
     fn exp(self) -> Self {
-        self.exp()
+        <Self as Float>::exp(self)
     }
 
     fn sinh(self) -> Self {
-        self.sinh()
+        <Self as Float>::sinh(self)
     }
 
     fn cosh(self) -> Self {
-        self.cosh()
+        <Self as Float>::cosh(self)
     }
 
     fn is_finite(self) -> bool {
-        self.is_finite()
+        <Self as Float>::is_finite(self)
     }
 
     fn pi() -> Self {
@@ -202,20 +203,17 @@ impl CustomNumeric for TwoFloat {
     }
 
     fn to_f64(self) -> f64 {
-        // TwoFloat can be converted to f64 directly
-        self.into()
+        self.to_f64()
     }
 
     fn to_dbig(self, precision: usize) -> dashu_float::DBig {
-        // TwoFloat to DBig conversion (preserving hi+lo precision)
-        let hi_str = format!("{:.17e}", self.hi());
-        let lo_str = format!("{:.17e}", self.lo());
+        let (hi, lo) = self.components();
 
-        let hi_dbig = dashu_float::DBig::from_str(&hi_str)
+        let hi_dbig = dashu_float::DBig::from_str(&format!("{:.17e}", hi))
             .unwrap()
             .with_precision(precision)
             .unwrap();
-        let lo_dbig = dashu_float::DBig::from_str(&lo_str)
+        let lo_dbig = dashu_float::DBig::from_str(&format!("{:.17e}", lo))
             .unwrap()
             .with_precision(precision)
             .unwrap();
@@ -224,7 +222,7 @@ impl CustomNumeric for TwoFloat {
     }
 
     fn epsilon() -> Self {
-        TwoFloat::from(9.63e-35) // real 128bit epsilon
+        TwoFloat::epsilon()
     }
 
     fn zero() -> Self {
@@ -232,39 +230,39 @@ impl CustomNumeric for TwoFloat {
     }
 
     fn abs(self) -> Self {
-        self.abs()
+        <Self as Float>::abs(self)
     }
 
     fn sqrt(self) -> Self {
-        self.sqrt()
+        <Self as Float>::sqrt(self)
     }
 
     fn cos(self) -> Self {
-        self.cos()
+        <Self as Float>::cos(self)
     }
 
     fn sin(self) -> Self {
-        self.sin()
+        <Self as Float>::sin(self)
     }
 
     fn exp(self) -> Self {
-        self.exp()
+        <Self as Float>::exp(self)
     }
 
     fn sinh(self) -> Self {
-        self.sinh()
+        <Self as Float>::sinh(self)
     }
 
     fn cosh(self) -> Self {
-        self.cosh()
+        <Self as Float>::cosh(self)
     }
 
     fn is_finite(self) -> bool {
-        self.is_valid()
+        <Self as Float>::is_finite(self)
     }
 
     fn pi() -> Self {
-        twofloat::consts::PI
+        TwoFloat::pi()
     }
 
     fn max(self, other: Self) -> Self {
@@ -272,7 +270,8 @@ impl CustomNumeric for TwoFloat {
     }
 
     fn is_valid(&self) -> bool {
-        self.is_valid()
+        let value = *self;
+        <Self as Float>::is_finite(value) && !<Self as Float>::is_nan(value)
     }
 }
 
@@ -305,7 +304,7 @@ mod tests {
 
         // Test conversion
         assert_eq!(x.to_f64(), 1.5);
-        assert_eq!(f64::epsilon(), f64::EPSILON);
+        assert_eq!(<f64 as CustomNumeric>::epsilon(), f64::EPSILON);
     }
 
     #[test]
@@ -314,15 +313,15 @@ mod tests {
         let y = TwoFloat::from_f64(-2.0);
 
         // Test basic operations
-        assert_eq!(x.abs(), TwoFloat::from_f64(1.5));
-        assert_eq!(y.abs(), TwoFloat::from_f64(2.0));
+        assert_eq!(<TwoFloat as CustomNumeric>::abs(x), TwoFloat::from_f64(1.5));
+        assert_eq!(<TwoFloat as CustomNumeric>::abs(y), TwoFloat::from_f64(2.0));
 
         // Test mathematical functions
-        let cos_x = x.cos();
-        assert!(cos_x.is_finite());
+        let cos_x = <TwoFloat as CustomNumeric>::cos(x);
+        assert!(<TwoFloat as CustomNumeric>::is_finite(cos_x));
 
-        let sqrt_x = x.sqrt();
-        assert!(sqrt_x.is_finite());
+        let sqrt_x = <TwoFloat as CustomNumeric>::sqrt(x);
+        assert!(<TwoFloat as CustomNumeric>::is_finite(sqrt_x));
 
         // Test conversion
         let x_f64 = x.to_f64();
@@ -344,7 +343,7 @@ mod tests {
 
         // Both should be finite
         assert!(pi_f64.is_finite());
-        assert!(pi_tf.is_finite());
+        assert!(<TwoFloat as CustomNumeric>::is_finite(pi_tf));
 
         // TwoFloat should convert back to f64 with minimal loss
         let pi_back = pi_tf.to_f64();

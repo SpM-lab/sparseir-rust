@@ -1,9 +1,8 @@
-use crate::numeric::CustomNumeric;
+use crate::{numeric::CustomNumeric, TwoFloat};
 use dashu_base::Abs;
 use dashu_base::Approximation;
 use dashu_float::{DBig, round::mode::HalfAway};
 use std::str::FromStr;
-use twofloat::TwoFloat;
 
 /// Helper function to create DBig with specified precision
 #[allow(dead_code)]

@@ -140,7 +140,7 @@ sparseir-rust/
 │       ├── sve.rs          # Singular value expansion
 │       ├── tsvd.rs         # High-precision TSVD
 │       ├── kernel_svd.rs   # Kernel SVD
-│       └── precision.rs    # twofloat integration
+│       └── precision.rs    # xprec-rs integration
 ├── sparseir-rust/          # Rust interface for SparseIR functionality
 │   ├── Cargo.toml
 │   └── src/
@@ -189,7 +189,7 @@ num-complex = "0.4"       # Complex number operations
 num-traits = "0.2"        # Numerical traits
 
 # Extended precision arithmetic
-twofloat = "0.4"           # double-double precision (libxprec alternative)
+xprec-rs = "0.4"           # double-double precision (libxprec alternative)
 # - Achieves high precision as sum of two f64 values
 # - Equivalent functionality to libxprec::DDouble
 
@@ -217,7 +217,7 @@ blas = "0.22"             # BLAS bindings (default)
 **sparseir-rust** (Rust interface for SparseIR functionality)
 - `xprec-svd` (internal)
 - `ndarray`, `nalgebra` (linear algebra)
-- `twofloat` (extended precision)
+- `xprec-rs` (extended precision)
 - `special`, `statrs` (special functions)
 - Internal `poly` module (polynomial representations)
 
@@ -236,7 +236,7 @@ blas = "0.22"             # BLAS bindings (default)
 - **Memory efficiency**: Optimization through Rust's ownership system
 
 **libxprec Alternative**
-- **twofloat crate**: Uses `TwoFloat` type
+- **xprec-rs crate**: Uses `Df64Precision` type
 - **double-double precision**: Achieves high precision as sum of two f64 values
 - **Numerical stability**: For high-precision numerical integration
 
@@ -345,7 +345,7 @@ blas = "0.22"             # BLAS bindings (default)
 
 ### ✅ Phase 2: Core Functionality (COMPLETED)
 1. **Rust Interface Implementation** (`sparseir-rust`) ✅
-   - Extended precision arithmetic (utilizing `twofloat` crate) ✅
+   - Extended precision arithmetic (utilizing `xprec-rs` crate) ✅
    - Linear algebra wrappers (`linalg.rs`) ✅
    - Kernel, basis, and sampling implementations ✅
 
@@ -446,7 +446,7 @@ blas = "0.22"             # BLAS bindings (default)
 - **SVE Support**: `SVEHints` trait, `matrix_from_gauss`, `DiscretizedKernel`, `CentrosymmSVE`
 - **Polynomial Support**: `PiecewiseLegendrePoly`, `PiecewiseLegendrePolyVector` (root finding with alpha=4)
 - **Fourier Transform**: `PiecewiseLegendreFT`, `MatsubaraFreq` handling
-- **High-Precision Arithmetic**: `TwoFloat` integration with `CustomNumeric` trait
+- **High-Precision Arithmetic**: `Df64Precision` integration with `CustomNumeric` trait
 - **Gauss Integration**: `Rule` struct with `legendre` function
 - **Sampling**: `TauSampling`, `MatsubaraSampling` with ND array support
 - **DLR**: `DiscreteLehmannRepresentation` with IR↔DLR transformations
@@ -493,7 +493,7 @@ blas = "0.22"             # BLAS bindings (default)
 ### ✅ 1. Extended Precision Arithmetic (RESOLVED)
 **Challenge**: Alternative to libxprec's double-double precision
 **Solution**:
-- ✅ Utilize `twofloat` crate (`TwoFloat` type)
+- ✅ Utilize `xprec-rs` crate (`Df64Precision` type)
 - ✅ Ensure compatibility with libxprec::DDouble
 - ✅ Verify numerical stability through comprehensive testing
 - ✅ Custom `CustomNumeric` trait to avoid Orphan Rules
@@ -644,7 +644,7 @@ blas = "0.22"             # BLAS bindings (default)
   * V matrix weight removal fix (critical for accuracy)
   * Full domain extension with proper √2 normalization
 - **Tau sampling range correction**: [0, β] → [-β/2, β/2] (C++ compatible)
-- High-precision arithmetic with `TwoFloat` integration
+- High-precision arithmetic with `Df64Precision` integration
 - Optimized `matrix_from_gauss` with parallel processing
 - Complete kernel implementations with SVE support
 - Robust polynomial and Fourier transform functionality

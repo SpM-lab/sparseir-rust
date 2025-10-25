@@ -414,18 +414,18 @@ where
 }
 
 /// TwoFloat-specific implementation without ScalarOperand requirement
-impl Rule<twofloat::TwoFloat> {
+impl Rule<crate::TwoFloat> {
     /// Create a new quadrature rule from points and weights (TwoFloat version).
     pub fn new_twofloat(
-        x: Vec<twofloat::TwoFloat>,
-        w: Vec<twofloat::TwoFloat>,
-        a: twofloat::TwoFloat,
-        b: twofloat::TwoFloat,
+        x: Vec<crate::TwoFloat>,
+        w: Vec<crate::TwoFloat>,
+        a: crate::TwoFloat,
+        b: crate::TwoFloat,
     ) -> Self {
         assert_eq!(x.len(), w.len(), "x and w must have the same length");
 
-        let x_forward: Vec<twofloat::TwoFloat> = x.iter().map(|&xi| xi - a).collect();
-        let x_backward: Vec<twofloat::TwoFloat> = x.iter().map(|&xi| b - xi).collect();
+        let x_forward: Vec<crate::TwoFloat> = x.iter().map(|&xi| xi - a).collect();
+        let x_backward: Vec<crate::TwoFloat> = x.iter().map(|&xi| b - xi).collect();
 
         Self {
             x,
@@ -439,30 +439,30 @@ impl Rule<twofloat::TwoFloat> {
 
     /// Create a new quadrature rule from vectors (TwoFloat version).
     pub fn from_vectors_twofloat(
-        x: Vec<twofloat::TwoFloat>,
-        w: Vec<twofloat::TwoFloat>,
-        a: twofloat::TwoFloat,
-        b: twofloat::TwoFloat,
+        x: Vec<crate::TwoFloat>,
+        w: Vec<crate::TwoFloat>,
+        a: crate::TwoFloat,
+        b: crate::TwoFloat,
     ) -> Self {
         Self::new_twofloat(x, w, a, b)
     }
 
     /// Reseat the rule to a new interval [a, b] (TwoFloat version).
-    pub fn reseat_twofloat(&self, a: twofloat::TwoFloat, b: twofloat::TwoFloat) -> Self {
+    pub fn reseat_twofloat(&self, a: crate::TwoFloat, b: crate::TwoFloat) -> Self {
         let scaling = (b - a) / (self.b - self.a);
-        let midpoint_old = (self.b + self.a) * <twofloat::TwoFloat as CustomNumeric>::from_f64(0.5);
-        let midpoint_new = (b + a) * <twofloat::TwoFloat as CustomNumeric>::from_f64(0.5);
+        let midpoint_old = (self.b + self.a) * <crate::TwoFloat as CustomNumeric>::from_f64(0.5);
+        let midpoint_new = (b + a) * <crate::TwoFloat as CustomNumeric>::from_f64(0.5);
 
         // Transform x: scaling * (xi - midpoint_old) + midpoint_new
-        let new_x: Vec<twofloat::TwoFloat> = self
+        let new_x: Vec<crate::TwoFloat> = self
             .x
             .iter()
             .map(|&xi| scaling * (xi - midpoint_old) + midpoint_new)
             .collect();
-        let new_w: Vec<twofloat::TwoFloat> = self.w.iter().map(|&wi| wi * scaling).collect();
-        let new_x_forward: Vec<twofloat::TwoFloat> =
+        let new_w: Vec<crate::TwoFloat> = self.w.iter().map(|&wi| wi * scaling).collect();
+        let new_x_forward: Vec<crate::TwoFloat> =
             self.x_forward.iter().map(|&xi| xi * scaling).collect();
-        let new_x_backward: Vec<twofloat::TwoFloat> =
+        let new_x_backward: Vec<crate::TwoFloat> =
             self.x_backward.iter().map(|&xi| xi * scaling).collect();
 
         Self {
@@ -476,7 +476,7 @@ impl Rule<twofloat::TwoFloat> {
     }
 
     /// Scale the weights by a factor (TwoFloat version).
-    pub fn scale_twofloat(&self, factor: twofloat::TwoFloat) -> Self {
+    pub fn scale_twofloat(&self, factor: crate::TwoFloat) -> Self {
         Self {
             x: self.x.clone(),
             w: self.w.iter().map(|&wi| wi * factor).collect(),
@@ -522,10 +522,10 @@ impl Rule<twofloat::TwoFloat> {
             let expected_forward = self.x[i] - self.a;
             let expected_backward = self.b - self.x[i];
 
-            if (self.x_forward[i] - expected_forward).abs() > twofloat::TwoFloat::epsilon() {
+            if (self.x_forward[i] - expected_forward).abs() > crate::TwoFloat::epsilon() {
                 return false;
             }
-            if (self.x_backward[i] - expected_backward).abs() > twofloat::TwoFloat::epsilon() {
+            if (self.x_backward[i] - expected_backward).abs() > crate::TwoFloat::epsilon() {
                 return false;
             }
         }
@@ -809,23 +809,23 @@ where
 }
 
 /// Create a Gauss-Legendre quadrature rule with n points on [-1, 1] (TwoFloat version).
-pub fn legendre_twofloat(n: usize) -> Rule<twofloat::TwoFloat> {
+pub fn legendre_twofloat(n: usize) -> Rule<crate::TwoFloat> {
     if n == 0 {
         return Rule::new_twofloat(
             vec![],
             vec![],
-            <twofloat::TwoFloat as CustomNumeric>::from_f64(-1.0),
-            <twofloat::TwoFloat as CustomNumeric>::from_f64(1.0),
+            <crate::TwoFloat as CustomNumeric>::from_f64(-1.0),
+            <crate::TwoFloat as CustomNumeric>::from_f64(1.0),
         );
     }
 
-    let (x, w) = gauss_legendre_nodes_weights_custom::<twofloat::TwoFloat>(n);
+    let (x, w) = gauss_legendre_nodes_weights_custom::<crate::TwoFloat>(n);
 
     Rule::from_vectors_twofloat(
         x,
         w,
-        <twofloat::TwoFloat as CustomNumeric>::from_f64(-1.0),
-        <twofloat::TwoFloat as CustomNumeric>::from_f64(1.0),
+        <crate::TwoFloat as CustomNumeric>::from_f64(-1.0),
+        <crate::TwoFloat as CustomNumeric>::from_f64(1.0),
     )
 }
 

@@ -5,7 +5,8 @@
 use approx::AbsDiffEq;
 use num_traits::Zero;
 use simba::scalar::{ComplexField, RealField};
-use xprec::Df64;
+use std::fmt;
+use xprec::{CompensatedArithmetic, Df64};
 
 /// Trait for precision types used in high-precision SVD computations
 pub trait Precision:
@@ -88,8 +89,35 @@ impl Df64Precision {
         Self(Df64::from(value))
     }
 
+    /// Construct from compensated parts.
+    #[inline]
+    pub fn from_parts(hi: f64, lo: f64) -> Self {
+        // SAFETY: `Df64::new_full` requires the compensation invariant.
+        // Callers are responsible for providing valid compensated parts,
+        // mirroring the expectations of the original TwoFloat API.
+        Self(unsafe { Df64::new_full(hi, lo) })
+    }
+
     pub fn to_f64(self) -> f64 {
         f64::from(self.0)
+    }
+
+    /// Return the high component of the compensated value.
+    #[inline]
+    pub fn hi(self) -> f64 {
+        f64::from(self.0)
+    }
+
+    /// Return the low component of the compensated value.
+    #[inline]
+    pub fn lo(self) -> f64 {
+        CompensatedArithmetic::compensate(&self.0)
+    }
+
+    /// Return both components as a tuple.
+    #[inline]
+    pub fn components(self) -> (f64, f64) {
+        (self.hi(), self.lo())
     }
 
     pub fn epsilon() -> Self {
@@ -102,6 +130,12 @@ impl Df64Precision {
 
     pub fn max_value() -> Self {
         Self(Df64::MAX)
+    }
+
+    /// High-precision circle constant π.
+    #[inline]
+    pub fn pi() -> Self {
+        Self(<Df64 as RealField>::pi())
     }
 }
 
@@ -592,5 +626,11 @@ impl AbsDiffEq for Df64Precision {
     fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool {
         let diff = (*self - *other).abs();
         diff <= epsilon
+    }
+}
+
+impl fmt::Display for Df64Precision {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:.17e}", self.to_f64())
     }
 }

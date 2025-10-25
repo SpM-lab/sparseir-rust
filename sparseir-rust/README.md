@@ -88,7 +88,7 @@ This implementation is optimized for high performance:
 ## Dependencies
 
 - **Linear Algebra**: [mdarray](https://crates.io/crates/mdarray) + [Faer](https://crates.io/crates/faer)
-- **Extended Precision**: [twofloat](https://crates.io/crates/twofloat)
+- **Extended Precision**: [xprec-rs](https://github.com/tuwien-cms/xprec-rs)
 - **Special Functions**: [special](https://crates.io/crates/special)
 - **Parallel Processing**: [rayon](https://crates.io/crates/rayon)
 

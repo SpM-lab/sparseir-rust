@@ -3,7 +3,7 @@ use crate::traits::{Bosonic, Fermionic};
 use dashu_base::{Abs, Approximation};
 use dashu_float::{Context, DBig, round::mode::HalfAway};
 use std::str::FromStr;
-use twofloat::TwoFloat;
+use crate::TwoFloat;
 
 // Configuration for precision tests
 const DBIG_DIGITS: usize = 100;
