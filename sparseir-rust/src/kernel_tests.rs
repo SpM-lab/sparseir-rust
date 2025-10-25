@@ -3,7 +3,7 @@ use crate::traits::{Bosonic, Fermionic};
 use dashu_base::{Abs, Approximation};
 use dashu_float::{Context, DBig, round::mode::HalfAway};
 use std::str::FromStr;
-use crate::TwoFloat;
+use crate::Df64;
 
 // Configuration for precision tests
 const DBIG_DIGITS: usize = 100;
@@ -77,7 +77,7 @@ impl KernelDbigCompute for RegularizedBoseKernel {
 ///
 /// # Type Parameters
 /// * `K` - Kernel type implementing CentrosymmKernel and KernelDbigCompute
-/// * `T` - Numeric type to test (f64, TwoFloat, etc.)
+/// * `T` - Numeric type to test (f64, Df64, etc.)
 fn test_kernel_compute_precision_generic<K, T>(
     kernel: &K,
     lambda: f64,
@@ -135,7 +135,7 @@ fn test_kernel_precision_different_lambdas<K>(
     for lambda in lambdas {
         let kernel = kernel_constructor(lambda);
         for &(x, y) in test_points {
-            // Test both f64 and TwoFloat implementations
+            // Test both f64 and Df64 implementations
             test_kernel_compute_precision_generic::<K, f64>(
                 &kernel,
                 lambda,
@@ -144,7 +144,7 @@ fn test_kernel_precision_different_lambdas<K>(
                 TOLERANCE_F64,
                 kernel_name,
             );
-            test_kernel_compute_precision_generic::<K, TwoFloat>(
+            test_kernel_compute_precision_generic::<K, Df64>(
                 &kernel,
                 lambda,
                 x,
@@ -258,7 +258,7 @@ fn test_kernel_compute_reduced_different_lambdas_generic<K>(
     for &lambda in lambdas {
         for &(x, y) in test_points {
             for symmetry in [SymmetryType::Even, SymmetryType::Odd] {
-                // Test both f64 and TwoFloat implementations
+                // Test both f64 and Df64 implementations
                 let kernel = kernel_constructor(lambda);
                 test_kernel_compute_reduced_precision_generic::<K, f64>(
                     &kernel,
@@ -269,7 +269,7 @@ fn test_kernel_compute_reduced_different_lambdas_generic<K>(
                     TOLERANCE_F64,
                     kernel_name,
                 );
-                test_kernel_compute_reduced_precision_generic::<K, TwoFloat>(
+                test_kernel_compute_reduced_precision_generic::<K, Df64>(
                     &kernel,
                     lambda,
                     x,
@@ -311,8 +311,8 @@ fn test_compute_reduced_negative_y_works() {
     let kernel = LogisticKernel::new(1.0);
 
     // compute_reduced should work for negative y (implementation allows it)
-    let x = TwoFloat::from(0.5);
-    let y_negative = TwoFloat::from(-0.5);
+    let x = Df64::from(0.5);
+    let y_negative = Df64::from(-0.5);
 
     let result = kernel.compute_reduced(x, y_negative, SymmetryType::Even);
     assert!(

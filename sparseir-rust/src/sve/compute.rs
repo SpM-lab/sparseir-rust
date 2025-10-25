@@ -43,7 +43,7 @@ where
         TworkType::Float64 => {
             compute_sve_with_precision::<f64, K>(kernel, safe_epsilon, cutoff, max_num_svals)
         }
-        TworkType::Float64X2 => compute_sve_with_precision::<crate::TwoFloat, K>(
+        TworkType::Float64X2 => compute_sve_with_precision::<crate::Df64, K>(
             kernel,
             safe_epsilon,
             cutoff,
@@ -119,7 +119,7 @@ pub fn compute_svd<T: CustomNumeric + 'static>(
 ) -> (DTensor<T, 2>, Vec<T>, DTensor<T, 2>) {
     if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
         compute_svd_f64_xprec(matrix)
-    } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<crate::TwoFloat>() {
+    } else if std::any::TypeId::of::<T>() == std::any::TypeId::of::<crate::Df64>() {
         compute_svd_twofloat_xprec(matrix)
     } else {
         compute_svd_f64_xprec(matrix)
@@ -156,7 +156,7 @@ fn compute_svd_f64_xprec<T: CustomNumeric>(
     (u, s_vec, v)
 }
 
-/// Compute SVD for TwoFloat using xprec-svd
+/// Compute SVD for Df64 using xprec-svd
 fn compute_svd_twofloat_xprec<T: CustomNumeric>(
     matrix: &DTensor<T, 2>,
 ) -> (DTensor<T, 2>, Vec<T>, DTensor<T, 2>) {
@@ -167,7 +167,7 @@ fn compute_svd_twofloat_xprec<T: CustomNumeric>(
 
     let result = xprec_svd::jacobi_svd(&matrix_twofloat);
 
-    // Convert back to T (via f64 since TwoFloatPrecision needs to_f64())
+    // Convert back to T (via f64 since Df64Precision needs to_f64())
     let u = DTensor::<T, 2>::from_fn(*result.u.shape(), |idx| T::from_f64_unchecked(result.u[idx].to_f64()));
     let s: Vec<T> = result.s.iter().map(|x| T::from_f64_unchecked(x.to_f64())).collect();
     let v = DTensor::<T, 2>::from_fn(*result.v.shape(), |idx| T::from_f64_unchecked(result.v[idx].to_f64()));

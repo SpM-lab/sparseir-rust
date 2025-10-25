@@ -78,7 +78,7 @@ pub fn safe_epsilon(
         TworkType::Float64X2 => {
             // sqrt(Df64 epsilon) ≈ sqrt(2.465e-32) ≈ 1.57e-16
             use crate::numeric::CustomNumeric;
-            crate::TwoFloat::epsilon().sqrt().to_f64()
+            crate::Df64::epsilon().sqrt().to_f64()
         }
         _ => 1e-8,
     };

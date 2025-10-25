@@ -1,6 +1,6 @@
 use crate::gauss::legendre_generic;
 use crate::interpolation2d::{evaluate_2d_legendre_polynomial, interpolate_2d_legendre};
-use crate::{CustomNumeric, Interpolate2D, TwoFloat};
+use crate::{CustomNumeric, Interpolate2D, Df64};
 use mdarray::DTensor;
 use simba::scalar::ComplexField;
 
@@ -61,12 +61,12 @@ fn test_interpolate_2d_quadratic_polynomial() {
     // Test with 2D quadratic function: f(x,y) = x^2 + y^2 + x*y
     // degree 3 (4 Gauss points) should exactly interpolate quadratic polynomials
     let gauss_x =
-        legendre_generic::<TwoFloat>(4).reseat(TwoFloat::from_f64_unchecked(-1.0), TwoFloat::from_f64_unchecked(1.0));
+        legendre_generic::<Df64>(4).reseat(Df64::from_f64_unchecked(-1.0), Df64::from_f64_unchecked(1.0));
     let gauss_y =
-        legendre_generic::<TwoFloat>(4).reseat(TwoFloat::from_f64_unchecked(-1.0), TwoFloat::from_f64_unchecked(1.0));
+        legendre_generic::<Df64>(4).reseat(Df64::from_f64_unchecked(-1.0), Df64::from_f64_unchecked(1.0));
 
     // Create test values for f(x,y) = x^2 + y^2 + x*y
-    let mut values = DTensor::<TwoFloat, 2>::from_elem([4, 4], num_traits::Zero::zero());
+    let mut values = DTensor::<Df64, 2>::from_elem([4, 4], num_traits::Zero::zero());
     for i in 0..4 {
         for j in 0..4 {
             let x = gauss_x.x[i];
@@ -85,7 +85,7 @@ fn test_interpolate_2d_quadratic_polynomial() {
             let expected = x * x + y * y + x * y;
             let interpolated = evaluate_2d_legendre_polynomial(x, y, &coeffs, &gauss_x, &gauss_y);
             assert!(
-                (interpolated - expected).abs() < TwoFloat::from_f64_unchecked(1e-12),
+                (interpolated - expected).abs() < Df64::from_f64_unchecked(1e-12),
                 "Interpolation failed at ({}, {}): expected {}, got {}",
                 x,
                 y,
@@ -97,13 +97,13 @@ fn test_interpolate_2d_quadratic_polynomial() {
 
     // Test interpolation at intermediate points (should also be exact for quadratic)
     let test_points = vec![
-        (TwoFloat::from_f64_unchecked(-0.5), TwoFloat::from_f64_unchecked(-0.3)),
-        (TwoFloat::from_f64_unchecked(0.0), TwoFloat::from_f64_unchecked(0.0)),
-        (TwoFloat::from_f64_unchecked(0.3), TwoFloat::from_f64_unchecked(0.7)),
-        (TwoFloat::from_f64_unchecked(0.8), TwoFloat::from_f64_unchecked(-0.4)),
+        (Df64::from_f64_unchecked(-0.5), Df64::from_f64_unchecked(-0.3)),
+        (Df64::from_f64_unchecked(0.0), Df64::from_f64_unchecked(0.0)),
+        (Df64::from_f64_unchecked(0.3), Df64::from_f64_unchecked(0.7)),
+        (Df64::from_f64_unchecked(0.8), Df64::from_f64_unchecked(-0.4)),
     ];
 
-    println!("TwoFloat 2D interpolation error analysis:");
+    println!("Df64 2D interpolation error analysis:");
     for (x, y) in test_points {
         let expected = x * x + y * y + x * y;
         let interpolated = evaluate_2d_legendre_polynomial(x, y, &coeffs, &gauss_x, &gauss_y);
@@ -111,7 +111,7 @@ fn test_interpolate_2d_quadratic_polynomial() {
         println!("Point ({}, {}): error = {}", x, y, error);
 
         assert!(
-            error < TwoFloat::from_f64_unchecked(1e-14),
+            error < Df64::from_f64_unchecked(1e-14),
             "Interpolation failed at ({}, {}): expected {}, got {}, error = {}",
             x,
             y,
@@ -127,8 +127,8 @@ fn test_interpolate2d_struct() {
     // Test Interpolate2D struct with f64
     test_interpolate2d_struct_generic::<f64>();
 
-    // Test Interpolate2D struct with TwoFloat
-    test_interpolate2d_struct_generic::<TwoFloat>();
+    // Test Interpolate2D struct with Df64
+    test_interpolate2d_struct_generic::<Df64>();
 }
 
 /// Generic test for Interpolate2D struct

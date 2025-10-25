@@ -2,7 +2,7 @@ use crate::gauss::{legendre_generic, legendre_vandermonde};
 use crate::interpolation1d::{
     evaluate_interpolated_polynomial, interpolate_1d_legendre, legendre_collocation_matrix,
 };
-use crate::{CustomNumeric, Interpolate1D, TwoFloat};
+use crate::{CustomNumeric, Interpolate1D, Df64};
 use mdarray::DTensor;
 
 /// Test that the collocation matrix is approximately the inverse of the Vandermonde matrix
@@ -99,8 +99,8 @@ fn test_interpolate1d_struct() {
     // Test with f64
     test_interpolate1d_struct_generic::<f64>();
 
-    // Test with TwoFloat
-    test_interpolate1d_struct_generic::<TwoFloat>();
+    // Test with Df64
+    test_interpolate1d_struct_generic::<Df64>();
 }
 
 /// Generic test for Interpolate1D struct
@@ -168,11 +168,11 @@ fn test_interpolate1d_sin_precision() {
         1e-12, // tolerance
     );
 
-    // Test TwoFloat precision
-    // Note: Precision limited by TwoFloat sin() function (~15 digits)
-    test_interpolate1d_sin_generic::<TwoFloat>(
+    // Test Df64 precision
+    // Note: Precision limited by Df64 sin() function (~15 digits)
+    test_interpolate1d_sin_generic::<Df64>(
         200,   // n_points
-        1e-14, // tolerance (limited by TwoFloat trigonometric precision)
+        1e-14, // tolerance (limited by Df64 trigonometric precision)
     );
 }
 

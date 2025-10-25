@@ -1,6 +1,6 @@
 //! Tests for kernel matrix discretization and interpolation
 
-use crate::TwoFloat;
+use crate::Df64;
 use crate::gauss::legendre;
 use crate::kernel::{
     CentrosymmKernel, KernelProperties, LogisticKernel, LogisticSVEHints, RegularizedBoseKernel,
@@ -49,7 +49,7 @@ fn test_matrix_from_gauss_sizes() {
 /// evaluates interpolation error at various points within each segment.
 ///
 /// Generic over:
-/// - T: Numeric type (f64, TwoFloat, etc.)
+/// - T: Numeric type (f64, Df64, etc.)
 /// - K: Kernel type (LogisticKernel, RegularizedBoseKernel, etc.)
 /// - H: SVEHints type for the kernel
 fn test_kernel_interpolation_precision_generic<T, K>(
@@ -227,13 +227,13 @@ fn test_logistic_kernel_interpolation_f64() {
     );
 }
 
-/// Test LogisticKernel interpolation precision with TwoFloat
+/// Test LogisticKernel interpolation precision with Df64
 #[test]
 fn test_logistic_kernel_interpolation_twofloat() {
-    test_kernel_interpolation_both_symmetries::<TwoFloat, _, _>(
+    test_kernel_interpolation_both_symmetries::<Df64, _, _>(
         LogisticKernel::new(100.0),
         LogisticSVEHints::new,
-        "LogisticKernel (TwoFloat)",
+        "LogisticKernel (Df64)",
         1e-12, // epsilon
         1e-11, // tolerance_abs_even
         1e-10, // tolerance_rel_even
@@ -261,13 +261,13 @@ fn test_regularized_bose_kernel_interpolation_f64() {
     );
 }
 
-/// Test RegularizedBoseKernel interpolation precision with TwoFloat
+/// Test RegularizedBoseKernel interpolation precision with Df64
 #[test]
 fn test_regularized_bose_kernel_interpolation_twofloat() {
-    test_kernel_interpolation_both_symmetries::<TwoFloat, _, _>(
+    test_kernel_interpolation_both_symmetries::<Df64, _, _>(
         RegularizedBoseKernel::new(10.0),
         RegularizedBoseSVEHints::new,
-        "RegularizedBoseKernel (TwoFloat)",
+        "RegularizedBoseKernel (Df64)",
         1e-4,  // epsilon
         1e-11, // tolerance_abs_even
         1e-10, // tolerance_rel_even

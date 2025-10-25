@@ -3,7 +3,7 @@
 //! This module provides custom numeric traits that work with both f64 and the xprec Df64 backend
 //! for high-precision numerical computation in gauss quadrature and matrix operations.
 
-use crate::TwoFloat;
+use crate::Df64;
 use simba::scalar::ComplexField;
 use std::fmt::Debug;
 use std::str::FromStr;
@@ -11,7 +11,7 @@ use std::str::FromStr;
 /// Custom numeric trait for high-precision numerical computation
 ///
 /// This trait provides the essential numeric operations needed for gauss module
-/// and matrix_from_gauss functions. Supports both f64 and TwoFloat types.
+/// and matrix_from_gauss functions. Supports both f64 and Df64 types.
 /// 
 /// Uses standard traits for common operations:
 /// - num_traits::Zero for zero()
@@ -93,9 +93,9 @@ impl CustomNumeric for f64 {
                 // This is a no-op for f64
                 value.to_f64()
             }
-            // For TwoFloat to f64, use the conversion method
-            id if id == std::any::TypeId::of::<TwoFloat>() => {
-                // Safe: TwoFloat to f64 conversion
+            // For Df64 to f64, use the conversion method
+            id if id == std::any::TypeId::of::<Df64>() => {
+                // Safe: Df64 to f64 conversion
                 value.to_f64()
             }
             // Fallback: convert via f64 for unknown types
@@ -143,9 +143,9 @@ impl CustomNumeric for f64 {
 }
 
 /// Df64 implementation of CustomNumeric
-impl CustomNumeric for TwoFloat {
+impl CustomNumeric for Df64 {
     fn from_f64_unchecked(x: f64) -> Self {
-        TwoFloat::from(x)
+        Df64::from(x)
     }
 
     fn convert_from<U: CustomNumeric + 'static>(value: U) -> Self {
@@ -159,7 +159,7 @@ impl CustomNumeric for TwoFloat {
                 Self::from_f64_unchecked(f64_value)
             }
             // For Df64 to Df64, this is just a copy (no conversion needed)
-            id if id == std::any::TypeId::of::<TwoFloat>() => {
+            id if id == std::any::TypeId::of::<Df64>() => {
                 // Safe: Df64 to Df64 conversion (copy)
                 let df64_value = value.to_f64(); // Convert to f64 first
                 Self::from_f64_unchecked(df64_value) // Then back to Df64
@@ -196,11 +196,11 @@ impl CustomNumeric for TwoFloat {
     fn epsilon() -> Self {
         // Df64::EPSILON = f64::EPSILON * f64::EPSILON / 2.0
         let epsilon_value = f64::EPSILON * f64::EPSILON / 2.0;
-        TwoFloat::from(epsilon_value)
+        Df64::from(epsilon_value)
     }
 
     fn pi() -> Self {
-        TwoFloat::from(std::f64::consts::PI)
+        Df64::from(std::f64::consts::PI)
     }
 
     fn max(self, other: Self) -> Self {
@@ -222,11 +222,11 @@ impl CustomNumeric for TwoFloat {
     }
 }
 
-// Note: ScalarOperand implementations for f64 and TwoFloat are provided by ndarray
+// Note: ScalarOperand implementations for f64 and Df64 are provided by ndarray
 // We cannot implement them here due to Orphan Rules, but they are already implemented
 // in the ndarray crate for standard numeric types.
 
-// Note: TwoFloatArrayOps trait and impl removed after ndarray migration
+// Note: Df64ArrayOps trait and impl removed after ndarray migration
 // Array operations should now be done using mdarray Tensor methods directly
 
 #[cfg(test)]
@@ -256,12 +256,12 @@ mod tests {
 
     #[test]
     fn test_twofloat_custom_numeric() {
-        let x = TwoFloat::from_f64_unchecked(1.5);
-        let y = TwoFloat::from_f64_unchecked(-2.0);
+        let x = Df64::from_f64_unchecked(1.5);
+        let y = Df64::from_f64_unchecked(-2.0);
 
         // Test basic operations
-        assert_eq!(x.abs(), TwoFloat::from_f64_unchecked(1.5));
-        assert_eq!(y.abs(), TwoFloat::from_f64_unchecked(2.0));
+        assert_eq!(x.abs(), Df64::from_f64_unchecked(1.5));
+        assert_eq!(y.abs(), Df64::from_f64_unchecked(2.0));
 
         // Test mathematical functions
         let cos_x = x.cos();
@@ -275,24 +275,24 @@ mod tests {
         assert!((x_f64 - 1.5).abs() < 1e-15);
 
         // Test epsilon
-        let eps = TwoFloat::epsilon();
-        assert!(eps > TwoFloat::from_f64_unchecked(0.0));
-        assert!(eps < TwoFloat::from_f64_unchecked(1.0));
+        let eps = Df64::epsilon();
+        assert!(eps > Df64::from_f64_unchecked(0.0));
+        assert!(eps < Df64::from_f64_unchecked(1.0));
     }
 
-    // Note: TwoFloatArrayOps tests removed after ndarray migration
+    // Note: Df64ArrayOps tests removed after ndarray migration
 
     #[test]
     fn test_precision_comparison() {
-        // Test that TwoFloat provides higher precision than f64
+        // Test that Df64 provides higher precision than f64
         let pi_f64 = std::f64::consts::PI;
-        let pi_tf = TwoFloat::from_f64_unchecked(pi_f64);
+        let pi_tf = Df64::from_f64_unchecked(pi_f64);
 
         // Both should be finite
         assert!(pi_f64.is_finite());
         assert!(f64::from(pi_tf).is_finite());
 
-        // TwoFloat should convert back to f64 with minimal loss
+        // Df64 should convert back to f64 with minimal loss
         let pi_back = pi_tf.to_f64();
         assert!((pi_back - pi_f64).abs() < f64::EPSILON);
     }

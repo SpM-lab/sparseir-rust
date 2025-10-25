@@ -4,7 +4,7 @@ use crate::interpolation1d::{
 };
 use crate::numeric::CustomNumeric;
 use mdarray::DTensor;
-use crate::TwoFloat;
+use crate::Df64;
 
 #[test]
 fn test_rule_constructor() {
@@ -258,10 +258,10 @@ fn test_rule_custom_methods() {
 #[test]
 fn test_rule_twofloat_methods() {
     // Test with Df64
-    let x_tf = vec![TwoFloat::from(0.0), TwoFloat::from(1.0)];
-    let w_tf = vec![TwoFloat::from(0.5), TwoFloat::from(0.5)];
+    let x_tf = vec![Df64::from(0.0), Df64::from(1.0)];
+    let w_tf = vec![Df64::from(0.5), Df64::from(0.5)];
 
-    let rule_tf = Rule::new_twofloat(x_tf, w_tf, TwoFloat::from(-1.0), TwoFloat::from(1.0));
+    let rule_tf = Rule::new_twofloat(x_tf, w_tf, Df64::from(-1.0), Df64::from(1.0));
     assert!(rule_tf.validate_twofloat());
 }
 
@@ -269,16 +269,16 @@ fn test_rule_twofloat_methods() {
 
 /// Test function: f(x) = {cos((π/2) * x)}²
 /// Integral over [-1, 1] should be exactly 1.0
-fn test_function(x: TwoFloat) -> TwoFloat {
-    let pi = TwoFloat::from_f64_unchecked(std::f64::consts::PI);
-    let cos_val = (pi / TwoFloat::from_f64_unchecked(2.0) * x).cos();
+fn test_function(x: Df64) -> Df64 {
+    let pi = Df64::from_f64_unchecked(std::f64::consts::PI);
+    let cos_val = (pi / Df64::from_f64_unchecked(2.0) * x).cos();
     cos_val * cos_val
 }
 
 /// Analytical integral of f(x) = {cos((π/2) * x)}² over [-1, 1]
 /// ∫_{-1}^{1} cos²((π/2) * x) dx = 1.0
-fn analytical_integral() -> TwoFloat {
-    TwoFloat::from_f64_unchecked(1.0)
+fn analytical_integral() -> Df64 {
+    Df64::from_f64_unchecked(1.0)
 }
 
 #[test]
@@ -304,11 +304,11 @@ fn test_twofloat_gauss_rule_validation() {
         );
 
         // Check weight sum (should be 2.0 for [-1, 1])
-        let mut weight_sum = TwoFloat::from_f64_unchecked(0.0);
+        let mut weight_sum = Df64::from_f64_unchecked(0.0);
         for &w in rule.w.iter() {
             weight_sum += w;
         }
-        let expected_sum = TwoFloat::from_f64_unchecked(2.0);
+        let expected_sum = Df64::from_f64_unchecked(2.0);
         let weight_error = (weight_sum - expected_sum).abs();
 
         println!(
@@ -320,7 +320,7 @@ fn test_twofloat_gauss_rule_validation() {
         // Check symmetry (for even n, should be symmetric)
         if n % 2 == 0 {
             let mid = n / 2;
-            let sym_check = (rule.x[mid - 1] + rule.x[mid]).abs() < TwoFloat::epsilon();
+            let sym_check = (rule.x[mid - 1] + rule.x[mid]).abs() < Df64::epsilon();
             println!(
                 "  Symmetry check: {}",
                 if sym_check { "✅ PASS" } else { "❌ FAIL" }
@@ -343,7 +343,7 @@ fn test_twofloat_integration_convergence_analysis() {
 
     for n in test_points {
         let rule = legendre_twofloat(n);
-        let mut integral = TwoFloat::from_f64_unchecked(0.0);
+        let mut integral = Df64::from_f64_unchecked(0.0);
 
         for i in 0..rule.x.len() {
             let f_val = test_function(rule.x[i]);
@@ -357,7 +357,7 @@ fn test_twofloat_integration_convergence_analysis() {
             "n={:3}: error={:.2e}, rel_error={:.2e}",
             n, error, rel_error
         );
-        // This target is too loose for TwoFloat.
+        // This target is too loose for Df64.
         // The numerical precision of math functions in twofloat is not that good.
         assert!(rel_error < 1e-15);
     }
@@ -475,17 +475,17 @@ fn _test_interpolate_1d_legendre_sin_f64_high_precision() {
 #[ignore] // MOVED TO interpolation1d_tests.rs
 fn _test_interpolate_1d_legendre_sin_twofloat_ultra_high_precision() {
     // Test ultra high-precision interpolation of sin(x) with Df64
-    test_interpolate_1d_legendre_sin_generic::<TwoFloat>(
+    test_interpolate_1d_legendre_sin_generic::<Df64>(
         200,                       // n_points (higher for better precision)
-        TwoFloat::from_f64_unchecked(1e-19), // tolerance: 1e-19 (achieved maximum precision)
+        Df64::from_f64_unchecked(1e-19), // tolerance: 1e-19 (achieved maximum precision)
         vec![
-            TwoFloat::from_f64_unchecked(-0.8),
-            TwoFloat::from_f64_unchecked(-0.5),
-            TwoFloat::from_f64_unchecked(-0.2),
-            TwoFloat::from_f64_unchecked(0.1),
-            TwoFloat::from_f64_unchecked(0.4),
-            TwoFloat::from_f64_unchecked(0.7),
-            TwoFloat::from_f64_unchecked(0.9),
+            Df64::from_f64_unchecked(-0.8),
+            Df64::from_f64_unchecked(-0.5),
+            Df64::from_f64_unchecked(-0.2),
+            Df64::from_f64_unchecked(0.1),
+            Df64::from_f64_unchecked(0.4),
+            Df64::from_f64_unchecked(0.7),
+            Df64::from_f64_unchecked(0.9),
         ], // test_points
     );
 }
@@ -626,20 +626,20 @@ fn legendre_polynomial(n: usize, x: f64) -> f64 {
 }
 
 /// Helper function to compute Legendre polynomial with Df64
-fn legendre_polynomial_twofloat(n: usize, x: TwoFloat) -> TwoFloat {
+fn legendre_polynomial_twofloat(n: usize, x: Df64) -> Df64 {
     match n {
-        0 => TwoFloat::from(1.0),
+        0 => Df64::from(1.0),
         1 => x,
         _ => {
-            let mut p0 = TwoFloat::from(1.0);
+            let mut p0 = Df64::from(1.0);
             let mut p1 = x;
 
             for k in 2..=n {
-                let k_f = TwoFloat::from(k as f64);
-                let k1_f = TwoFloat::from((k - 1) as f64);
+                let k_f = Df64::from(k as f64);
+                let k1_f = Df64::from((k - 1) as f64);
 
                 let p2 =
-                    ((TwoFloat::from(2.0) * k1_f + TwoFloat::from(1.0)) * x * p1 - k1_f * p0) / k_f;
+                    ((Df64::from(2.0) * k1_f + Df64::from(1.0)) * x * p1 - k1_f * p0) / k_f;
                 p0 = p1;
                 p1 = p2;
             }
@@ -753,7 +753,7 @@ fn test_high_precision_legendre_twofloat() {
 
     // Check that all points are within [-1, 1]
     for &xi in rule.x.iter() {
-        assert!(xi >= TwoFloat::from(-1.0) && xi <= TwoFloat::from(1.0));
+        assert!(xi >= Df64::from(-1.0) && xi <= Df64::from(1.0));
     }
 
     // Check that points are sorted
@@ -762,7 +762,7 @@ fn test_high_precision_legendre_twofloat() {
     }
 
     // Check x_forward and x_backward consistency with Df64 precision
-    let tolerance = TwoFloat::from(1e-15); // Higher precision for Df64
+    let tolerance = Df64::from(1e-15); // Higher precision for Df64
     for i in 0..rule.x.len() {
         let expected_forward = rule.x[i] - rule.a;
         let expected_backward = rule.b - rule.x[i];
@@ -780,9 +780,9 @@ fn test_high_precision_legendre_twofloat() {
     }
 
     // Test orthogonality property: sum of weights should be 2.0
-    let weight_sum: TwoFloat = rule.w.iter().fold(TwoFloat::from(0.0), |acc, &w| acc + w);
+    let weight_sum: Df64 = rule.w.iter().fold(Df64::from(0.0), |acc, &w| acc + w);
     assert!(
-        (weight_sum - TwoFloat::from(2.0)).abs() < TwoFloat::from(1e-14),
+        (weight_sum - Df64::from(2.0)).abs() < Df64::from(1e-14),
         "Sum of weights should be 2.0, got {}",
         weight_sum
     );
@@ -836,7 +836,7 @@ fn test_legendre_polynomial_twofloat_at_nodes() {
     for i in 0..n {
         let p0 = legendre_polynomial_twofloat(0, rule.x[i]);
         assert!(
-            (p0 - TwoFloat::from(1.0)).abs() < TwoFloat::from(1e-15),
+            (p0 - Df64::from(1.0)).abs() < Df64::from(1e-15),
             "P_0(x[{}]) should be 1.0",
             i
         );
@@ -846,7 +846,7 @@ fn test_legendre_polynomial_twofloat_at_nodes() {
     for i in 0..n {
         let p1 = legendre_polynomial_twofloat(1, rule.x[i]);
         assert!(
-            (p1 - rule.x[i]).abs() < TwoFloat::from(1e-15),
+            (p1 - rule.x[i]).abs() < Df64::from(1e-15),
             "P_1(x[{}]) should equal x[{}]",
             i,
             i
@@ -857,7 +857,7 @@ fn test_legendre_polynomial_twofloat_at_nodes() {
     for i in 0..n {
         let pn = legendre_polynomial_twofloat(n, rule.x[i]);
         assert!(
-            pn.abs() < TwoFloat::from(1e-14),
+            pn.abs() < Df64::from(1e-14),
             "P_{}(x[{}]) should be approximately 0, got {}",
             n,
             i,

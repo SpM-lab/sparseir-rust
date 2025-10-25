@@ -251,7 +251,7 @@ fn test_dlr_regularized_bose_construction() {
     // Note: With improved SVEHints (proper segments_x/y), DLR now has ~60% of expected poles
     // Previous: basis=11, poles=1 (9% coverage, error=3.66e0)
     // Current:  basis=55, poles=33 (60% coverage, error=2.6e-2) ✅ Major improvement!
-    // Future:   Need TwoFloat SVE for full precision
+    // Future:   Need Df64 SVE for full precision
     println!("\n=== RegularizedBoseKernel DLR Test ===");
     println!("Beta: {}, Wmax: {}", beta, wmax);
     println!("Basis size: {}", basis.size());

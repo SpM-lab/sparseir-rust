@@ -302,7 +302,7 @@ where
     }
 }
 
-/// CustomNumeric-based implementation for f64 and TwoFloat support
+/// CustomNumeric-based implementation for f64 and Df64 support
 impl<T> Rule<T>
 where
     T: CustomNumeric,
@@ -415,18 +415,18 @@ where
 }
 
 /// Df64-specific implementation without ScalarOperand requirement
-impl Rule<crate::TwoFloat> {
+impl Rule<crate::Df64> {
     /// Create a new quadrature rule from points and weights (Df64 version).
     pub fn new_twofloat(
-        x: Vec<crate::TwoFloat>,
-        w: Vec<crate::TwoFloat>,
-        a: crate::TwoFloat,
-        b: crate::TwoFloat,
+        x: Vec<crate::Df64>,
+        w: Vec<crate::Df64>,
+        a: crate::Df64,
+        b: crate::Df64,
     ) -> Self {
         assert_eq!(x.len(), w.len(), "x and w must have the same length");
 
-        let x_forward: Vec<crate::TwoFloat> = x.iter().map(|&xi| xi - a).collect();
-        let x_backward: Vec<crate::TwoFloat> = x.iter().map(|&xi| b - xi).collect();
+        let x_forward: Vec<crate::Df64> = x.iter().map(|&xi| xi - a).collect();
+        let x_backward: Vec<crate::Df64> = x.iter().map(|&xi| b - xi).collect();
 
         Self {
             x,
@@ -440,30 +440,30 @@ impl Rule<crate::TwoFloat> {
 
     /// Create a new quadrature rule from vectors (Df64 version).
     pub fn from_vectors_twofloat(
-        x: Vec<crate::TwoFloat>,
-        w: Vec<crate::TwoFloat>,
-        a: crate::TwoFloat,
-        b: crate::TwoFloat,
+        x: Vec<crate::Df64>,
+        w: Vec<crate::Df64>,
+        a: crate::Df64,
+        b: crate::Df64,
     ) -> Self {
         Self::new_twofloat(x, w, a, b)
     }
 
     /// Reseat the rule to a new interval [a, b] (Df64 version).
-    pub fn reseat_twofloat(&self, a: crate::TwoFloat, b: crate::TwoFloat) -> Self {
+    pub fn reseat_twofloat(&self, a: crate::Df64, b: crate::Df64) -> Self {
         let scaling = (b - a) / (self.b - self.a);
-        let midpoint_old = (self.b + self.a) * <crate::TwoFloat as CustomNumeric>::from_f64_unchecked(0.5);
-        let midpoint_new = (b + a) * <crate::TwoFloat as CustomNumeric>::from_f64_unchecked(0.5);
+        let midpoint_old = (self.b + self.a) * <crate::Df64 as CustomNumeric>::from_f64_unchecked(0.5);
+        let midpoint_new = (b + a) * <crate::Df64 as CustomNumeric>::from_f64_unchecked(0.5);
 
         // Transform x: scaling * (xi - midpoint_old) + midpoint_new
-        let new_x: Vec<crate::TwoFloat> = self
+        let new_x: Vec<crate::Df64> = self
             .x
             .iter()
             .map(|&xi| scaling * (xi - midpoint_old) + midpoint_new)
             .collect();
-        let new_w: Vec<crate::TwoFloat> = self.w.iter().map(|&wi| wi * scaling).collect();
-        let new_x_forward: Vec<crate::TwoFloat> =
+        let new_w: Vec<crate::Df64> = self.w.iter().map(|&wi| wi * scaling).collect();
+        let new_x_forward: Vec<crate::Df64> =
             self.x_forward.iter().map(|&xi| xi * scaling).collect();
-        let new_x_backward: Vec<crate::TwoFloat> =
+        let new_x_backward: Vec<crate::Df64> =
             self.x_backward.iter().map(|&xi| xi * scaling).collect();
 
         Self {
@@ -477,7 +477,7 @@ impl Rule<crate::TwoFloat> {
     }
 
     /// Scale the weights by a factor (Df64 version).
-    pub fn scale_twofloat(&self, factor: crate::TwoFloat) -> Self {
+    pub fn scale_twofloat(&self, factor: crate::Df64) -> Self {
         Self {
             x: self.x.clone(),
             w: self.w.iter().map(|&wi| wi * factor).collect(),
@@ -523,10 +523,10 @@ impl Rule<crate::TwoFloat> {
             let expected_forward = self.x[i] - self.a;
             let expected_backward = self.b - self.x[i];
 
-            if (self.x_forward[i] - expected_forward).abs() > crate::TwoFloat::epsilon() {
+            if (self.x_forward[i] - expected_forward).abs() > crate::Df64::epsilon() {
                 return false;
             }
-            if (self.x_backward[i] - expected_backward).abs() > crate::TwoFloat::epsilon() {
+            if (self.x_backward[i] - expected_backward).abs() > crate::Df64::epsilon() {
                 return false;
             }
         }
@@ -810,23 +810,23 @@ where
 }
 
 /// Create a Gauss-Legendre quadrature rule with n points on [-1, 1] (Df64 version).
-pub fn legendre_twofloat(n: usize) -> Rule<crate::TwoFloat> {
+pub fn legendre_twofloat(n: usize) -> Rule<crate::Df64> {
     if n == 0 {
         return Rule::new_twofloat(
             vec![],
             vec![],
-            <crate::TwoFloat as CustomNumeric>::from_f64_unchecked(-1.0),
-            <crate::TwoFloat as CustomNumeric>::from_f64_unchecked(1.0),
+            <crate::Df64 as CustomNumeric>::from_f64_unchecked(-1.0),
+            <crate::Df64 as CustomNumeric>::from_f64_unchecked(1.0),
         );
     }
 
-    let (x, w) = gauss_legendre_nodes_weights_custom::<crate::TwoFloat>(n);
+    let (x, w) = gauss_legendre_nodes_weights_custom::<crate::Df64>(n);
 
     Rule::from_vectors_twofloat(
         x,
         w,
-        <crate::TwoFloat as CustomNumeric>::from_f64_unchecked(-1.0),
-        <crate::TwoFloat as CustomNumeric>::from_f64_unchecked(1.0),
+        <crate::Df64 as CustomNumeric>::from_f64_unchecked(-1.0),
+        <crate::Df64 as CustomNumeric>::from_f64_unchecked(1.0),
     )
 }
 
