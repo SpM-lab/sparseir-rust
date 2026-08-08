@@ -8,9 +8,11 @@ The workspace publishes two Rust crates: the core `sparse-ir` crate and the
 to that C ABI. Rules below protect the numerical contracts and the boundaries
 between those layers.
 
-Existing code that predates these rules is a migration target, not precedent
-for new code. Fix violations in the scope of a task when practical, but do not
-turn an unrelated change into an unbounded cleanup.
+Apply these rules to new and modified code. Existing violations are not
+precedent, but they do not authorize unrelated cleanup. Remediation outside the
+files and call paths required by the current task, or remediation that crosses
+Rust API, C ABI, and language-binding ownership boundaries, requires an accepted
+issue or explicit maintainer approval that defines its scope and verification.
 
 ## Source Of Truth And Layering
 
@@ -18,8 +20,8 @@ turn an unrelated change into an unbounded cleanup.
   semantics, working-precision policy, and backend-neutral validation.
 - `sparse-ir-capi` owns ABI translation: opaque handles, raw-pointer checks,
   memory-order conversion, status-code mapping, and panic containment. Do not
-  move core numerical logic into the C API to avoid adding an appropriate Rust
-  abstraction.
+  move core numerical logic into the C API instead of adding an appropriate
+  Rust abstraction.
 - Python and Fortran code in this repository are thin bindings. Do not duplicate
   numerical algorithms there when the Rust core or C ABI owns the behavior.
 - Public Rust docs, the checked-in C headers, generated binding declarations,
@@ -30,10 +32,9 @@ turn an unrelated change into an unbounded cleanup.
 
 ## Public Surface And Compatibility
 
-- Keep the public Rust API and C ABI deliberate and small. Planning helpers,
-  intermediate matrices, scratch buffers, backend dispatch details, and test
-  helpers should be private or crate-private unless downstream users are
-  expected to rely on them.
+- Planning helpers, intermediate matrices, scratch buffers, backend dispatch
+  details, and test helpers should be private or crate-private unless
+  downstream users are expected to rely on them.
 - A public Rust item, exported C symbol, status code, opaque-handle lifecycle,
   struct layout, constant value, or calling convention is a compatibility
   contract. Review its Semantic Versioning impact before changing it.
@@ -42,8 +43,6 @@ turn an unrelated change into an unbounded cleanup.
   core abstraction.
 - When a public surface changes, update Rust documentation, C headers, generated
   declarations, wrappers, examples, and integration tests in the same change.
-- Existing public items that violate current policy are migration targets, not
-  examples to copy into new modules.
 
 ## Numerical Correctness And Precision
 
@@ -84,9 +83,6 @@ turn an unrelated change into an unbounded cleanup.
 - Prefer high-precision references such as `DBig`, analytic values, known
   identities, reconstruction residuals, or independently generated
   SparseIR.jl/Python reference data.
-- Approximate comparisons should report a useful diagnostic such as maximum
-  absolute error, relative norm error, orthogonality residual, or reconstruction
-  residual.
 - Keep reference-data generation reproducible. Record the upstream project and
   version or commit, generator path, parameters, precision, and serialization
   convention near the fixture or generator.
@@ -101,8 +97,9 @@ turn an unrelated change into an unbounded cleanup.
   crate-local typed errors with enough context for C and language bindings to
   report the failure.
 - Panics are reserved for genuinely internal invariants whose proof is local.
-  Existing public panics are migration targets and must not be copied into new
-  APIs.
+  Do not copy an existing public panic into a new or modified API. Broad
+  conversion of existing panic contracts requires an accepted issue or explicit
+  maintainer approval.
 - Preserve error categories across layers. Known invalid input must map to a
   specific `SPIR_INVALID_*` or dimension status, unsupported operations to
   `SPIR_NOT_SUPPORTED`, and unexpected internal failures to
@@ -116,10 +113,11 @@ turn an unrelated change into an unbounded cleanup.
 - No Rust panic may unwind across an `extern "C"` boundary. Every exported
   entry point that can panic must use the repository's panic-containment pattern
   and return the documented failure status or null result.
-- `catch_unwind` does not make an invalid non-null pointer safe. The caller owns
-  the validity and lifetime contract for non-null pointers; Rust must still
-  check nullability, lengths, dimensions, enum values, and other verifiable
-  preconditions before dereferencing.
+- `catch_unwind` does not make an invalid non-null pointer safe. Regardless of
+  caller obligations, Rust must check every verifiable precondition—nullability,
+  lengths, dimensions, enum values, and arithmetic bounds—before dereferencing.
+  Pointer provenance and lifetime remain caller obligations when they cannot be
+  verified through the ABI.
 - Before constructing a slice or tensor view from raw parts, validate pointer
   requirements and use checked arithmetic for dimension products, element
   counts, byte lengths, strides, and offsets.
@@ -154,9 +152,10 @@ turn an unrelated change into an unbounded cleanup.
 
 ## Memory Order And Dimension Semantics
 
-- The C API supports both row-major and column-major buffers. Each function must
-  document the logical shape, memory order, and meaning of every target or batch
-  dimension.
+- The C API and binding layers explicitly support both row-major and
+  column-major buffers. Do not introduce hidden row-major conversion into the
+  core Rust numerical API. Each ABI function must document the logical shape,
+  memory order, and meaning of every target or batch dimension.
 - Keep row-major/column-major translation in shared C API helpers. Do not add
   operation-local dimension reversal or axis remapping when the common
   conversion path can express it.
@@ -187,6 +186,9 @@ turn an unrelated change into an unbounded cleanup.
 - Do not select a backend independently inside inner numerical helpers. Route
   GEMM through the workspace's established dispatcher or explicit backend
   handle so one operation does not mix incompatible providers.
+- A local manual matrix product is allowed only for a bounded reference path or
+  when the owning backend cannot express the required generic scalar type.
+  Document that exception and cover it with focused correctness tests.
 - Benchmarks comparing providers must use release builds, pin relevant thread
   counts, separate setup from execution, and report the BLAS implementation and
   LP64/ILP64 mode.
@@ -196,9 +198,11 @@ turn an unrelated change into an unbounded cleanup.
 - Keep `unsafe` localized to FFI, backend adapters, raw buffer management, and
   view construction that cannot be expressed safely. Numerical orchestration
   and public validation should remain safe Rust.
-- Every unsafe block requires a nearby `// SAFETY:` comment explaining pointer
-  validity, alignment, initialized range, bounds, lifetime, and aliasing facts
-  relevant to that block.
+- Every new or modified unsafe block requires a nearby `// SAFETY:` comment
+  explaining pointer validity, alignment, initialized range, bounds, lifetime,
+  and aliasing facts relevant to that block. Auditing untouched legacy unsafe
+  blocks requires a scoped issue or explicit maintainer approval; do not add
+  perfunctory comments without re-verifying the invariant.
 - `WorkingBuffer` and similar reusable scratch storage must maintain checked
   byte capacity and alignment before producing typed slices. A typed mutable
   slice must never outlive or alias another mutable view of the buffer.
@@ -211,9 +215,11 @@ turn an unrelated change into an unbounded cleanup.
 
 ## Generated Bindings And Cross-Language Synchronization
 
-- Treat `sparse-ir-capi/assets/sparse_ir_capi.h` and
-  `sparse-ir-capi/include/sparseir/sparseir.h` as checked-in ABI surfaces. Keep
-  them synchronized with exported Rust symbols and constants.
+- `sparse-ir-capi/include/sparseir/sparseir.h` is the cbindgen-generated C API
+  header. Regenerate it from the Rust exports; do not hand-edit it as the source
+  of truth. `sparse-ir-capi/assets/sparse_ir_capi.h` is the checked-in
+  `cargo-c` distribution copy and must match the generated header. A header
+  synchronization check should fail when the two drift.
 - `python/pylibsparseir/ctypes_autogen.py` is generated by
   `python/tools/gen_ctypes.py`. Regenerate it; do not hand-edit generated
   declarations to conceal drift.
@@ -228,13 +234,27 @@ turn an unrelated change into an unbounded cleanup.
 - Generated-file checks should be reproducible and fail CI when regeneration
   would produce a diff.
 
+## Release And Version Integrity
+
+- Keep `[workspace.package].version` and
+  `[workspace.dependencies].sparse-ir.version` in `Cargo.toml` synchronized.
+- Before a Rust release or release pull request, align
+  `python/pyproject.toml` `[project].version` with the workspace version and run
+  `python3 check_version.py`.
+- Publish `sparse-ir` before `sparse-ir-capi`, and push the `vX.Y.Z` tag only
+  after both intended crates are successfully published to crates.io.
+- Update downstream Julia version metadata only after the corresponding crates
+  are available from crates.io. Follow `bump_version_downstream.md` for that
+  separate stage.
+- Use `.github/workflows/manual-release.yml` for the manual Rust release flow.
+  Do not bypass its expected-version and publication-order checks with ad hoc
+  local publication commands.
+
 ## Performance And Allocation Discipline
 
-- Avoid heap allocation, whole-array cloning, formatting, and shape decoding in
-  element-sized hot loops. Reuse working buffers, precompute interpolation
-  coefficients, and carry prepared shape/stride metadata into inner kernels.
-- Prefer borrowed mdarray views and explicit output buffers over temporary dense
-  tensors. Do not zero-initialize outputs that the operation fully overwrites.
+- Reuse working buffers, precompute interpolation coefficients, and carry
+  prepared shape/stride metadata into inner kernels. Prefer borrowed mdarray
+  views and explicit output buffers at fitter and ABI boundaries.
 - Cell and segment lookup should retain logarithmic or better lookup behavior
   where the grid permits it. Do not replace binary search with an unbounded
   linear scan without measured justification.
@@ -250,9 +270,6 @@ turn an unrelated change into an unbounded cleanup.
 - Tests follow implementation ownership: core numerical behavior belongs in
   `sparse-ir`, ABI behavior in `sparse-ir-capi`, and wrapper marshaling in the
   corresponding language binding.
-- Rust examples and public documentation should assert known values,
-  reconstruction accuracy, or meaningful invariants. Examples that only print
-  results or check shapes are insufficient for numerical workflows.
 - Public `Result` APIs should document concrete error conditions. Exported C
   functions should document nullability, ownership, input/output dimensions,
   memory order, status results, and panic containment.
@@ -261,9 +278,9 @@ turn an unrelated change into an unbounded cleanup.
   examples, and ecosystem links for stale claims.
 - Keep tests deterministic. Record random seeds, reference-generation inputs,
   provider configuration, and thread counts when they affect results.
-- Local checks should be proportional to the change. Hosted CI owns the full
-  Rust, C/C++, Python, Fortran, feature, and provider matrix; changes to a
-  boundary must still run the focused checks for that boundary before review.
+- Changes to a Rust, C ABI, Python, or Fortran boundary must run focused checks
+  for that boundary before review; hosted CI owns the full cross-language,
+  feature, and provider matrix.
 
 ## Provenance And Scientific Credit
 
@@ -271,27 +288,8 @@ turn an unrelated change into an unbounded cleanup.
   sparse-ir, libsparseir, nalgebra, or another project, record the project,
   source file or symbol, revision when practical, and whether the code was
   ported, derived, convention-matched, or only validated against it.
-- A close translation retains upstream copyright and license obligations.
-  Preserve notices and license texts; do not describe derived code as an
-  independent implementation.
-- Cite the relevant SparseIR and numerical-algorithm literature in the
-  repository's established citation surface. Scientific credit is required
-  even when an algorithm is implemented independently and copyright does not
-  apply.
+- Follow `rules/common/provenance.md`, including its copyright, scientific
+  credit, and explicit user-approval requirements for citation changes and
+  upstream-facing issue or pull-request work.
 - Reference fixtures must identify their generator and upstream version. Do not
   commit unexplained numerical tables whose provenance cannot be reproduced.
-
-## File Organization
-
-- Keep files focused by responsibility, but do not split solely to satisfy a
-  line-count target. Large core or C API files are review triggers, not
-  automatic violations.
-- Prefer boundaries such as validation, numerical preparation, execution,
-  backend dispatch, ABI translation, handle lifecycle, and generated bindings.
-  Avoid arbitrary `part1`/`part2` modules.
-- Keep production logic separate from large test suites. Existing module-local
-  test files may remain; new tests should follow the ownership and organization
-  already used by the affected module.
-- Do not encode a current source-tree listing as a durable rule. Module
-  organization may evolve as long as ownership and public boundaries stay
-  clear.

@@ -1,198 +1,86 @@
-# Coding Rules for sparseir-rust
+# sparse-ir Implementation Notes
 
-This document outlines the coding style and special considerations for the sparseir-rust project, particularly regarding high-precision numerical computation and TwoFloat limitations.
+This file contains supplemental implementation notes for the `sparse-ir`
+crate. It is not the repository policy source of truth.
 
-## General Coding Style
+Before changing code, read the root [`AGENTS.md`](../AGENTS.md), the shared
+tensor4all rules it references, and the root
+[`REPOSITORY_RULES.md`](../REPOSITORY_RULES.md). When this file conflicts with
+those sources, follow the repository and shared rules.
 
-### 1. Generic Functions and Type Parameters
-- **Prefer generic functions** over code duplication
-- Use generic type parameters with proper trait bounds
-- Example: `fn test_kernel_interpolation_precision_generic<T: CustomNumeric + Clone + 'static>`
-- Always include `'static` lifetime bound when using `std::any::TypeId`
+Do not treat an existing implementation pattern as automatically correct or
+use this document as authority for a broad cleanup. Non-local migrations require
+the scope and approval described in `REPOSITORY_RULES.md`.
 
-### 2. Trait Design
-- **Add methods to existing traits** rather than creating workarounds
-- When a method is needed across multiple types, implement it in the base trait
-- Example: Added `max()` method to `CustomNumeric` trait for both `f64` and `TwoFloat`
+## Numeric Types And Working Precision
 
-### 3. Error Handling
-- Use `panic!` for unrecoverable errors (e.g., points outside cell boundaries)
-- Prefer explicit error messages with context
-- Example: `"x={} is outside cell bounds [{}, {}]", x, self.x_min, self.x_max`
+- The current extended-precision type is `xprec::Df64`, re-exported by
+  `sparse-ir`. Do not introduce new public APIs using the historical
+  `TwoFloat` name.
+- Generic numerical helpers should support `f64` and `Df64` through the
+  established traits when both working precisions need the same semantics.
+  Keep dtype dispatch at an outer boundary rather than duplicating complete
+  algorithms.
+- `Df64` storage does not by itself guarantee double-double accuracy. Elementary
+  functions, conversions, matrix operations, decomposition backends, and final
+  `f64` outputs may limit the attainable precision. Document the limiting step
+  when it affects an algorithm or public accuracy claim.
+- Working-precision selection and epsilon clamping belong to the SVE precision
+  policy. Do not add operation-local thresholds that bypass `TworkType` and its
+  shared helpers.
+- Convert constants explicitly through the numeric abstraction used by the
+  algorithm. Avoid unnecessary `f64` round trips in a `Df64` path.
 
-### 4. Code Organization
-- **Move related functions to appropriate modules** (e.g., interpolation functions to `interpolation1d.rs`, `interpolation2d.rs`)
-- Keep tests in separate `tests/` directory, not in `src/`
-- Use descriptive module and function names
+## Interpolation And Quadrature
 
-### 5. Comments and Documentation
-- Add comments explaining **why** something is done, especially for precision-related decisions
-- Document precision limitations and bottlenecks
-- Example: Comments about TwoFloat's `cos()` function having f64-level precision
+- Normalize interpolation coordinates to `[-1, 1]` for Legendre evaluation and
+  apply the inverse convention consistently during evaluation.
+- Obtain segmentation, polynomial degree, and Gauss-point configuration from
+  the owning hints or strategy objects. Do not duplicate their thresholds as
+  magic numbers in downstream helpers.
+- Precompute reusable interpolation coefficients and quadrature metadata during
+  construction rather than rebuilding them in each evaluation.
+- Preserve logarithmic segment or cell lookup where the grid permits binary
+  search. A different traversal requires correctness tests and performance
+  evidence for representative grids.
 
-## TwoFloat Precision Limitations
+## Errors And Invariants
 
-### Critical Limitation: Arithmetic Function Precision
-- **TwoFloat's arithmetic functions (`sin`, `cos`, `exp`) have only f64-level precision (~15-16 digits)**
-- This is NOT the full theoretical 30-digit precision of double-double arithmetic
-- This limitation affects the overall precision of interpolation and numerical computations
+- Reachable invalid public input should return the typed error required by
+  `REPOSITORY_RULES.md`; it is not an unrecoverable condition merely because an
+  older implementation panics.
+- Keep a panic or assertion only for a genuinely internal invariant whose proof
+  is local. Do not copy an existing panic into a new public API.
+- C ABI status mapping, panic containment, raw-pointer validation, and opaque
+  handle ownership belong to `sparse-ir-capi`, not this core crate.
+- Explain non-obvious numerical invariants and precision limitations near the
+  implementation. Comments should state why the invariant holds or which
+  operation limits precision, not merely restate the code.
 
-### Practical Implications
-- TwoFloat interpolation accuracy is limited to ~1e-16, not 1e-30
-- When implementing high-precision tests, set realistic tolerances based on actual precision
-- Example: TwoFloat 2D interpolation achieves ~1e-12 absolute error, not 1e-30
+## Numerical Tests
 
-### Code Comments Required
-When using TwoFloat, always add comments explaining precision limitations:
-```rust
-// Note: TwoFloat's cos() has only f64-level precision (~15-16 digits), not the full 
-// theoretical 30-digit precision. This limits TwoFloat interpolation accuracy to ~1e-16,
-// not the 1e-30 that might be theoretically possible with perfect double-double arithmetic.
-```
+- Use analytic values, reconstruction identities, independently generated
+  SparseIR reference data, or higher-precision values such as `DBig` as
+  appropriate for the algorithm.
+- Exercise both `f64` and `Df64` when a generic path claims to support both, and
+  include difficult parameter regimes identified in `REPOSITORY_RULES.md`.
+- Choose and justify tolerances according to the repository tolerance policy.
+  Do not use the historical fixed tolerances from earlier versions of this
+  document as universal defaults.
+- Report useful diagnostics such as maximum absolute error, relative norm,
+  orthogonality error, or reconstruction residual.
+- Keep tests with their implementation owner. Module-local test files under
+  `src/` and public integration tests under `tests/` are both valid; choose the
+  location based on whether the behavior requires private or public access.
+- Development-only debug output should not remain in committed tests unless it
+  is a stable failure diagnostic.
 
-## Numerical Computation Guidelines
+## Provenance
 
-### 1. Tolerance Settings
-- **Base tolerances on observed precision**, not theoretical limits
-- Allow reasonable margins above observed errors
-- Example: If observed error is ~2.86e-13, set tolerance to 1e-12
-
-### 2. Type Conversions
-- Use `T::from_f64()` for explicit type conversions
-- Avoid unnecessary intermediate conversions
-- Example: `let x_norm = T::from_f64(2.0) * (x - gauss_x.a) / (gauss_x.b - gauss_x.a) - T::from_f64(1.0);`
-
-### 3. Matrix Operations
-- Use manual matrix multiplication for generic types to avoid `ndarray::dot` recursion limits
-- Example: Manual implementation of `coeffs = C_x * values * C_y^T`
-
-### 4. Coordinate Normalization
-- Always normalize coordinates to `[-1, 1]` range for Legendre polynomial evaluation
-- Apply normalization in both coefficient computation and evaluation phases
-
-## Testing Guidelines
-
-### 1. Generic Test Functions
-- Create generic test functions to avoid code duplication
-- Pass parameters (lambda, epsilon, tolerances) as arguments
-- Example: `test_kernel_interpolation_precision_generic<T>(lambda, epsilon, tolerance_abs, tolerance_rel)`
-
-### 2. Precision Testing Strategy
-- Use `DBig` (arbitrary precision) as reference for high-precision comparisons
-- Implement `to_dbig()` methods for accurate type conversion
-- Test both `f64` and `TwoFloat` implementations
-
-### 3. Tolerance Configuration
-- Set different tolerances for different numeric types based on their actual capabilities
-- f64: `tolerance_abs = 1e-12`, `tolerance_rel = 1e-10`
-- TwoFloat: `tolerance_abs = 1e-11`, `tolerance_rel = 1e-10` (slightly stricter due to extended precision)
-
-### 4. Debug Information
-- Include debug prints showing actual error values during development
-- Remove debug prints before committing (unless they provide ongoing value)
-
-### 5. Commit Message Guidelines
-- **Focus on substantial changes**: what was implemented, removed, or fixed
-- Avoid mentioning intermediate development steps, temporary code, or trial-and-error activities
-- Write commit messages from the perspective of the final result
-- Example: ✅ "Add symmetry type parameter to kernel interpolation tests"
-- Example: ✅ "Fix memory leak in matrix operations" (important fixes)
-- Example: ✅ "Remove deprecated API functions" (important removals)
-- Example: ❌ "Remove temporary debug code added during development" (intermediate steps)
-- Example: ❌ "Remove unnecessary Parity enum, use existing SymmetryType instead" (trial-and-error)
-
-## API Design Principles
-
-### 1. Configuration via Hints
-- Use `SVEHints` to get configuration parameters (segments, polynomial degrees)
-- Example: `let gauss_per_cell = hints.ngauss();` instead of hardcoded values
-
-### 2. Generic Kernel Support
-- Design kernels to be generic over numeric types
-- Use `CentrosymmKernel` trait with generic methods for `dyn` compatibility
-
-### 3. Struct-based Interfaces
-- Prefer struct-based interfaces over function-based ones for complex objects
-- Example: `Interpolate1D<T>`, `Interpolate2D<T>`, `InterpolatedKernel<T>`
-
-## Performance Considerations
-
-### 1. Pre-computation
-- Store pre-computed polynomial coefficients to avoid repeated computation
-- Example: `Interpolate2D` stores coefficients computed once during construction
-
-### 2. Efficient Cell Finding
-- Use binary search for cell lookup in interpolation grids
-- Implement `binary_search_segments()` for O(log n) cell finding
-
-### 3. Memory Management
-- Use `Array2` for 2D data structures
-- Clone data structures when necessary to avoid move errors
-
-## File Organization
-
-### 1. Module Structure
-```
-src/
-├── kernel.rs           # Kernel definitions and SVE hints
-├── kernelmatrix.rs     # DiscretizedKernel and InterpolatedKernel
-├── interpolation1d.rs  # 1D interpolation functions and structs
-├── interpolation2d.rs  # 2D interpolation functions and structs
-├── gauss.rs           # Gauss quadrature rules and utilities
-└── numeric.rs         # CustomNumeric trait and implementations
-
-tests/
-├── kernel_tests.rs                    # Kernel precision tests
-├── kernel_interpolation_tests.rs      # Interpolation precision tests
-├── interpolation1d_tests.rs           # 1D interpolation tests
-├── interpolation2d_tests.rs           # 2D interpolation tests
-└── kernelmatrix_tests.rs              # Matrix generation tests
-```
-
-### 2. Import Organization
-- Group imports by module (sparseir-rust, external crates, std)
-- Use specific imports when possible
-- Remove unused imports
-
-## Common Patterns
-
-### 1. Generic Function Design
-- Use generic type parameters with appropriate trait bounds
-- Include lifetime bounds (`'static`) when using `std::any::TypeId`
-- Convert between types using trait methods (`T::from_f64()`)
-
-### 2. Precision Testing Strategy
-- Use high-precision reference implementations for validation
-- Implement conversion methods to arbitrary precision types
-- Base tolerances on observed rather than theoretical precision
-
-### 3. Trait Method Implementation
-- Use built-in methods when available for standard types
-- Implement manual logic for custom types that lack built-in methods
-- Ensure consistent behavior across all implementations
-
-## Anti-patterns to Avoid
-
-### 1. Hardcoded Configuration Values
-- Avoid magic numbers and hardcoded parameters
-- Use configuration objects or hints to provide parameters
-- Make functions configurable through parameters
-
-### 2. Unnecessary Type Conversions
-- Avoid redundant conversions between types
-- Use types directly when they're already in the correct format
-- Minimize intermediate conversion steps
-
-### 3. Missing Documentation
-- Always document precision limitations and bottlenecks
-- Explain why certain approaches are taken
-- Provide context for numerical decisions
-
-### 4. Unrealistic Expectations
-- Set tolerances based on actual capabilities, not theoretical limits
-- Account for implementation-specific limitations
-- Allow reasonable margins for numerical stability
-
----
-
-This document should be updated as new patterns emerge and precision limitations are discovered.
+- When following or translating SparseIR.jl, Python sparse-ir, libsparseir,
+  nalgebra, or another implementation, follow the provenance, copyright,
+  scientific-credit, and user-approval requirements loaded through
+  `AGENTS.md`.
+- Reference comparisons should identify the upstream project and version or
+  commit, generator, parameters, and precision so later contributors can
+  reproduce them.
