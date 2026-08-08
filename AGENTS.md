@@ -1,7 +1,35 @@
 # Agent Instructions
 
-Before changing release automation or version metadata, read the version-management section in [README.md](README.md).
-For downstream wrapper version bumps, also read [bump_version_downstream.md](bump_version_downstream.md).
+Before acting, read the latest shared tensor4all agent rules from the
+[`tensor4all-agent-rules`](https://github.com/tensor4all/tensor4all-agent-rules)
+repository. Start from:
+
+- `https://github.com/tensor4all/tensor4all-agent-rules/blob/main/rules/index.md`
+
+If internet access is unavailable or the remote cannot be resolved, use the
+sibling checkout:
+
+- `../tensor4all-agent-rules/rules/index.md`
+
+Load only the common, Rust, performance, numerical, documentation, or
+provenance rule files relevant to the task. In particular,
+`rules/common/provenance.md` applies whenever code is written while referencing
+third-party code.
+
+Then read [`REPOSITORY_RULES.md`](REPOSITORY_RULES.md), which contains the
+durable sparse-ir-rs-specific contracts. Repository-local rules override shared
+rules when they are more specific. Existing code that predates a rule is a
+migration target, not a pattern to copy.
+
+[`sparse-ir/CODING_RULES.md`](sparse-ir/CODING_RULES.md) contains narrower
+implementation notes. It may provide context, but it is not
+authoritative when it conflicts with `REPOSITORY_RULES.md`, current source,
+public documentation, or generated binding contracts.
+
+Before changing release automation or version metadata, read the
+version-management section in [README.md](README.md). For downstream wrapper
+version bumps, also read
+[`bump_version_downstream.md`](bump_version_downstream.md).
 
 Use these repo-local skills when the task matches:
 
