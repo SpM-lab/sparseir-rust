@@ -89,7 +89,7 @@ pub extern "C" fn spir_sve_result_new(
         return std::ptr::null_mut();
     }
 
-    if epsilon <= 0.0 {
+    if epsilon <= 0.0 || !epsilon.is_finite() {
         unsafe {
             *status = SPIR_INVALID_ARGUMENT;
         }
@@ -1011,6 +1011,16 @@ mod tests {
         let sve = spir_sve_result_new(ptr::null(), 1e-6, -1, -1, -1, &mut status);
         assert_eq!(status, SPIR_INVALID_ARGUMENT);
         assert!(sve.is_null());
+
+        // NaN epsilon must not pass the <= 0.0 guard
+        let mut kernel_status = SPIR_INTERNAL_ERROR;
+        let kernel = spir_logistic_kernel_new(10.0, &mut kernel_status);
+        assert_eq!(kernel_status, SPIR_COMPUTATION_SUCCESS);
+        let mut sve_status = SPIR_INTERNAL_ERROR;
+        let sve = spir_sve_result_new(kernel, f64::NAN, -1, -1, -1, &mut sve_status);
+        assert_eq!(sve_status, SPIR_INVALID_ARGUMENT);
+        assert!(sve.is_null());
+        spir_kernel_release(kernel);
 
         // Null size pointer
         let mut kernel_status = SPIR_INTERNAL_ERROR;

@@ -8,8 +8,8 @@ use sparse_ir::basis::FiniteTempBasis;
 
 use crate::types::{spir_basis, spir_funcs, spir_kernel, spir_sve_result};
 use crate::{
-    SPIR_COMPUTATION_SUCCESS, SPIR_INTERNAL_ERROR, SPIR_INVALID_ARGUMENT, SPIR_STATISTICS_BOSONIC,
-    SPIR_STATISTICS_FERMIONIC, StatusCode,
+    SPIR_COMPUTATION_SUCCESS, SPIR_INTERNAL_ERROR, SPIR_INVALID_ARGUMENT, SPIR_NOT_SUPPORTED,
+    SPIR_STATISTICS_BOSONIC, SPIR_STATISTICS_FERMIONIC, StatusCode,
 };
 
 /// Manual release function (replaces macro-generated one)
@@ -84,7 +84,13 @@ pub extern "C" fn spir_basis_new(
     }
 
     // Validate inputs
-    if beta <= 0.0 || omega_max <= 0.0 || epsilon <= 0.0 {
+    if beta <= 0.0
+        || omega_max <= 0.0
+        || epsilon <= 0.0
+        || !beta.is_finite()
+        || !omega_max.is_finite()
+        || !epsilon.is_finite()
+    {
         unsafe {
             *status = SPIR_INVALID_ARGUMENT;
         }
@@ -121,10 +127,7 @@ pub extern "C" fn spir_basis_new(
         let expected_lambda = beta * omega_max;
         let kernel_lambda = kernel_ref.lambda();
         if (kernel_lambda - expected_lambda).abs() > 1e-10 {
-            return Err(format!(
-                "Kernel lambda ({}) does not match beta * omega_max ({})",
-                kernel_lambda, expected_lambda
-            ));
+            return Err(SPIR_INVALID_ARGUMENT);
         }
 
         // Dispatch based on kernel type and statistics
@@ -166,22 +169,10 @@ pub extern "C" fn spir_basis_new(
             }
         } else if let Some(reg_bose) = kernel_ref.as_regularized_bose() {
             if statistics == SPIR_STATISTICS_FERMIONIC {
-                // Fermionic
-                let basis: FiniteTempBasis<_, _> = if !sve.is_null() {
-                    let sve_ref = &*sve;
-                    FiniteTempBasis::from_sve_result(
-                        **reg_bose,
-                        beta,
-                        sve_ref.inner().as_ref().clone(),
-                        Some(epsilon),
-                        max_size_opt,
-                    )
-                } else {
-                    FiniteTempBasis::new(**reg_bose, beta, Some(epsilon), max_size_opt)
-                };
-                Ok(Box::into_raw(Box::new(
-                    spir_basis::new_regularized_bose_fermionic(basis),
-                )))
+                // RegularizedBoseKernel is meaningful only for bosonic statistics;
+                // reject the combination at the boundary (the fermionic
+                // regularizer would panic downstream when building a DLR).
+                return Err(SPIR_NOT_SUPPORTED);
             } else {
                 // Bosonic
                 let basis: FiniteTempBasis<_, _> = if !sve.is_null() {
@@ -201,7 +192,7 @@ pub extern "C" fn spir_basis_new(
                 )))
             }
         } else {
-            Err("Unknown kernel type".to_string())
+            Err(SPIR_INTERNAL_ERROR)
         }
     }));
 
@@ -212,7 +203,13 @@ pub extern "C" fn spir_basis_new(
             }
             ptr
         }
-        Ok(Err(_)) | Err(_) => {
+        Ok(Err(code)) => {
+            unsafe {
+                *status = code;
+            }
+            std::ptr::null_mut()
+        }
+        Err(_) => {
             unsafe {
                 *status = SPIR_INTERNAL_ERROR;
             }
@@ -270,7 +267,15 @@ pub extern "C" fn spir_basis_new_from_sve_and_regularizer(
     }
 
     // Validate inputs
-    if beta <= 0.0 || omega_max <= 0.0 || epsilon <= 0.0 || lambda <= 0.0 {
+    if beta <= 0.0
+        || omega_max <= 0.0
+        || epsilon <= 0.0
+        || lambda <= 0.0
+        || !beta.is_finite()
+        || !omega_max.is_finite()
+        || !epsilon.is_finite()
+        || !lambda.is_finite()
+    {
         unsafe {
             *status = SPIR_INVALID_ARGUMENT;
         }
@@ -365,23 +370,15 @@ pub extern "C" fn spir_basis_new_from_sve_and_regularizer(
                 )))
             }
         } else {
-            // ypower == 1
-            use sparse_ir::kernel::RegularizedBoseKernel;
-            let kernel = RegularizedBoseKernel::new(lambda);
-
+            // ypower == 1: RegularizedBoseKernel is meaningful only for bosonic
+            // statistics; reject the combination at the boundary (the fermionic
+            // regularizer would panic downstream when building a DLR).
             if statistics == SPIR_STATISTICS_FERMIONIC {
-                let basis =
-                    FiniteTempBasis::<RegularizedBoseKernel, sparse_ir::traits::Fermionic>::from_sve_result(
-                        kernel,
-                        beta,
-                        sve_result,
-                        Some(epsilon),
-                        max_size_opt,
-                    );
-                Ok::<*mut spir_basis, StatusCode>(Box::into_raw(Box::new(
-                    spir_basis::new_regularized_bose_fermionic(basis),
-                )))
+                return Err(SPIR_NOT_SUPPORTED);
             } else {
+                use sparse_ir::kernel::RegularizedBoseKernel;
+                let kernel = RegularizedBoseKernel::new(lambda);
+
                 let basis =
                     FiniteTempBasis::<RegularizedBoseKernel, sparse_ir::traits::Bosonic>::from_sve_result(
                         kernel,
@@ -404,10 +401,9 @@ pub extern "C" fn spir_basis_new_from_sve_and_regularizer(
             }
             ptr
         }
-        Ok(Err(msg)) => {
-            debug_eprintln!("Error in spir_basis_new_from_sve_and_regularizer: {}", msg);
+        Ok(Err(code)) => {
             unsafe {
-                *status = SPIR_INTERNAL_ERROR;
+                *status = code;
             }
             std::ptr::null_mut()
         }
@@ -1114,7 +1110,7 @@ pub extern "C" fn spir_basis_get_default_taus_ext(
 /// * `positive_only` - If true, return only positive frequencies
 /// * `mitigate` - If true, enable mitigation (fencing) to improve conditioning
 /// * `L` - Requested number of sampling points
-/// * `num_points_returned` - Pointer to store actual number of points
+/// * `num_points_returned` - Pointer to store the computed point count
 ///
 /// # Returns
 /// * `SPIR_COMPUTATION_SUCCESS` (0) on success
@@ -1122,9 +1118,10 @@ pub extern "C" fn spir_basis_get_default_taus_ext(
 /// * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
 ///
 /// # Note
-/// Returns the actual number of points that will be returned by
-/// `spir_basis_get_default_matsus_ext` with the same parameters.
-/// When mitigate is true, may return more points than requested due to fencing.
+/// Returns the full computed count for `spir_basis_get_default_matsus_ext`
+/// with the same parameters. When mitigate is true, fencing may produce more
+/// points than requested; the getter truncates the output to the provided
+/// buffer size, so this count can exceed what was returned.
 #[unsafe(no_mangle)]
 pub extern "C" fn spir_basis_get_n_default_matsus_ext(
     b: *const spir_basis,
@@ -1165,7 +1162,7 @@ pub extern "C" fn spir_basis_get_n_default_matsus_ext(
 /// * `mitigate` - If true, enable mitigation (fencing) to improve conditioning
 /// * `n_points` - Maximum number of points requested
 /// * `points` - Pre-allocated array to store Matsubara indices (size >= n_points)
-/// * `n_points_returned` - Pointer to store actual number of points returned
+/// * `n_points_returned` - Pointer to store the full computed point count
 ///
 /// # Returns
 /// * `SPIR_COMPUTATION_SUCCESS` (0) on success
@@ -1173,10 +1170,13 @@ pub extern "C" fn spir_basis_get_n_default_matsus_ext(
 /// * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
 ///
 /// # Note
-/// Returns the actual number of sampling points (may be more than n_points
-/// when mitigate is true due to fencing). The caller should call
-/// `spir_basis_get_n_default_matsus_ext` with the same parameters first to
-/// determine the required buffer size.
+/// `points` must hold at least `n_points` elements and is never written
+/// beyond that. When `mitigate` is true, fencing can produce more points than
+/// requested: the output is truncated to `n_points` elements and
+/// `n_points_returned` reports the full computed count, so
+/// `n_points_returned > n_points` signals truncation. Call
+/// `spir_basis_get_n_default_matsus_ext` with the same parameters to see the
+/// full count before choosing the buffer size.
 #[unsafe(no_mangle)]
 pub extern "C" fn spir_basis_get_default_matsus_ext(
     b: *const spir_basis,
@@ -1202,10 +1202,13 @@ pub extern "C" fn spir_basis_get_default_matsus_ext(
             n_points as usize,
         );
 
-        // Copy all points returned by default_matsubara_sampling_points_with_mitigate.
-        // The caller should have allocated enough space by calling
-        // spir_basis_get_n_default_matsus_ext with the same parameters first.
-        let n_to_return = matsu_points.len();
+        // The caller-owned buffer holds n_points elements and is never written
+        // beyond that. With mitigate=true, fencing can compute more points than
+        // requested; only the first n_points elements are returned and
+        // n_points_returned reports the number actually written. Call
+        // spir_basis_get_n_default_matsus_ext with the same parameters to see
+        // the full computed count and detect truncation.
+        let n_to_return = matsu_points.len().min(n_points as usize);
         std::ptr::copy_nonoverlapping(matsu_points.as_ptr(), points, n_to_return);
         *n_points_returned = n_to_return as libc::c_int;
 
@@ -1684,6 +1687,228 @@ mod tests {
 
         unsafe {
             spir_funcs_release(regularizer_funcs);
+            spir_sve_result_release(sve);
+            spir_kernel_release(kernel);
+        }
+    }
+
+    #[test]
+    fn test_basis_rejects_fermionic_regularized_bose() {
+        use crate::SPIR_NOT_SUPPORTED;
+        use crate::{
+            spir_funcs_from_piecewise_legendre, spir_funcs_release, spir_sve_result_release,
+        };
+
+        let lambda = 10.0;
+        let beta = 1.0;
+        let omega_max = lambda / beta;
+        let epsilon = 1e-8;
+
+        let mut kernel_status = SPIR_INTERNAL_ERROR;
+        let kernel = spir_reg_bose_kernel_new(lambda, &mut kernel_status);
+        assert_eq!(kernel_status, SPIR_COMPUTATION_SUCCESS);
+        assert!(!kernel.is_null());
+
+        // spir_basis_new with RegularizedBoseKernel + fermionic statistics must
+        // be rejected at the boundary instead of deferring a downstream panic.
+        let mut basis_status = SPIR_INTERNAL_ERROR;
+        let basis = spir_basis_new(
+            SPIR_STATISTICS_FERMIONIC,
+            beta,
+            omega_max,
+            epsilon,
+            kernel,
+            ptr::null(),
+            -1,
+            &mut basis_status,
+        );
+        assert_eq!(basis_status, SPIR_NOT_SUPPORTED);
+        assert!(basis.is_null());
+
+        // Same combination via spir_basis_new_from_sve_and_regularizer (ypower = 1).
+        let mut sve_status = SPIR_INTERNAL_ERROR;
+        let sve = spir_sve_result_new(kernel, epsilon, -1, -1, -1, &mut sve_status);
+        assert_eq!(sve_status, SPIR_COMPUTATION_SUCCESS);
+        assert!(!sve.is_null());
+
+        let n_segments = 1;
+        let segments = [-omega_max, omega_max];
+        let coeffs = [1.0];
+        let nfuncs = 1;
+        let order = 0;
+
+        let mut regularizer_status = SPIR_INTERNAL_ERROR;
+        let regularizer_funcs = spir_funcs_from_piecewise_legendre(
+            segments.as_ptr(),
+            n_segments,
+            coeffs.as_ptr(),
+            nfuncs,
+            order,
+            &mut regularizer_status,
+        );
+        assert_eq!(regularizer_status, SPIR_COMPUTATION_SUCCESS);
+        assert!(!regularizer_funcs.is_null());
+
+        let mut basis_status = SPIR_INTERNAL_ERROR;
+        let basis = spir_basis_new_from_sve_and_regularizer(
+            SPIR_STATISTICS_FERMIONIC,
+            beta,
+            omega_max,
+            epsilon,
+            lambda,
+            1,   // ypower = 1 => RegularizedBoseKernel
+            1.0, // conv_radius (unused)
+            sve,
+            regularizer_funcs,
+            -1,
+            &mut basis_status,
+        );
+        assert_eq!(basis_status, SPIR_NOT_SUPPORTED);
+        assert!(basis.is_null());
+
+        // Bosonic statistics with the same kernel must still succeed.
+        let mut basis_status = SPIR_INTERNAL_ERROR;
+        let basis = spir_basis_new(
+            SPIR_STATISTICS_BOSONIC,
+            beta,
+            omega_max,
+            epsilon,
+            kernel,
+            sve,
+            -1,
+            &mut basis_status,
+        );
+        assert_eq!(basis_status, SPIR_COMPUTATION_SUCCESS);
+        assert!(!basis.is_null());
+
+        unsafe {
+            spir_basis_release(basis);
+            spir_funcs_release(regularizer_funcs);
+            spir_sve_result_release(sve);
+            spir_kernel_release(kernel);
+        }
+    }
+
+    #[test]
+    fn test_basis_rejects_nan_params() {
+        let mut kernel_status = SPIR_INTERNAL_ERROR;
+        let kernel = spir_logistic_kernel_new(10.0, &mut kernel_status);
+        assert_eq!(kernel_status, SPIR_COMPUTATION_SUCCESS);
+
+        // NaN beta / omega_max / epsilon must not pass the <= 0.0 guards.
+        for (beta, omega_max, epsilon) in [
+            (f64::NAN, 1.0, 1e-6),
+            (10.0, f64::NAN, 1e-6),
+            (10.0, 1.0, f64::NAN),
+        ] {
+            let mut basis_status = SPIR_INTERNAL_ERROR;
+            let basis = spir_basis_new(
+                SPIR_STATISTICS_FERMIONIC,
+                beta,
+                omega_max,
+                epsilon,
+                kernel,
+                ptr::null(),
+                -1,
+                &mut basis_status,
+            );
+            assert_eq!(basis_status, SPIR_INVALID_ARGUMENT);
+            assert!(basis.is_null());
+        }
+
+        unsafe {
+            spir_kernel_release(kernel);
+        }
+    }
+
+    #[test]
+    fn test_get_default_matsus_ext_mitigate_buffer_check() {
+        let beta = 10.0;
+        let wmax = 10.0;
+        let epsilon = 1e-8;
+
+        let mut kernel_status = SPIR_INTERNAL_ERROR;
+        let kernel = spir_logistic_kernel_new(beta * wmax, &mut kernel_status);
+        assert_eq!(kernel_status, SPIR_COMPUTATION_SUCCESS);
+
+        let mut sve_status = SPIR_INTERNAL_ERROR;
+        let sve = spir_sve_result_new(kernel, epsilon, -1, -1, -1, &mut sve_status);
+        assert_eq!(sve_status, SPIR_COMPUTATION_SUCCESS);
+
+        let mut basis_status = SPIR_INTERNAL_ERROR;
+        let basis = spir_basis_new(
+            SPIR_STATISTICS_FERMIONIC,
+            beta,
+            wmax,
+            epsilon,
+            kernel,
+            sve,
+            -1,
+            &mut basis_status,
+        );
+        assert_eq!(basis_status, SPIR_COMPUTATION_SUCCESS);
+
+        let mut basis_size = 0;
+        let status = spir_basis_get_size(basis, &mut basis_size);
+        assert_eq!(status, SPIR_COMPUTATION_SUCCESS);
+
+        let positive_only = false;
+        let mitigate = true;
+        let n_requested = basis_size;
+
+        // Query the required buffer size (fencing may add points).
+        let mut n_required = 0;
+        let status = spir_basis_get_n_default_matsus_ext(
+            basis,
+            positive_only,
+            mitigate,
+            n_requested,
+            &mut n_required,
+        );
+        assert_eq!(status, SPIR_COMPUTATION_SUCCESS);
+        assert!(n_required >= n_requested);
+
+        // A buffer sized exactly to the request is never overflowed: the
+        // getter writes at most n_points elements and reports the count
+        // written. When fencing computes more points, the output is truncated
+        // to the buffer size; comparing with the query above reveals it.
+        let mut points = vec![0i64; n_requested as usize];
+        let mut n_returned = -1;
+        let status = spir_basis_get_default_matsus_ext(
+            basis,
+            positive_only,
+            mitigate,
+            n_requested,
+            points.as_mut_ptr(),
+            &mut n_returned,
+        );
+        assert_eq!(status, SPIR_COMPUTATION_SUCCESS);
+        assert!(
+            n_returned <= n_requested,
+            "never report more than was written"
+        );
+        if n_required > n_requested {
+            assert_eq!(n_returned, n_requested, "output truncated to buffer size");
+        } else {
+            assert_eq!(n_returned, n_required);
+        }
+
+        // A larger request also never overflows its buffer.
+        let mut points = vec![0i64; n_required as usize];
+        let mut n_returned = 0;
+        let status = spir_basis_get_default_matsus_ext(
+            basis,
+            positive_only,
+            mitigate,
+            n_required,
+            points.as_mut_ptr(),
+            &mut n_returned,
+        );
+        assert_eq!(status, SPIR_COMPUTATION_SUCCESS);
+        assert!(n_returned <= n_required);
+
+        unsafe {
+            spir_basis_release(basis);
             spir_sve_result_release(sve);
             spir_kernel_release(kernel);
         }

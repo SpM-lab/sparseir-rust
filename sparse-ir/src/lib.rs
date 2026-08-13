@@ -4,6 +4,20 @@
 //! library in Rust, providing analytical continuation and sparse representation
 //! functionality for quantum many-body physics calculations.
 
+/// Print a warning to stderr only when the `SPARSEIR_DEBUG` environment
+/// variable is set.
+///
+/// Library code must not write to stderr unconditionally; these are advisory
+/// diagnostics (e.g. ill-conditioned sampling) for debugging, not error reports.
+#[macro_export]
+macro_rules! debug_warn {
+    ($($arg:tt)*) => {
+        if std::env::var("SPARSEIR_DEBUG").is_ok() {
+            eprintln!("[SPARSEIR WARN] {}", format!($($arg)*));
+        }
+    };
+}
+
 pub mod basis;
 pub mod basis_trait; // Common trait for basis representations
 pub mod col_piv_qr; // Column-pivoted QR decomposition using nalgebra
@@ -33,8 +47,8 @@ pub mod working_buffer; // Reusable working buffer for in-place operations
 pub use basis::{BosonicBasis, FermionicBasis, FiniteTempBasis};
 pub use basis_trait::Basis;
 pub use dlr::{
-    DiscreteLehmannRepresentation, bosonic_single_pole, fermionic_single_pole, giwn_single_pole,
-    gtau_single_pole,
+    DiscreteLehmannRepresentation, DlrError, bosonic_single_pole, fermionic_single_pole,
+    giwn_single_pole, gtau_single_pole,
 };
 pub use fitters::InplaceFitter;
 pub use freq::{BosonicFreq, FermionicFreq, MatsubaraFreq};

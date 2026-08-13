@@ -12,6 +12,23 @@ use mdarray::DTensor;
 use num_complex::Complex;
 use std::marker::PhantomData;
 
+/// Errors returned when constructing a [`DiscreteLehmannRepresentation`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DlrError {
+    /// The number of default poles is less than the basis size. This can
+    /// happen with certain kernel types (e.g., `RegularizedBoseKernel`) due
+    /// to numerical precision limitations in root finding.
+    InsufficientDefaultPoles {
+        /// Basis size.
+        basis_size: usize,
+        /// Number of poles actually found.
+        n_poles: usize,
+    },
+    /// The kernel does not support the requested statistics (e.g.
+    /// `RegularizedBoseKernel` with fermionic statistics).
+    KernelStatisticsMismatch,
+}
+
 /// Generic single-pole Green's function at imaginary time τ
 ///
 /// Computes G(τ) for either fermionic or bosonic statistics based on the type parameter S.
@@ -238,17 +255,26 @@ where
     /// * `basis` - The IR basis to construct DLR from
     /// * `poles` - Pole positions on the real-frequency axis
     ///
-    /// # Returns
-    /// A new DLR representation
+    /// # Errors
+    /// Returns [`DlrError::KernelStatisticsMismatch`] if the kernel does not
+    /// support the requested statistics (e.g. `RegularizedBoseKernel` with
+    /// fermionic statistics).
     pub fn with_poles<K>(
         basis: &impl crate::basis_trait::Basis<S, Kernel = K>,
         poles: Vec<f64>,
-    ) -> Self
+    ) -> Result<Self, DlrError>
     where
         S: 'static,
         K: crate::kernel::KernelProperties + Clone,
     {
         use crate::kernel::LogisticKernel;
+
+        // RegularizedBoseKernel (ypower == 1) is meaningful only for bosonic
+        // statistics; its regularizer panics for fermionic input. Reject the
+        // combination before computing anything.
+        if S::STATISTICS == Statistics::Fermionic && basis.kernel().ypower() == 1 {
+            return Err(DlrError::KernelStatisticsMismatch);
+        }
 
         let beta = basis.beta();
         let wmax = basis.wmax();
@@ -286,7 +312,7 @@ where
             .map(|&regularizer| regularizer / pole_weight_scale)
             .collect();
 
-        Self {
+        Ok(Self {
             poles,
             beta,
             wmax,
@@ -298,7 +324,7 @@ where
             fitmat,
             fitter,
             _phantom: PhantomData,
-        }
+        })
     }
 
     fn zero_pole_tau_limit(&self) -> f64 {
@@ -330,14 +356,12 @@ where
     /// # Arguments
     /// * `basis` - The IR basis to construct DLR from
     ///
-    /// # Returns
-    /// A new DLR representation with default poles
-    ///
-    /// # Panics
-    /// Panics if the number of default poles is less than the basis size.
-    /// This can happen with certain kernel types (e.g., RegularizedBoseKernel)
-    /// due to numerical precision limitations in root finding.
-    pub fn new<K>(basis: &impl crate::basis_trait::Basis<S, Kernel = K>) -> Self
+    /// # Errors
+    /// Returns [`DlrError::InsufficientDefaultPoles`] if the number of default
+    /// poles is less than the basis size. This can happen with certain kernel
+    /// types (e.g., `RegularizedBoseKernel`) due to numerical precision
+    /// limitations in root finding.
+    pub fn new<K>(basis: &impl crate::basis_trait::Basis<S, Kernel = K>) -> Result<Self, DlrError>
     where
         S: 'static,
         K: crate::kernel::KernelProperties + Clone,
@@ -345,17 +369,11 @@ where
         let poles = basis.default_omega_sampling_points();
         let basis_size = basis.size();
         if basis_size > poles.len() {
-            eprintln!(
-                "Warning: Number of default poles ({}) is less than basis size ({}). \
-                 This may happen if not enough precision is left in the polynomial.",
-                poles.len(),
-                basis_size
-            );
+            return Err(DlrError::InsufficientDefaultPoles {
+                basis_size,
+                n_poles: poles.len(),
+            });
         }
-        assert!(
-            basis_size <= poles.len(),
-            "The number of poles must be greater than or equal to the basis size"
-        );
         Self::with_poles(basis, poles)
     }
 

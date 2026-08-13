@@ -42,7 +42,7 @@ pub extern "C" fn spir_logistic_kernel_new(
         return std::ptr::null_mut();
     }
 
-    if lambda <= 0.0 {
+    if lambda <= 0.0 || !lambda.is_finite() {
         unsafe {
             *status = SPIR_INVALID_ARGUMENT;
         }
@@ -88,7 +88,7 @@ pub extern "C" fn spir_reg_bose_kernel_new(
         return std::ptr::null_mut();
     }
 
-    if lambda <= 0.0 {
+    if lambda <= 0.0 || !lambda.is_finite() {
         unsafe {
             *status = SPIR_INVALID_ARGUMENT;
         }
@@ -589,6 +589,16 @@ mod tests {
 
         // Negative lambda
         let kernel = spir_logistic_kernel_new(-1.0, &mut status);
+        assert_eq!(status, SPIR_INVALID_ARGUMENT);
+        assert!(kernel.is_null());
+
+        // NaN lambda must not pass the <= 0.0 guard
+        let kernel = spir_logistic_kernel_new(f64::NAN, &mut status);
+        assert_eq!(status, SPIR_INVALID_ARGUMENT);
+        assert!(kernel.is_null());
+
+        // Same for the RegularizedBose kernel
+        let kernel = spir_reg_bose_kernel_new(f64::NAN, &mut status);
         assert_eq!(status, SPIR_INVALID_ARGUMENT);
         assert!(kernel.is_null());
     }

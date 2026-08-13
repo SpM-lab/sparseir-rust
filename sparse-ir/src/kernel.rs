@@ -490,12 +490,12 @@ impl RegularizedBoseKernel {
     /// Create a new RegularizedBoseKernel
     ///
     /// # Arguments
-    /// * `lambda` - Kernel cutoff Λ (must be non-negative)
+    /// * `lambda` - Kernel cutoff Λ (must be non-negative and finite)
     ///
     /// # Panics
-    /// Panics if lambda < 0
+    /// Panics if lambda < 0 or lambda is NaN/infinite
     pub fn new(lambda: f64) -> Self {
-        if lambda < 0.0 {
+        if lambda < 0.0 || !lambda.is_finite() {
             panic!("Kernel cutoff Λ must be non-negative, got {}", lambda);
         }
         Self { lambda }

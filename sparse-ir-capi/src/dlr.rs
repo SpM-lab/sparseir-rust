@@ -17,7 +17,16 @@ use crate::gemm::{get_backend_handle, spir_gemm_backend};
 use crate::types::{BasisType, spir_basis};
 use crate::utils::{MemoryOrder, copy_tensor_to_c_array, read_tensor_nd};
 use crate::{SPIR_COMPUTATION_SUCCESS, SPIR_INVALID_ARGUMENT, SPIR_NOT_SUPPORTED, StatusCode};
-use sparse_ir::dlr::DiscreteLehmannRepresentation;
+use sparse_ir::dlr::{DiscreteLehmannRepresentation, DlrError};
+
+/// Map a core [`DlrError`] to a C ABI status code, preserving the error
+/// category instead of collapsing it to `SPIR_INTERNAL_ERROR`.
+fn dlr_error_status(err: &DlrError) -> StatusCode {
+    match err {
+        DlrError::InsufficientDefaultPoles { .. } => SPIR_INVALID_ARGUMENT,
+        DlrError::KernelStatisticsMismatch => SPIR_NOT_SUPPORTED,
+    }
+}
 
 // ============================================================================
 // Creation Functions
@@ -36,55 +45,69 @@ use sparse_ir::dlr::DiscreteLehmannRepresentation;
 /// Caller must ensure `b` is a valid IR basis pointer
 #[unsafe(no_mangle)]
 pub extern "C" fn spir_dlr_new(b: *const spir_basis, status: *mut StatusCode) -> *mut spir_basis {
-    let result = catch_unwind(AssertUnwindSafe(|| {
-        // Validate inputs
-        if b.is_null() {
-            return (std::ptr::null_mut(), SPIR_INVALID_ARGUMENT);
-        }
+    let result = catch_unwind(AssertUnwindSafe(
+        || -> Result<(*mut spir_basis, StatusCode), StatusCode> {
+            // Validate inputs
+            if b.is_null() {
+                return Err(SPIR_INVALID_ARGUMENT);
+            }
 
-        let basis_ref = unsafe { &*b };
+            let basis_ref = unsafe { &*b };
 
-        // Create DLR based on basis type
-        let dlr_type = match basis_ref.inner() {
-            BasisType::LogisticFermionic(ir_basis) => {
-                let dlr = DiscreteLehmannRepresentation::new(ir_basis.as_ref());
-                BasisType::DLRFermionic(Arc::new(dlr))
-            }
-            BasisType::LogisticBosonic(ir_basis) => {
-                let dlr = DiscreteLehmannRepresentation::new(ir_basis.as_ref());
-                BasisType::DLRBosonic(Arc::new(dlr))
-            }
-            BasisType::RegularizedBoseFermionic(ir_basis) => {
-                let dlr = DiscreteLehmannRepresentation::new(ir_basis.as_ref());
-                BasisType::DLRFermionic(Arc::new(dlr))
-            }
-            BasisType::RegularizedBoseBosonic(ir_basis) => {
-                let dlr = DiscreteLehmannRepresentation::new(ir_basis.as_ref());
-                BasisType::DLRBosonic(Arc::new(dlr))
-            }
-            _ => {
-                // Already a DLR, return error
-                return (std::ptr::null_mut(), SPIR_INVALID_ARGUMENT);
-            }
-        };
+            // Create DLR based on basis type
+            let dlr_type = match basis_ref.inner() {
+                BasisType::LogisticFermionic(ir_basis) => {
+                    let dlr = DiscreteLehmannRepresentation::new(ir_basis.as_ref())
+                        .map_err(|e| dlr_error_status(&e))?;
+                    BasisType::DLRFermionic(Arc::new(dlr))
+                }
+                BasisType::LogisticBosonic(ir_basis) => {
+                    let dlr = DiscreteLehmannRepresentation::new(ir_basis.as_ref())
+                        .map_err(|e| dlr_error_status(&e))?;
+                    BasisType::DLRBosonic(Arc::new(dlr))
+                }
+                BasisType::RegularizedBoseFermionic(ir_basis) => {
+                    let dlr = DiscreteLehmannRepresentation::new(ir_basis.as_ref())
+                        .map_err(|e| dlr_error_status(&e))?;
+                    BasisType::DLRFermionic(Arc::new(dlr))
+                }
+                BasisType::RegularizedBoseBosonic(ir_basis) => {
+                    let dlr = DiscreteLehmannRepresentation::new(ir_basis.as_ref())
+                        .map_err(|e| dlr_error_status(&e))?;
+                    BasisType::DLRBosonic(Arc::new(dlr))
+                }
+                _ => {
+                    // Already a DLR, return error
+                    return Err(SPIR_INVALID_ARGUMENT);
+                }
+            };
 
-        let dlr_basis = match dlr_type {
-            BasisType::DLRFermionic(arc_dlr) => spir_basis::new_dlr_fermionic(arc_dlr),
-            BasisType::DLRBosonic(arc_dlr) => spir_basis::new_dlr_bosonic(arc_dlr),
-            _ => unreachable!(), // We know it's one of the DLR types
-        };
+            let dlr_basis = match dlr_type {
+                BasisType::DLRFermionic(arc_dlr) => spir_basis::new_dlr_fermionic(arc_dlr),
+                BasisType::DLRBosonic(arc_dlr) => spir_basis::new_dlr_bosonic(arc_dlr),
+                _ => unreachable!(), // We know it's one of the DLR types
+            };
 
-        (Box::into_raw(Box::new(dlr_basis)), SPIR_COMPUTATION_SUCCESS)
-    }));
+            Ok((Box::into_raw(Box::new(dlr_basis)), SPIR_COMPUTATION_SUCCESS))
+        },
+    ));
 
     match result {
-        Ok((ptr, code)) => {
+        Ok(Ok((ptr, code))) => {
             if !status.is_null() {
                 unsafe {
                     *status = code;
                 }
             }
             ptr
+        }
+        Ok(Err(code)) => {
+            if !status.is_null() {
+                unsafe {
+                    *status = code;
+                }
+            }
+            std::ptr::null_mut()
         }
         Err(_) => {
             if !status.is_null() {
@@ -117,60 +140,78 @@ pub extern "C" fn spir_dlr_new_with_poles(
     poles: *const f64,
     status: *mut StatusCode,
 ) -> *mut spir_basis {
-    let result = catch_unwind(AssertUnwindSafe(|| {
-        // Validate inputs
-        if b.is_null() || poles.is_null() {
-            return (std::ptr::null_mut(), SPIR_INVALID_ARGUMENT);
-        }
-        if npoles <= 0 {
-            return (std::ptr::null_mut(), SPIR_INVALID_ARGUMENT);
-        }
+    let result = catch_unwind(AssertUnwindSafe(
+        || -> Result<(*mut spir_basis, StatusCode), StatusCode> {
+            // Validate inputs
+            if b.is_null() || poles.is_null() {
+                return Err(SPIR_INVALID_ARGUMENT);
+            }
+            if npoles <= 0 {
+                return Err(SPIR_INVALID_ARGUMENT);
+            }
 
-        let basis_ref = unsafe { &*b };
-        let poles_slice = unsafe { std::slice::from_raw_parts(poles, npoles as usize) };
-        let pole_vec: Vec<f64> = poles_slice.to_vec();
+            let basis_ref = unsafe { &*b };
+            let poles_slice = unsafe { std::slice::from_raw_parts(poles, npoles as usize) };
+            let pole_vec: Vec<f64> = poles_slice.to_vec();
 
-        // Create DLR based on basis type
-        let dlr_type = match basis_ref.inner() {
-            BasisType::LogisticFermionic(ir_basis) => {
-                let dlr = DiscreteLehmannRepresentation::with_poles(ir_basis.as_ref(), pole_vec);
-                BasisType::DLRFermionic(Arc::new(dlr))
-            }
-            BasisType::LogisticBosonic(ir_basis) => {
-                let dlr = DiscreteLehmannRepresentation::with_poles(ir_basis.as_ref(), pole_vec);
-                BasisType::DLRBosonic(Arc::new(dlr))
-            }
-            BasisType::RegularizedBoseFermionic(ir_basis) => {
-                let dlr = DiscreteLehmannRepresentation::with_poles(ir_basis.as_ref(), pole_vec);
-                BasisType::DLRFermionic(Arc::new(dlr))
-            }
-            BasisType::RegularizedBoseBosonic(ir_basis) => {
-                let dlr = DiscreteLehmannRepresentation::with_poles(ir_basis.as_ref(), pole_vec);
-                BasisType::DLRBosonic(Arc::new(dlr))
-            }
-            _ => {
-                // Already a DLR or invalid type
-                return (std::ptr::null_mut(), SPIR_INVALID_ARGUMENT);
-            }
-        };
+            // Create DLR based on basis type
+            let dlr_type = match basis_ref.inner() {
+                BasisType::LogisticFermionic(ir_basis) => {
+                    let dlr =
+                        DiscreteLehmannRepresentation::with_poles(ir_basis.as_ref(), pole_vec)
+                            .map_err(|e| dlr_error_status(&e))?;
+                    BasisType::DLRFermionic(Arc::new(dlr))
+                }
+                BasisType::LogisticBosonic(ir_basis) => {
+                    let dlr =
+                        DiscreteLehmannRepresentation::with_poles(ir_basis.as_ref(), pole_vec)
+                            .map_err(|e| dlr_error_status(&e))?;
+                    BasisType::DLRBosonic(Arc::new(dlr))
+                }
+                BasisType::RegularizedBoseFermionic(ir_basis) => {
+                    let dlr =
+                        DiscreteLehmannRepresentation::with_poles(ir_basis.as_ref(), pole_vec)
+                            .map_err(|e| dlr_error_status(&e))?;
+                    BasisType::DLRFermionic(Arc::new(dlr))
+                }
+                BasisType::RegularizedBoseBosonic(ir_basis) => {
+                    let dlr =
+                        DiscreteLehmannRepresentation::with_poles(ir_basis.as_ref(), pole_vec)
+                            .map_err(|e| dlr_error_status(&e))?;
+                    BasisType::DLRBosonic(Arc::new(dlr))
+                }
+                _ => {
+                    // Already a DLR or invalid type
+                    return Err(SPIR_INVALID_ARGUMENT);
+                }
+            };
 
-        let dlr_basis = match dlr_type {
-            BasisType::DLRFermionic(arc_dlr) => spir_basis::new_dlr_fermionic(arc_dlr),
-            BasisType::DLRBosonic(arc_dlr) => spir_basis::new_dlr_bosonic(arc_dlr),
-            _ => unreachable!(), // We know it's one of the DLR types
-        };
+            let dlr_basis = match dlr_type {
+                BasisType::DLRFermionic(arc_dlr) => spir_basis::new_dlr_fermionic(arc_dlr),
+                BasisType::DLRBosonic(arc_dlr) => spir_basis::new_dlr_bosonic(arc_dlr),
+                _ => unreachable!(), // We know it's one of the DLR types
+            };
 
-        (Box::into_raw(Box::new(dlr_basis)), SPIR_COMPUTATION_SUCCESS)
-    }));
+            Ok((Box::into_raw(Box::new(dlr_basis)), SPIR_COMPUTATION_SUCCESS))
+        },
+    ));
 
     match result {
-        Ok((ptr, code)) => {
+        Ok(Ok((ptr, code))) => {
             if !status.is_null() {
                 unsafe {
                     *status = code;
                 }
             }
             ptr
+        }
+        Ok(Err(code)) => {
+            if !status.is_null() {
+                unsafe {
+                    *status = code;
+                }
+            }
+            std::ptr::null_mut()
         }
         Err(_) => {
             if !status.is_null() {

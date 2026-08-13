@@ -617,10 +617,11 @@ impl ComplexMatrixFitter {
             let n_points = self.n_points();
             let basis_size = self.basis_size();
             if n_points < basis_size {
-                eprintln!(
-                    "Warning: Number of sampling points ({}) is less than basis size ({}). \
+                debug_warn!(
+                    "Number of sampling points ({}) is less than basis size ({}). \
                      Fitting may be ill-conditioned.",
-                    n_points, basis_size
+                    n_points,
+                    basis_size
                 );
             }
             let svd = compute_complex_svd(&self.matrix);

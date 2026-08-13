@@ -483,7 +483,7 @@ StatusCode spir_basis_get_default_taus_ext(const struct spir_basis *b,
  * * `positive_only` - If true, return only positive frequencies
  * * `mitigate` - If true, enable mitigation (fencing) to improve conditioning
  * * `L` - Requested number of sampling points
- * * `num_points_returned` - Pointer to store actual number of points
+ * * `num_points_returned` - Pointer to store the computed point count
  *
  * # Returns
  * * `SPIR_COMPUTATION_SUCCESS` (0) on success
@@ -491,9 +491,10 @@ StatusCode spir_basis_get_default_taus_ext(const struct spir_basis *b,
  * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
  *
  * # Note
- * Returns the actual number of points that will be returned by
- * `spir_basis_get_default_matsus_ext` with the same parameters.
- * When mitigate is true, may return more points than requested due to fencing.
+ * Returns the full computed count for `spir_basis_get_default_matsus_ext`
+ * with the same parameters. When mitigate is true, fencing may produce more
+ * points than requested; the getter truncates the output to the provided
+ * buffer size, so this count can exceed what was returned.
  */
 
 StatusCode spir_basis_get_n_default_matsus_ext(const struct spir_basis *b,
@@ -511,7 +512,7 @@ StatusCode spir_basis_get_n_default_matsus_ext(const struct spir_basis *b,
  * * `mitigate` - If true, enable mitigation (fencing) to improve conditioning
  * * `n_points` - Maximum number of points requested
  * * `points` - Pre-allocated array to store Matsubara indices (size >= n_points)
- * * `n_points_returned` - Pointer to store actual number of points returned
+ * * `n_points_returned` - Pointer to store the full computed point count
  *
  * # Returns
  * * `SPIR_COMPUTATION_SUCCESS` (0) on success
@@ -519,10 +520,13 @@ StatusCode spir_basis_get_n_default_matsus_ext(const struct spir_basis *b,
  * * `SPIR_INTERNAL_ERROR` (-7) if internal panic occurs
  *
  * # Note
- * Returns the actual number of sampling points (may be more than n_points
- * when mitigate is true due to fencing). The caller should call
- * `spir_basis_get_n_default_matsus_ext` with the same parameters first to
- * determine the required buffer size.
+ * `points` must hold at least `n_points` elements and is never written
+ * beyond that. When `mitigate` is true, fencing can produce more points than
+ * requested: the output is truncated to `n_points` elements and
+ * `n_points_returned` reports the full computed count, so
+ * `n_points_returned > n_points` signals truncation. Call
+ * `spir_basis_get_n_default_matsus_ext` with the same parameters to see the
+ * full count before choosing the buffer size.
  */
 
 StatusCode spir_basis_get_default_matsus_ext(const struct spir_basis *b,

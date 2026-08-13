@@ -732,7 +732,10 @@ TEST_CASE("Test spir_basis_get_default_matsus_ext with fence", "[cinterface]")
         }
     }
 
-    // Test with mitigation (fence = true)
+    // Test with mitigation (fence = true): fencing can compute more points
+    // than requested. The getter never writes past n_points elements; when
+    // the computed set is larger, the output is truncated to the buffer size
+    // and n_points_returned reports the number written.
     {
         bool positive_only = false;
         bool mitigate = true;
@@ -744,17 +747,45 @@ TEST_CASE("Test spir_basis_get_default_matsus_ext with fence", "[cinterface]")
         status = spir_basis_get_default_matsus_ext(
             basis, positive_only, mitigate, n_points_requested, points.data(), &n_points_returned);
         REQUIRE(status == SPIR_COMPUTATION_SUCCESS);
-        REQUIRE(n_points_returned >= n_points_requested);  // May exceed when mitigate is true
+        REQUIRE(n_points_returned > 0);
+        REQUIRE(n_points_returned <= n_points_requested);  // Never more than the buffer size
 
         // Verify points are valid fermionic frequencies (odd integers)
         for (int i = 0; i < n_points_returned; ++i) {
             REQUIRE(llabs(points[i]) % 2 == 1);
         }
 
-        // When mitigate is true and basis_size >= 20, we should have more points
-        // Note: This may not always be true due to rounding, so we just check it's >= requested
-        if (basis_size >= 20 && n_points_returned > n_points_requested) {
-            // Extra points due to fencing were added
+        // The size query reports the full computed count; when fencing adds
+        // points beyond the request, the output above is truncated to the
+        // request size.
+        int n_full = 0;
+        status = spir_basis_get_n_default_matsus_ext(
+            basis, positive_only, mitigate, n_points_requested, &n_full);
+        REQUIRE(status == SPIR_COMPUTATION_SUCCESS);
+        if (n_full > n_points_requested) {
+            REQUIRE(n_points_returned == n_points_requested);
+        } else {
+            REQUIRE(n_points_returned == n_full);
+        }
+    }
+
+    // Test that an undersized buffer is truncated, never overflowed
+    {
+        bool positive_only = false;
+        bool mitigate = true;
+        int n_points_requested = basis_size;
+
+        int n_points_returned = -1;
+        std::vector<int64_t> points(n_points_requested);  // Exactly the request size
+
+        status = spir_basis_get_default_matsus_ext(
+            basis, positive_only, mitigate, n_points_requested, points.data(), &n_points_returned);
+        REQUIRE(status == SPIR_COMPUTATION_SUCCESS);
+        REQUIRE(n_points_returned <= n_points_requested);  // Never more than the buffer
+        // Fencing adds points beyond the request for basis_size >= 20, so the
+        // returned count then equals the buffer size (truncated).
+        if (basis_size >= 20) {
+            REQUIRE(n_points_returned == n_points_requested);
         }
     }
 
@@ -771,7 +802,7 @@ TEST_CASE("Test spir_basis_get_default_matsus_ext with fence", "[cinterface]")
             basis, positive_only, mitigate, n_points_requested, points.data(), &n_points_returned);
         REQUIRE(status == SPIR_COMPUTATION_SUCCESS);
         REQUIRE(n_points_returned > 0);
-        REQUIRE(n_points_returned <= basis_size + 10);  // May have some extra points due to fencing
+        REQUIRE(n_points_returned <= n_points_requested);
 
         // Verify all points are positive and odd
         for (int i = 0; i < n_points_returned; ++i) {
