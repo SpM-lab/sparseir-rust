@@ -345,7 +345,7 @@ fn run_integration_example_single<K, S>(
 
     // Step 3: Create DLR from IR basis
     println!("Step 3: Creating DLR representation...");
-    let dlr = DiscreteLehmannRepresentation::<S>::new(&basis);
+    let dlr = DiscreteLehmannRepresentation::<S>::new(&basis).expect("failed to build DLR");
     let n_poles = dlr.poles.len();
     println!("  Number of DLR poles: {}", n_poles);
     println!();

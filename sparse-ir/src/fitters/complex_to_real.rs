@@ -590,8 +590,8 @@ impl ComplexToRealFitter {
             // For positive-only mode, we have symmetry: 2*n_points effective points
             let effective_points = 2 * n_points;
             if effective_points < basis_size {
-                eprintln!(
-                    "Warning: Effective number of sampling points ({} × 2 = {}) is less than basis size ({}). \
+                debug_warn!(
+                    "Effective number of sampling points ({} × 2 = {}) is less than basis size ({}). \
                      Fitting may be ill-conditioned.",
                     n_points, effective_points, basis_size
                 );

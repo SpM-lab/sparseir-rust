@@ -78,3 +78,26 @@ jobs:
       - name: Some Rust jobs failed
         if: ${{ contains(needs.*.result, 'failure') }}
         run: exit 1
+
+  header-sync:
+    runs-on: ubuntu-latest
+    name: Check C header sync (assets/sparse_ir_capi.h)
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cbindgen
+        run: cargo install cbindgen --version 0.29.2 --locked
+
+      - name: Regenerate and diff headers
+        working-directory: sparse-ir-capi
+        run: |
+          cbindgen --config cbindgen.toml --cpp-compat --output /tmp/sparseir.h .
+          diff include/sparseir/sparseir.h /tmp/sparseir.h
+          diff include/sparseir/sparseir.h assets/sparse_ir_capi.h

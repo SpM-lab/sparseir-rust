@@ -953,8 +953,8 @@ pub fn default_sampling_points(u: &PiecewiseLegendrePolyVector, l: usize) -> Vec
 
     // C++: if (x0.size() != L) { warning }
     if x0.len() != l {
-        eprintln!(
-            "Warning: Expecting to get {} sampling points for corresponding basis function, \
+        debug_warn!(
+            "Expecting to get {} sampling points for corresponding basis function, \
              instead got {}. This may happen if not enough precision is left in the polynomial.",
             l,
             x0.len()

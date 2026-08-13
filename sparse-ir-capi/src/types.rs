@@ -102,6 +102,9 @@ pub struct spir_basis {
 pub(crate) enum BasisType {
     LogisticFermionic(Arc<FiniteTempBasis<LogisticKernel, Fermionic>>),
     LogisticBosonic(Arc<FiniteTempBasis<LogisticKernel, Bosonic>>),
+    // No C ABI constructor creates this combination (see #241); the dispatch
+    // arms below still handle it defensively for opaque handles.
+    #[allow(dead_code)]
     RegularizedBoseFermionic(Arc<FiniteTempBasis<RegularizedBoseKernel, Fermionic>>),
     RegularizedBoseBosonic(Arc<FiniteTempBasis<RegularizedBoseKernel, Bosonic>>),
     // DLR (Discrete Lehmann Representation) variants
@@ -279,6 +282,9 @@ impl spir_basis {
         }
     }
 
+    /// Kept for defensive completeness: no C ABI constructor creates a
+    /// fermionic RegularizedBose basis (rejected at the boundary, see #241).
+    #[allow(dead_code)]
     pub(crate) fn new_regularized_bose_fermionic(
         basis: FiniteTempBasis<RegularizedBoseKernel, Fermionic>,
     ) -> Self {

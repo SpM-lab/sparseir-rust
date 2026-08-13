@@ -332,8 +332,8 @@ where
         let points = self.default_tau_sampling_points_size_requested(self.size());
         let basis_size = self.size();
         if points.len() < basis_size {
-            eprintln!(
-                "Warning: Number of tau sampling points ({}) is less than basis size ({}). \
+            debug_warn!(
+                "Number of tau sampling points ({}) is less than basis size ({}). \
                  Basis parameters: beta={}, wmax={}, epsilon={:.2e}",
                 points.len(),
                 basis_size,
@@ -410,8 +410,8 @@ where
             points.len()
         };
         if effective_points < basis_size {
-            eprintln!(
-                "Warning: Number of Matsubara sampling points ({}{}) is less than basis size ({}). \
+            debug_warn!(
+                "Number of Matsubara sampling points ({}{}) is less than basis size ({}). \
                  Basis parameters: beta={}, wmax={}, epsilon={:.2e}",
                 points.len(),
                 if positive_only { " × 2" } else { "" },
@@ -545,8 +545,8 @@ where
         };
 
         if omega_n.len() != expected_size {
-            eprintln!(
-                "Warning: Requested {} sampling frequencies for basis size L = {}, but got {}.",
+            debug_warn!(
+                "Requested {} sampling frequencies for basis size L = {}, but got {}.",
                 expected_size,
                 l,
                 omega_n.len()
