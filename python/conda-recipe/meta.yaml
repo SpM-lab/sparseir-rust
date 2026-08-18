@@ -16,6 +16,7 @@ source:
 
 build:
   number: 0
+  skip: true  # [py == 314 and np < 23]
   script: |
     # Clean up old shared libraries
     echo "Cleaning up old shared libraries..."

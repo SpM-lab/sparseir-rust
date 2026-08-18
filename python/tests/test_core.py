@@ -4,8 +4,28 @@ Test cases for core functionality and C API wrappers
 
 import numpy as np
 from ctypes import c_double, byref
+from pylibsparseir import ctypes_wrapper
 from pylibsparseir.core import logistic_kernel_new, reg_bose_kernel_new, sve_result_new, sve_result_get_size, sve_result_get_svals, basis_new, basis_get_size, basis_get_stats, basis_get_svals, basis_get_u, basis_get_v, basis_get_uhat, basis_get_default_tau_sampling_points, basis_get_default_matsubara_sampling_points, tau_sampling_new, matsubara_sampling_new
 from pylibsparseir.core import _lib
+
+
+def test_ctypes_wrapper_wildcard_exports_are_binding_owned():
+    """Do not leak Python 3.14's ctypes.c_double_complex to callers."""
+    assert "c_double_complex" not in ctypes_wrapper.__all__
+    assert set(ctypes_wrapper.__all__) == {
+        "c_complex",
+        "spir_kernel",
+        "spir_funcs",
+        "spir_basis",
+        "spir_sampling",
+        "spir_sve_result",
+        "spir_gemm_backend",
+        "c_int64",
+        "COMPLEX_DTYPE",
+        "DOUBLE_DTYPE",
+        "INT64_DTYPE",
+    }
+
 
 class TestCoreAPI:
     """Test core C API wrapper functions."""
