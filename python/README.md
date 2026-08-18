@@ -109,7 +109,7 @@ conda build conda-recipe --platform osx-arm64
 - macOS Apple Silicon (ARM64)
 
 **Supported Python versions:**
-- Python 3.11, 3.12, 3.13
+- Python 3.11, 3.12, 3.13, 3.14
 
 **Supported NumPy versions:**
 - NumPy 2.1, 2.2, 2.3

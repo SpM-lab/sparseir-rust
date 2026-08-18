@@ -5,6 +5,20 @@ Type definitions for the SparseIR C API.
 from ctypes import *
 import numpy as np
 
+__all__ = [
+    "c_complex",
+    "spir_kernel",
+    "spir_funcs",
+    "spir_basis",
+    "spir_sampling",
+    "spir_sve_result",
+    "spir_gemm_backend",
+    "c_int64",
+    "COMPLEX_DTYPE",
+    "DOUBLE_DTYPE",
+    "INT64_DTYPE",
+]
+
 # Define complex type
 c_complex = c_double * 2
 
