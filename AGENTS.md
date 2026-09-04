@@ -1,20 +1,33 @@
 # Agent Instructions
 
-Before acting, read the latest shared tensor4all agent rules from the
-[`tensor4all-agent-rules`](https://github.com/tensor4all/tensor4all-agent-rules)
+Before acting, read the latest shared SpM-lab agent rules from the
+[`spm-agent-rules`](https://github.com/SpM-lab/spm-agent-rules)
 repository. Start from:
 
-- `https://github.com/tensor4all/tensor4all-agent-rules/blob/main/rules/index.md`
+- `https://github.com/SpM-lab/spm-agent-rules/blob/main/rules/index.md`
 
 If internet access is unavailable or the remote cannot be resolved, use the
 sibling checkout:
 
-- `../tensor4all-agent-rules/rules/index.md`
+- `../spm-agent-rules/rules/index.md`
 
-Load only the common, Rust, performance, numerical, documentation, or
-provenance rule files relevant to the task. In particular,
-`rules/common/provenance.md` applies whenever code is written while referencing
-third-party code.
+Load only the rule files relevant to the task. For this repository, that
+typically resolves to:
+
+- `common.md` — for any implementation work.
+- `ffi-boundary.md` — whenever a change touches `sparse-ir-capi`, an
+  `extern "C"` function, a raw pointer, a dtype conversion, memory order, or a
+  status code.
+- `numerical-conventions.md` — whenever a change touches basis construction,
+  sampling, DLR, statistics (fermionic/bosonic), `tau`/Matsubara domains, or
+  real/complex handling.
+- `testing.md` — for any new test or change to existing test coverage.
+- `rust.md` — the sparse-ir-rs- and libsparseir-specific rules.
+
+Provenance and scientific-credit requirements when code is written while
+referencing third-party code are defined in the "Provenance And Scientific
+Credit" section of `REPOSITORY_RULES.md` (see below); no shared-rules
+counterpart exists yet.
 
 Then read [`REPOSITORY_RULES.md`](REPOSITORY_RULES.md), which contains the
 durable sparse-ir-rs-specific contracts. Repository-local rules override shared
