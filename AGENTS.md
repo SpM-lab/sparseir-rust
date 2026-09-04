@@ -1,28 +1,18 @@
-# AGENTS.md
+# Agent Instructions
 
-This file provides guidance to AI coding agents working with code in this
-repository.
+Before acting, read the latest shared SpM-lab agent rules from the
+[`spm-agent-rules`](https://github.com/SpM-lab/spm-agent-rules)
+repository. Start from:
 
-## Project
+- `https://github.com/SpM-lab/spm-agent-rules/blob/main/rules/index.md`
 
-**sparse-ir-rs** is the Rust core of the sparse-ir software stack: the
-`sparse-ir` crate implements the sparse intermediate representation (IR) for
-quantum many-body physics (basis construction, sampling, DLR), and the
-`sparse-ir-capi` crate exposes that core through a C ABI distributed as the
-`libsparseir` C library. Python, Julia, and Fortran bindings in other
-repositories, and in this repository's `python/`, `julia/`, and `fortran/`
-directories, wrap that C API.
+If internet access is unavailable or the remote cannot be resolved, use the
+sibling checkout:
 
-## Shared Rules
+- `../spm-agent-rules/rules/index.md`
 
-Read the SpM-lab shared agent rules before making changes:
-<https://github.com/SpM-lab/spm-agent-rules> — start at
-[`rules/index.md`](https://github.com/SpM-lab/spm-agent-rules/blob/main/rules/index.md)
-and load only the rule files the current task needs. If internet access is
-unavailable, look for a sibling checkout at `../spm-agent-rules`.
-
-For this repository, the routing table in `rules/index.md` typically resolves
-to:
+Load only the rule files relevant to the task. For this repository, that
+typically resolves to:
 
 - `common.md` — for any implementation work.
 - `ffi-boundary.md` — whenever a change touches `sparse-ir-capi`, an
@@ -34,26 +24,35 @@ to:
 - `testing.md` — for any new test or change to existing test coverage.
 - `rust.md` — the sparse-ir-rs- and libsparseir-specific rules.
 
-## Repository-Specific Rules
+Provenance and scientific-credit requirements when code is written while
+referencing third-party code are defined in the "Provenance And Scientific
+Credit" section of `REPOSITORY_RULES.md` (see below); no shared-rules
+counterpart exists yet.
 
-See [`REPOSITORY_RULES.md`](REPOSITORY_RULES.md) for the durable,
-sparse-ir-rs-specific facts and contracts (workspace layout, build and test
-commands, the C API surface, CI entry points).
+Then read [`REPOSITORY_RULES.md`](REPOSITORY_RULES.md), which contains the
+durable sparse-ir-rs-specific contracts. Repository-local rules override shared
+rules when they are more specific. Existing code that predates a rule is not
+precedent; remediation outside the current task requires the scope and approval
+defined in `REPOSITORY_RULES.md`.
 
-## Precedence
+[`sparse-ir/CODING_RULES.md`](sparse-ir/CODING_RULES.md) contains supplemental
+crate implementation notes. Read it only after the root rules, and do not treat
+it as an independent policy source. `REPOSITORY_RULES.md`, current source,
+public documentation, and generated binding contracts are authoritative.
 
-Repository-local rules in `REPOSITORY_RULES.md` override the shared rules in
-`spm-agent-rules` when they are more specific. Note any such override in the
-pull request description when it affects review.
+Before changing release automation or version metadata, read the
+version-management section in [README.md](README.md). For downstream wrapper
+version bumps, also read
+[`bump_version_downstream.md`](bump_version_downstream.md).
 
-## Other Repository-Specific Pointers
+Use these repo-local skills when the task matches:
 
-These are not agent rules, only orientation to existing repository assets:
+- `agent-skills/semantic-version-suggestion/SKILL.md`
+  Use when deciding the next sparse-ir-rs version under Semantic Versioning.
+- `agent-skills/manual-rust-release/SKILL.md`
+  Use when preparing or triggering the manual GitHub Actions workflow that publishes crates and pushes the release tag.
 
-- Release/version-management workflow: the "Version management" section of
-  [`README.md`](README.md), [`check_version.py`](check_version.py), and
-  [`bump_version_downstream.md`](bump_version_downstream.md).
-- Repo-local skills: [`agent-skills/semantic-version-suggestion/SKILL.md`](agent-skills/semantic-version-suggestion/SKILL.md)
-  and [`agent-skills/manual-rust-release/SKILL.md`](agent-skills/manual-rust-release/SKILL.md).
-- Supplemental crate implementation notes: [`sparse-ir/CODING_RULES.md`](sparse-ir/CODING_RULES.md)
-  (read only after the rules above; not an independent policy source).
+Release invariants for this repository:
+
+- Follow the [Release And Version Integrity](REPOSITORY_RULES.md#release-and-version-integrity)
+  rules in `REPOSITORY_RULES.md`.
